@@ -13,7 +13,7 @@ func TestDownloadAutoName_WhenOutputArtifact_ItShouldUseZoaPrefixAndJsonExtensio
 	opts := &downloadOptions{artifact: "output", file: ""}
 	expected := "zoa-exec-123-output.json"
 
-	result := resolveDownloadPath(opts, "exec-123")
+	result := resolveDownloadPath(opts, "exec-123", "application/json")
 	if result != expected {
 		t.Errorf("expected %q, got %q", expected, result)
 	}
@@ -23,7 +23,7 @@ func TestDownloadAutoName_WhenLogsArtifact_ItShouldUseZoaPrefixAndJsonlExtension
 	opts := &downloadOptions{artifact: "logs", file: ""}
 	expected := "zoa-exec-456-logs.jsonl"
 
-	result := resolveDownloadPath(opts, "exec-456")
+	result := resolveDownloadPath(opts, "exec-456", "text/plain")
 	if result != expected {
 		t.Errorf("expected %q, got %q", expected, result)
 	}
@@ -33,7 +33,17 @@ func TestDownloadAutoName_WhenFileSpecified_ItShouldUseProvidedPath(t *testing.T
 	opts := &downloadOptions{artifact: "output", file: "/tmp/custom.json"}
 	expected := "/tmp/custom.json"
 
-	result := resolveDownloadPath(opts, "exec-789")
+	result := resolveDownloadPath(opts, "exec-789", "application/json")
+	if result != expected {
+		t.Errorf("expected %q, got %q", expected, result)
+	}
+}
+
+func TestDownloadAutoName_WhenGzipContentType_ItShouldUseTarGzExtension(t *testing.T) {
+	opts := &downloadOptions{artifact: "output", file: ""}
+	expected := "zoa-exec-mg1-output.tar.gz"
+
+	result := resolveDownloadPath(opts, "exec-mg1", "application/gzip")
 	if result != expected {
 		t.Errorf("expected %q, got %q", expected, result)
 	}

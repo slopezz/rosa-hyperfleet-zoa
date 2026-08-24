@@ -62,6 +62,7 @@ type RBACRule struct {
 
 type ExecutionParams struct {
 	Params        map[string]string
+	ExecutionID   string
 	TargetCluster string
 	Force         bool
 	KubeClient    kubernetes.Interface

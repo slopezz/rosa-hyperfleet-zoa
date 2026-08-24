@@ -84,8 +84,9 @@ func main() {
 	defer cancel()
 
 	execParams := &actions.ExecutionParams{
-		Params: params,
-		Logger: execLogger,
+		Params:      params,
+		ExecutionID: executionID,
+		Logger:      execLogger,
 	}
 
 	// Build Kubernetes clients from in-cluster config (pod has projected SA token)
@@ -129,9 +130,6 @@ func main() {
 		execLogger.Error("action execution failed", "error", execErr)
 	}
 
-	// Write output.json — only the Output field, matching sync behavior.
-	// This ensures the CLI can render the data consistently (e.g., table for JSON arrays)
-	// regardless of execution mode.
 	exitCode := 0
 	if result == nil {
 		result = &actions.ActionResult{Success: false, Summary: "execution failed: " + execErr.Error()}
@@ -140,9 +138,16 @@ func main() {
 		exitCode = 1
 	}
 
-	outputData := executor.MarshalActionOutput(result)
-	if err := os.WriteFile(filepath.Join(outputDir, "output.json"), outputData, 0o644); err != nil {
-		execLogger.Error("failed to write output.json", "error", err)
+	// Write output.json only when the action produces structured JSON output.
+	// Actions that produce binary artifacts (e.g. must_gather → output.tar.gz)
+	// set Output=nil so ArtifactSizes() detects the tar.gz as primary artifact.
+	if result.Output != nil {
+		outputData := executor.MarshalActionOutput(result)
+		if err := os.WriteFile(filepath.Join(outputDir, "output.json"), outputData, 0o644); err != nil {
+			execLogger.Error("failed to write output.json", "error", err)
+		}
+	} else {
+		execLogger.Info("skipping output.json (action produced binary artifact)")
 	}
 
 	// Upload artifacts to S3
@@ -195,6 +200,8 @@ func uploadArtifacts(bucket, prefix, region string, logger *slog.Logger) error {
 			contentType = "application/json"
 		} else if strings.HasSuffix(entry.Name(), ".log") {
 			contentType = "text/plain"
+		} else if strings.HasSuffix(entry.Name(), ".tar.gz") || strings.HasSuffix(entry.Name(), ".tgz") {
+			contentType = "application/gzip"
 		}
 
 		_, err = s3Client.PutObject(context.Background(), &s3.PutObjectInput{

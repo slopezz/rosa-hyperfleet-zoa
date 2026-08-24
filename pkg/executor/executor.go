@@ -524,9 +524,10 @@ func (e *Executor) buildAWSParams(ctx context.Context, executionID string, param
 	logger.Info("assumed AWS role for TA execution", "role", roleARN, "type", meta.Type)
 
 	return &actions.ExecutionParams{
-		Params:    params,
-		AWSConfig: &scopedCfg,
-		Logger:    logger,
+		Params:      params,
+		ExecutionID: executionID,
+		AWSConfig:   &scopedCfg,
+		Logger:      logger,
 	}, nil
 }
 
@@ -551,6 +552,7 @@ func (e *Executor) buildKubeParams(ctx context.Context, executionID string, para
 
 	return &actions.ExecutionParams{
 		Params:        params,
+		ExecutionID:   executionID,
 		TargetCluster: "",
 		KubeClient:    execClient,
 		DynamicClient: dynClient,
