@@ -38,7 +38,7 @@ func newTestExecutor(client *fake.Clientset, stsClient STSAssumeRoler) *Executor
 		region:          "us-east-1",
 		jobImage:        "quay.io/openshift/zoa-tools:latest",
 		logger:          noopLogger(),
-		eksCircuit:      newCircuitBreaker(),
+		eksCircuit:      newCircuitBreaker("test-cluster"),
 	}
 }
 

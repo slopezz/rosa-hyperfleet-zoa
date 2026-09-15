@@ -7,6 +7,8 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/metrics"
 )
 
 const (
@@ -17,6 +19,9 @@ const (
 func (e *Executor) withRetry(ctx context.Context, operation string, fn func() error) error {
 	if e.eksCircuit != nil {
 		if err := e.eksCircuit.allow(operation); err != nil {
+			if e.eksCircuit.cluster != "" {
+				metrics.EmitRejection(e.eksCircuit.cluster, metrics.RejectionCircuitBreakerOpen)
+			}
 			return err
 		}
 	}

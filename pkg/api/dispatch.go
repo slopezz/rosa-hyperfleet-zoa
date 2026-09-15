@@ -13,6 +13,7 @@ import (
 	"github.com/openshift-online/rosa-hyperfleet-zoa/internal/version"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/actions"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/executor"
+	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/metrics"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/store"
 )
 
@@ -58,6 +59,7 @@ func (h *Handler) handleCreate(w http.ResponseWriter, r *http.Request, actionNam
 	action, ok := actions.Get(actionName)
 	if !ok {
 		h.recordAudit(r, http.StatusNotFound, actionName, "")
+		metrics.EmitRejection(h.cfg.TargetCluster, metrics.RejectionActionNotFound)
 		writeError(w, http.StatusNotFound, "action_not_found", fmt.Sprintf("action %q not found", actionName))
 		return
 	}
@@ -65,17 +67,20 @@ func (h *Handler) handleCreate(w http.ResponseWriter, r *http.Request, actionNam
 	var req createRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.recordAudit(r, http.StatusBadRequest, actionName, "")
+		metrics.EmitRejection(h.cfg.TargetCluster, metrics.RejectionValidationFailed)
 		writeError(w, http.StatusBadRequest, "invalid_body", "failed to parse request body")
 		return
 	}
 
 	if req.Jira == "" {
 		h.recordAudit(r, http.StatusBadRequest, actionName, "", withForce(req.Force), withDryRun(req.DryRun))
+		metrics.EmitRejection(h.cfg.TargetCluster, metrics.RejectionValidationFailed)
 		writeError(w, http.StatusBadRequest, "missing_jira", "jira ticket is required for all executions")
 		return
 	}
 	if !jiraPattern.MatchString(req.Jira) {
 		h.recordAudit(r, http.StatusBadRequest, actionName, "", withJira(req.Jira), withForce(req.Force), withDryRun(req.DryRun))
+		metrics.EmitRejection(h.cfg.TargetCluster, metrics.RejectionValidationFailed)
 		writeError(w, http.StatusBadRequest, "invalid_jira", fmt.Sprintf("jira ticket %q must match format PROJECT-123", req.Jira))
 		return
 	}
@@ -84,6 +89,7 @@ func (h *Handler) handleCreate(w http.ResponseWriter, r *http.Request, actionNam
 
 	if err := validateParams(meta, req.Params); err != nil {
 		h.recordAudit(r, http.StatusBadRequest, actionName, "", withJira(req.Jira), withForce(req.Force), withDryRun(req.DryRun))
+		metrics.EmitRejection(h.cfg.TargetCluster, metrics.RejectionValidationFailed)
 		writeError(w, http.StatusBadRequest, "invalid_params", err.Error())
 		return
 	}
@@ -110,6 +116,7 @@ func (h *Handler) handleCreate(w http.ResponseWriter, r *http.Request, actionNam
 
 	if err := h.executor.ValidateAction(ctx, action, req.Params); err != nil {
 		h.recordAudit(r, http.StatusBadRequest, actionName, "", withJira(req.Jira), withForce(req.Force), withDryRun(req.DryRun))
+		metrics.EmitRejection(h.cfg.TargetCluster, metrics.RejectionValidationFailed)
 		writeError(w, http.StatusBadRequest, "validation_failed", err.Error())
 		return
 	}
@@ -135,6 +142,7 @@ func (h *Handler) handleCreate(w http.ResponseWriter, r *http.Request, actionNam
 		matching := filterMatchingParams(recent, req.Params)
 		if len(matching) > 0 {
 			h.recordAudit(r, http.StatusTooManyRequests, actionName, "", withJira(req.Jira), withForce(req.Force), withDryRun(req.DryRun))
+			metrics.EmitRejection(h.cfg.TargetCluster, metrics.RejectionWriteCooldown)
 			writeError(w, http.StatusTooManyRequests, "write_cooldown",
 				fmt.Sprintf("action %q with these params was executed within the last %ds; use force=true to override", actionName, cooldown))
 			return
@@ -151,6 +159,7 @@ func (h *Handler) handleCreate(w http.ResponseWriter, r *http.Request, actionNam
 		}
 		if activeCount >= h.cfg.MaxConcurrentPerTarget {
 			h.recordAudit(r, http.StatusTooManyRequests, actionName, "", withJira(req.Jira), withForce(req.Force), withDryRun(req.DryRun))
+			metrics.EmitRejection(h.cfg.TargetCluster, metrics.RejectionMaxConcurrent)
 			writeError(w, http.StatusTooManyRequests, "max_concurrent",
 				fmt.Sprintf("target %q has %d active executions (max %d); use force=true to override", h.cfg.TargetCluster, activeCount, h.cfg.MaxConcurrentPerTarget))
 			return
@@ -246,6 +255,7 @@ func (h *Handler) handleCreate(w http.ResponseWriter, r *http.Request, actionNam
 				"completedAt": time.Now().Format(time.RFC3339Nano),
 				"durationMs":  int64(0),
 			})
+		emitTerminalExecution(h.cfg.TargetCluster, exec, store.StatusFailed, 0)
 		writeJSON(w, http.StatusOK, createResponse{
 			ID:              executionID,
 			Action:          executedAction,
@@ -315,6 +325,8 @@ func (h *Handler) executeSyncAndRespond(w http.ResponseWriter, ctx context.Conte
 			"execution_id", exec.ID, "target_status", string(finalStatus), "error", err)
 	}
 
+	emitTerminalExecution(h.cfg.TargetCluster, exec, finalStatus, durationMs)
+
 	resp := createResponse{
 		ID:              exec.ID,
 		Action:          exec.Action,
@@ -379,6 +391,13 @@ func filterMatchingParams(executions []*store.Execution, params map[string]strin
 }
 
 // paramsMatch returns true if the two param maps have the same keys and values.
+func emitTerminalExecution(cluster string, exec *store.Execution, status store.Status, durationMs int64) {
+	if !status.IsTerminal() {
+		return
+	}
+	metrics.EmitExecution(cluster, exec.Action, string(status), exec.ExecutionMode, exec.Scope, exec.Type, durationMs)
+}
+
 func paramsMatch(a, b map[string]string) bool {
 	if len(a) != len(b) {
 		return false

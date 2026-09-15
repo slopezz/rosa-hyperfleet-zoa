@@ -102,16 +102,7 @@ func (r *Reconciler) Run(ctx context.Context) error {
 		"phase_errors", phaseErrors,
 	)
 
-	metrics.Emit(
-		map[string]string{
-			"Cluster":     r.cfg.TargetCluster,
-			"HandlerMode": "reconciler",
-		},
-		map[string]metrics.MetricValue{
-			"ReconcilerDuration": metrics.Milliseconds(elapsed.Milliseconds()),
-			"ReconcilerErrors":   metrics.Count(phaseErrors),
-		},
-	)
+	metrics.EmitReconciler(r.cfg.TargetCluster, elapsed.Milliseconds(), phaseErrors)
 
 	// Returning an error causes the Lambda invocation to report failure, which
 	// surfaces as AWS CloudWatch Lambda Errors metric. This enables native AWS
@@ -252,6 +243,7 @@ func (r *Reconciler) timeoutDispatched(ctx context.Context) error {
 				r.logger.Error("failed to transition to timed_out", "execution_id", exec.ID, "error", err)
 				continue
 			}
+			metrics.EmitExecution(r.cfg.TargetCluster, exec.Action, string(store.StatusTimedOut), exec.ExecutionMode, exec.Scope, exec.Type, time.Since(t).Milliseconds())
 
 			if exec.ExecutionMode == "async" {
 				jobName := "zoa-" + exec.ID
@@ -329,6 +321,7 @@ func (r *Reconciler) pollAsyncJobs(ctx context.Context) error {
 			r.logger.Warn("failed to transition async execution", "execution_id", exec.ID, "target_status", status, "error", err)
 			continue
 		}
+		metrics.EmitExecution(r.cfg.TargetCluster, exec.Action, string(status), exec.ExecutionMode, exec.Scope, exec.Type, durationMs)
 
 		r.logger.Info("async execution completed", "execution_id", exec.ID, "status", status, "duration_ms", durationMs)
 		completed++

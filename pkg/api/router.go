@@ -91,21 +91,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	rw := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
 	h.mux.ServeHTTP(rw, r)
 
-	duration := time.Since(start)
-	route := r.Method + " " + r.URL.Path
-
-	dims := map[string]string{
-		"Cluster": h.cfg.TargetCluster,
-		"Route":   route,
-	}
-	mvs := map[string]metrics.MetricValue{
-		"RequestDuration": metrics.Milliseconds(duration.Milliseconds()),
-		"RequestCount":    metrics.Count(1),
-	}
-	if rw.statusCode >= 400 {
-		mvs["ErrorCount"] = metrics.Count(1)
-	}
-	metrics.Emit(dims, mvs)
+	metrics.EmitHTTPRequest(h.cfg.TargetCluster, r.Method, r.URL.Path, rw.statusCode, time.Since(start).Milliseconds())
 }
 
 type responseWriter struct {

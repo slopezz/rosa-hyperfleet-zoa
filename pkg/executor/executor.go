@@ -71,6 +71,7 @@ type ExecutorConfig struct {
 	Region           string
 	JobImage         string
 	DeploymentTarget string
+	TargetCluster    string
 }
 
 func New(kubeClient kubernetes.Interface, restConfig *rest.Config, s3Client S3API, awsCfg *aws.Config, cfg ExecutorConfig, logger *slog.Logger) *Executor {
@@ -93,7 +94,7 @@ func New(kubeClient kubernetes.Interface, restConfig *rest.Config, s3Client S3AP
 		jobImage:         cfg.JobImage,
 		deploymentTarget: cfg.DeploymentTarget,
 		logger:           logger,
-		eksCircuit:       newCircuitBreaker(),
+		eksCircuit:       newCircuitBreaker(cfg.TargetCluster),
 	}
 }
 

@@ -94,8 +94,6 @@ func (l *Lambda) HandleEvent(ctx context.Context, rawEvent json.RawMessage) (int
 }
 
 func (l *Lambda) handleHTTPEvent(ctx context.Context, rawEvent json.RawMessage) (*events.APIGatewayV2HTTPResponse, error) {
-	start := time.Now()
-
 	if l.handler == nil {
 		return &events.APIGatewayV2HTTPResponse{
 			StatusCode: http.StatusServiceUnavailable,
@@ -121,23 +119,6 @@ func (l *Lambda) handleHTTPEvent(ctx context.Context, rawEvent json.RawMessage) 
 
 	rw := &responseWriter{headers: make(http.Header)}
 	l.handler.ServeHTTP(rw, req)
-
-	elapsed := time.Since(start)
-	emfMetrics := map[string]metrics.MetricValue{
-		"RequestDuration": metrics.Milliseconds(elapsed.Milliseconds()),
-		"RequestCount":    metrics.Count(1),
-	}
-	if rw.statusCode >= 500 {
-		emfMetrics["ServerErrors"] = metrics.Count(1)
-	}
-	metrics.Emit(
-		map[string]string{
-			"Cluster":     l.cfg.TargetCluster,
-			"HandlerMode": "api",
-			"Method":      event.RequestContext.HTTP.Method,
-		},
-		emfMetrics,
-	)
 
 	return &events.APIGatewayV2HTTPResponse{
 		StatusCode: rw.statusCode,
@@ -176,9 +157,7 @@ func (l *Lambda) handleScheduledEvent(ctx context.Context, rawEvent json.RawMess
 
 	l.logger.Info("worker scheduled event", "route", route, "deadline_seconds", l.cfg.ReconcilerDeadlineSeconds)
 
-	start := time.Now()
 	var runErr error
-
 	switch route {
 	case "reconciler", "reconcile":
 		runErr = l.reconciler.Run(ctx)
@@ -187,24 +166,6 @@ func (l *Lambda) handleScheduledEvent(ctx context.Context, rawEvent json.RawMess
 	default:
 		return nil, fmt.Errorf("unknown worker route: %q", route)
 	}
-
-	elapsed := time.Since(start)
-	phaseErrors := 0
-	if runErr != nil {
-		phaseErrors = 1
-	}
-
-	metrics.Emit(
-		map[string]string{
-			"Cluster":     l.cfg.TargetCluster,
-			"HandlerMode": "worker",
-			"Route":       route,
-		},
-		map[string]metrics.MetricValue{
-			"WorkerDuration": metrics.Milliseconds(elapsed.Milliseconds()),
-			"WorkerErrors":   metrics.Count(phaseErrors),
-		},
-	)
 
 	if runErr != nil {
 		return nil, fmt.Errorf("worker route %q error: %w", route, runErr)
@@ -232,27 +193,7 @@ func (l *Lambda) handleExecutionEvent(ctx context.Context, rawEvent json.RawMess
 
 	l.logger.Info("worker TA execution", "execution_id", event.ExecutionID, "deadline_seconds", l.cfg.ExecutionDeadlineSeconds)
 
-	start := time.Now()
 	execErr := l.runDispatchedExecution(ctx, event.ExecutionID)
-	elapsed := time.Since(start)
-
-	phaseErrors := 0
-	if execErr != nil {
-		phaseErrors = 1
-		l.logger.Error("TA execution failed", "execution_id", event.ExecutionID, "error", execErr, "duration_ms", elapsed.Milliseconds())
-	}
-
-	metrics.Emit(
-		map[string]string{
-			"Cluster":     l.cfg.TargetCluster,
-			"HandlerMode": "worker",
-			"Route":       "execute",
-		},
-		map[string]metrics.MetricValue{
-			"ExecutionDuration": metrics.Milliseconds(elapsed.Milliseconds()),
-			"ExecutionErrors":   metrics.Count(phaseErrors),
-		},
-	)
 
 	if execErr != nil {
 		return nil, fmt.Errorf("execution %s failed: %w", event.ExecutionID, execErr)
@@ -285,6 +226,7 @@ func (l *Lambda) runDispatchedExecution(ctx context.Context, executionID string)
 				"completedAt": time.Now().Format(time.RFC3339Nano),
 				"durationMs":  int64(0),
 			})
+		emitWorkerTerminalExecution(l.cfg.TargetCluster, exec, store.StatusFailed, 0)
 		return fmt.Errorf("action %q not registered", exec.Action)
 	}
 
@@ -295,6 +237,7 @@ func (l *Lambda) runDispatchedExecution(ctx context.Context, executionID string)
 					"completedAt": time.Now().Format(time.RFC3339Nano),
 					"durationMs":  int64(0),
 				})
+			emitWorkerTerminalExecution(l.cfg.TargetCluster, exec, store.StatusFailed, 0)
 			return fmt.Errorf("async dispatch failed: %w", err)
 		}
 		return nil
@@ -310,7 +253,9 @@ func (l *Lambda) runDispatchedExecution(ctx context.Context, executionID string)
 	durationMs := time.Since(startTime).Milliseconds()
 
 	finalStatus := store.StatusSucceeded
-	if execErr != nil || (result != nil && !result.Success) {
+	if ctx.Err() == context.DeadlineExceeded {
+		finalStatus = store.StatusTimedOut
+	} else if execErr != nil || (result != nil && !result.Success) {
 		finalStatus = store.StatusFailed
 	}
 
@@ -324,7 +269,15 @@ func (l *Lambda) runDispatchedExecution(ctx context.Context, executionID string)
 			"execution_id", executionID, "target_status", finalStatus, "error", err)
 		return fmt.Errorf("persisting execution result: %w", err)
 	}
+	emitWorkerTerminalExecution(l.cfg.TargetCluster, exec, finalStatus, durationMs)
 	return execErr
+}
+
+func emitWorkerTerminalExecution(cluster string, exec *store.Execution, status store.Status, durationMs int64) {
+	if exec == nil || !status.IsTerminal() {
+		return
+	}
+	metrics.EmitExecution(cluster, exec.Action, string(status), exec.ExecutionMode, exec.Scope, exec.Type, durationMs)
 }
 
 func httpRequestFromEvent(ctx context.Context, event *events.APIGatewayV2HTTPRequest) (*http.Request, error) {

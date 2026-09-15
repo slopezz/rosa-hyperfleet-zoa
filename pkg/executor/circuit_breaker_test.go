@@ -1,12 +1,32 @@
 package executor
 
 import (
+	"bytes"
+	"io"
+	"os"
+	"strings"
 	"testing"
 	"time"
 )
 
+func captureBreakerStdout(t *testing.T, fn func()) string {
+	t.Helper()
+	old := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe: %v", err)
+	}
+	os.Stdout = w
+	fn()
+	w.Close()
+	os.Stdout = old
+	var buf bytes.Buffer
+	_, _ = io.Copy(&buf, r)
+	return buf.String()
+}
+
 func TestCircuitBreaker_WhenBelowThreshold_ItShouldAllow(t *testing.T) {
-	cb := newCircuitBreaker()
+	cb := newCircuitBreaker("test-cluster")
 
 	cb.recordFailure("op1")
 	cb.recordFailure("op2")
@@ -17,19 +37,24 @@ func TestCircuitBreaker_WhenBelowThreshold_ItShouldAllow(t *testing.T) {
 }
 
 func TestCircuitBreaker_WhenThresholdReached_ItShouldOpen(t *testing.T) {
-	cb := newCircuitBreaker()
+	cb := newCircuitBreaker("test-cluster")
 
 	cb.recordFailure("op1")
 	cb.recordFailure("op2")
-	cb.recordFailure("op3")
+	line := captureBreakerStdout(t, func() {
+		cb.recordFailure("op3")
+	})
 
 	if err := cb.allow("op4"); err == nil {
 		t.Fatal("expected circuit to be open after 3 failures")
 	}
+	if !strings.Contains(line, "CircuitBreakerStateChange") || !strings.Contains(line, "open") {
+		t.Fatalf("expected open state-change EMF, got: %s", line)
+	}
 }
 
 func TestCircuitBreaker_WhenSuccessAfterFailures_ItShouldReset(t *testing.T) {
-	cb := newCircuitBreaker()
+	cb := newCircuitBreaker("test-cluster")
 
 	cb.recordFailure("op1")
 	cb.recordFailure("op2")
@@ -48,7 +73,7 @@ func TestCircuitBreaker_WhenSuccessAfterFailures_ItShouldReset(t *testing.T) {
 }
 
 func TestCircuitBreaker_WhenOpenDurationExpires_ItShouldHalfOpen(t *testing.T) {
-	cb := newCircuitBreaker()
+	cb := newCircuitBreaker("test-cluster")
 
 	cb.recordFailure("op1")
 	cb.recordFailure("op2")
@@ -70,7 +95,7 @@ func TestCircuitBreaker_WhenOpenDurationExpires_ItShouldHalfOpen(t *testing.T) {
 }
 
 func TestCircuitBreaker_WhenHalfOpenSucceeds_ItShouldClose(t *testing.T) {
-	cb := newCircuitBreaker()
+	cb := newCircuitBreaker("test-cluster")
 
 	cb.recordFailure("op1")
 	cb.recordFailure("op2")
@@ -94,7 +119,7 @@ func TestCircuitBreaker_WhenHalfOpenSucceeds_ItShouldClose(t *testing.T) {
 }
 
 func TestCircuitBreaker_WhenFailuresOutsideWindow_ItShouldNotOpen(t *testing.T) {
-	cb := newCircuitBreaker()
+	cb := newCircuitBreaker("test-cluster")
 
 	cb.mu.Lock()
 	cb.failures = append(cb.failures,

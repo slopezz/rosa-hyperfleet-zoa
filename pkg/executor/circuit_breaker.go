@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/metrics"
 )
 
 const (
@@ -22,14 +24,16 @@ const (
 
 type circuitBreaker struct {
 	mu            sync.Mutex
+	cluster       string
 	state         circuitState
 	failures      []time.Time
 	openedAt      time.Time
 	lastOperation string
 }
 
-func newCircuitBreaker() *circuitBreaker {
+func newCircuitBreaker(cluster string) *circuitBreaker {
 	return &circuitBreaker{
+		cluster:  cluster,
 		state:    circuitClosed,
 		failures: make([]time.Time, 0, circuitBreakerThreshold),
 	}
@@ -42,7 +46,7 @@ func (cb *circuitBreaker) allow(operation string) error {
 	switch cb.state {
 	case circuitOpen:
 		if time.Since(cb.openedAt) >= circuitBreakerOpenFor {
-			cb.state = circuitHalfOpen
+			cb.setStateLocked(circuitHalfOpen)
 			return nil
 		}
 		return fmt.Errorf("circuit breaker open: EKS API unavailable (%d consecutive failures in %s, last operation: %s); fast-failing to avoid timeout exhaustion",
@@ -58,7 +62,9 @@ func (cb *circuitBreaker) recordSuccess() {
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
 
-	cb.state = circuitClosed
+	if cb.state != circuitClosed {
+		cb.setStateLocked(circuitClosed)
+	}
 	cb.failures = cb.failures[:0]
 }
 
@@ -79,8 +85,32 @@ func (cb *circuitBreaker) recordFailure(operation string) {
 	fresh = append(fresh, now)
 	cb.failures = fresh
 
-	if len(cb.failures) >= circuitBreakerThreshold {
-		cb.state = circuitOpen
+	if len(cb.failures) >= circuitBreakerThreshold && cb.state != circuitOpen {
 		cb.openedAt = now
+		cb.setStateLocked(circuitOpen)
+	}
+}
+
+func (cb *circuitBreaker) setState(state circuitState) {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+	cb.setStateLocked(state)
+}
+
+func (cb *circuitBreaker) setStateLocked(state circuitState) {
+	if cb.state == state {
+		return
+	}
+	cb.state = state
+	if cb.cluster == "" {
+		return
+	}
+	switch state {
+	case circuitOpen:
+		metrics.EmitCircuitBreakerStateChange(cb.cluster, "open")
+	case circuitHalfOpen:
+		metrics.EmitCircuitBreakerStateChange(cb.cluster, "half_open")
+	case circuitClosed:
+		metrics.EmitCircuitBreakerStateChange(cb.cluster, "closed")
 	}
 }

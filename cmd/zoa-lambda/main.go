@@ -122,6 +122,7 @@ func main() {
 		Region:           cfg.Region,
 		JobImage:         cfg.JobImage,
 		DeploymentTarget: cfg.DeploymentTarget,
+		TargetCluster:    cfg.TargetCluster,
 	}, logger)
 
 	switch cfg.HandlerMode {
