@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"time"
 )
 
@@ -29,13 +30,12 @@ type emfMetricDirective struct {
 // automatically parses into CloudWatch Metrics. These metrics are then
 // scraped by YACE into Prometheus for alerting via PrometheusRules.
 func Emit(dimensions map[string]string, metrics map[string]MetricValue) {
-	dimKeys := make([]string, 0, len(dimensions))
-	for k := range dimensions {
-		dimKeys = append(dimKeys, k)
-	}
+	dimKeys := sortedKeys(dimensions)
 
-	metricDefs := make([]MetricDefinition, 0, len(metrics))
-	for name, mv := range metrics {
+	metricNames := sortedKeys(metrics)
+	metricDefs := make([]MetricDefinition, 0, len(metricNames))
+	for _, name := range metricNames {
+		mv := metrics[name]
 		metricDefs = append(metricDefs, MetricDefinition{
 			Name: name,
 			Unit: mv.Unit,
@@ -86,4 +86,13 @@ func Seconds(v float64) MetricValue {
 
 func Bytes(v int64) MetricValue {
 	return MetricValue{Value: v, Unit: "Bytes"}
+}
+
+func sortedKeys[V any](m map[string]V) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
