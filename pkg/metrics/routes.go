@@ -172,3 +172,19 @@ func EmitReconciler(cluster string, durationMs int64, phaseErrors int) {
 		},
 	)
 }
+
+// EmitGC records one GC tick: duration, error count, and a unix-seconds
+// last-run gauge — symmetric with EmitReconciler for tick-health monitoring.
+func EmitGC(cluster string, durationMs int64, phaseErrors int) {
+	Emit(
+		map[string]string{
+			"Cluster":     cluster,
+			"HandlerMode": "gc",
+		},
+		map[string]MetricValue{
+			"GCDuration": Milliseconds(durationMs),
+			"GCErrors":   Count(phaseErrors),
+			"GCLastRun":  Seconds(float64(time.Now().Unix())),
+		},
+	)
+}

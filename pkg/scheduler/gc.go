@@ -38,16 +38,7 @@ func (r *Reconciler) RunGC(ctx context.Context) error {
 	elapsed := time.Since(start)
 	r.logger.Info("garbage collector completed", "duration_ms", elapsed.Milliseconds(), "phase_errors", phaseErrors)
 
-	metrics.Emit(
-		map[string]string{
-			"Cluster":     r.cfg.TargetCluster,
-			"HandlerMode": "gc",
-		},
-		map[string]metrics.MetricValue{
-			"GCDuration": metrics.Milliseconds(elapsed.Milliseconds()),
-			"GCErrors":   metrics.Count(phaseErrors),
-		},
-	)
+	metrics.EmitGC(r.cfg.TargetCluster, elapsed.Milliseconds(), phaseErrors)
 
 	// Returning an error causes the Lambda invocation to report failure, which
 	// surfaces as AWS CloudWatch Lambda Errors metric. This enables native AWS
