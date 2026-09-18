@@ -1,4 +1,5 @@
 .PHONY: all build dist print-version clean install test test-e2e test-e2e-smoke \
+       test-e2e-zoa test-e2e-zoa-smoke test-e2e-monitoring \
        fmt fmt-check vet lint verify tidy verify-mod \
        image-lambda image-runner image-push-lambda image-push-runner images-push \
        help
@@ -122,6 +123,8 @@ endef
 
 test-e2e: build
 	$(call run_e2e_parallel,-timeout 20m)
+	@echo ""; echo "=== ZOA Monitoring E2E ==="
+	@go test -tags e2e_monitoring ./test/e2e-monitoring/... -v -timeout 10m $(GINKGO_FLAGS)
 
 # test-e2e-smoke runs only the specs labeled "smoke" — cheap, --dry-run/read-only
 # coverage (discovery + one read TA + one write TA dry-run) meant to be run
@@ -131,6 +134,21 @@ test-e2e: build
 # is `make test-e2e`, exercised only from this repo's own on-demand-e2e/nightly.
 test-e2e-smoke: build
 	$(call run_e2e_parallel,-timeout 5m -ginkgo.label-filter=smoke)
+	@echo ""; echo "=== ZOA Monitoring E2E (smoke) ==="
+	@go test -tags e2e_monitoring ./test/e2e-monitoring/... -v -timeout 5m -ginkgo.label-filter=smoke $(GINKGO_FLAGS)
+
+# test-e2e-zoa runs only the ZOA functional e2e suite (no monitoring).
+test-e2e-zoa: build
+	$(call run_e2e_parallel,-timeout 20m)
+
+# test-e2e-zoa-smoke runs only the ZOA functional smoke specs (no monitoring).
+test-e2e-zoa-smoke: build
+	$(call run_e2e_parallel,-timeout 5m -ginkgo.label-filter=smoke)
+
+# test-e2e-monitoring runs only the observability validation suite.
+# Requires RHOBS_API_URL (self-skips if unset). See docs/observability.md.
+test-e2e-monitoring:
+	@go test -tags e2e_monitoring ./test/e2e-monitoring/... -v -timeout 10m $(GINKGO_FLAGS)
 
 # =============================================================================
 # Code Quality
@@ -195,8 +213,11 @@ help:
 	@echo ""
 	@echo "Test & Quality:"
 	@echo "  test               Run unit tests with race detection"
-	@echo "  test-e2e           Run full deep e2e suite (auto-parallel when both RC+MC are set)"
-	@echo "  test-e2e-smoke     Run only Label(\"smoke\") e2e specs (used by rosa-hyperfleet/-api)"
+	@echo "  test-e2e           Run full ZOA e2e + monitoring suite (auto-parallel when both RC+MC are set)"
+	@echo "  test-e2e-smoke     Run smoke ZOA e2e + monitoring smoke (used by rosa-hyperfleet/-api)"
+	@echo "  test-e2e-zoa       Run full ZOA e2e only (no monitoring)"
+	@echo "  test-e2e-zoa-smoke Run smoke ZOA e2e only (no monitoring)"
+	@echo "  test-e2e-monitoring Run monitoring validation only (requires RHOBS_API_URL)"
 	@echo "                     Verbose: GINKGO_FLAGS=-ginkgo.v make test-e2e"
 	@echo "  verify             fmt-check + vet + lint"
 	@echo "  fmt                Format code"

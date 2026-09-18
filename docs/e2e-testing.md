@@ -4,16 +4,63 @@ Practical guide for ZOA's e2e coverage: what runs where, how to run it yourself 
 environment (dev-account ephemeral, standing integration, or CI), and how container images flow
 from a PR into that environment.
 
-## Test Tiers
+## Test Suites
 
-| Tier            | Lives in                                    | Runs from                                                                                                                          | Scope                                                                                                                                                                                                                                                                                                                                                                  | Image under test                                                                                                                                            |
-| --------------- | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Deep**        | `rosa-hyperfleet-zoa/test/e2e/` (all specs) | This repo's own `on-demand-e2e` (PR) + `nightly-ephemeral` (daily)                                                                | Every registered Trusted Action, both scopes (`kube-api`/`aws-api`), read+write+dry-run, sync+async, RC _and_ MC, real (non-dry-run) `delete_pod`/`rollout_restart` against `kube-system/coredns`, cooldown enforcement (per action+params), all CLI commands (`get`, `runs`, `audit`, `output`, `logs`, `download`), generic param validation, e2e conformance checks | on-demand-e2e: **this PR's** CI-built image (via Quay). nightly: the `zoa_lambda_image_tag`/`zoa_runner_image_tag` pinned in `rosa-hyperfleet@main`'s config |
-| **Light/smoke** | Same suite, `Label("smoke")` subset only    | `rosa-hyperfleet`'s `nightly-ephemeral`/`on-demand-e2e`, and `rosa-hyperfleet-api`'s `on-demand-e2e`. On nightlies, full deep suite | 6 specs (~2min): `zoa version`, `zoa actions` discovery, one kube-api read (`get_resource --resource nodes`), one aws-api read (`list_eks_clusters`), one write TA `--dry-run` (`rollout_restart`), one async execution with `--wait`                                                                                                                                  | Whatever `zoa_lambda_image_tag`/`zoa_runner_image_tag` is already pinned/deployed — **no PR-image override in these repos**                                 |
+ZOA has two independent test suites that compose via Makefile targets:
 
-ZOA owns all of its own test logic, including what counts as "smoke," in one place
-(`test/e2e/`). Consumer repos (`rosa-hyperfleet`, `rosa-hyperfleet-api`) select a labeled subset
-of _this_ suite rather than re-implementing target discovery or CLI invocation a second time.
+| Suite          | Path                    | What it validates                                                      | Requires                     |
+| -------------- | ----------------------- | ---------------------------------------------------------------------- | ---------------------------- |
+| **Functional** | `test/e2e/`             | ZOA CLI, Trusted Actions, executor, RBAC, cooldown, audit, CLI output  | `ZOA_RC_API_URL` and/or `ZOA_MC_API_URL` |
+| **Monitoring** | `test/e2e-monitoring/`  | Observability pipeline — metrics in Thanos, recording rules, alerts    | `RHOBS_API_URL` (self-skips if unset) |
+
+Both suites use **Ginkgo labels** to define scope:
+
+- **Smoke** (`Label("smoke")`): minimal subset that validates core health in ~2 min.
+  Runs on every PR via consumer repos (`rosa-hyperfleet`, `rosa-hyperfleet-api`).
+- **Full** (all specs): comprehensive coverage. Runs on nightlies and ZOA's own `on-demand-e2e`.
+
+### Makefile Targets
+
+| Target                     | What runs                                       |
+| -------------------------- | ----------------------------------------------- |
+| `make test-e2e`            | Functional full → Monitoring full               |
+| `make test-e2e-smoke`      | Functional smoke → Monitoring smoke             |
+| `make test-e2e-zoa`        | Functional full only                            |
+| `make test-e2e-zoa-smoke`  | Functional smoke only                           |
+| `make test-e2e-monitoring` | Monitoring full only (requires `RHOBS_API_URL`) |
+
+The default targets (`test-e2e`, `test-e2e-smoke`) chain both suites. If `RHOBS_API_URL` is
+not set, the monitoring suite **fails in CI** (`JOB_NAME` detected) to prevent silent
+regressions, and **skips locally** for backward compatibility.
+
+### Functional Suite Details
+
+**Smoke** (6 specs, ~2 min per target): `zoa version`, `zoa actions` discovery, one kube-api
+read (`get_resource --resource nodes`), one aws-api read (`list_eks_clusters`), one write TA
+`--dry-run` (`rollout_restart`), one async execution with `--wait`.
+
+**Full**: every registered Trusted Action, both scopes (`kube-api`/`aws-api`),
+read+write+dry-run, sync+async, RC and MC, real (non-dry-run) `delete_pod`/`rollout_restart`
+against `kube-system/coredns`, cooldown enforcement, all CLI commands (`get`, `runs`, `audit`,
+`output`, `logs`, `download`), generic param validation, e2e conformance checks.
+
+### Monitoring Suite Details
+
+**Smoke**: recording rules loaded in Thanos Ruler, alerting rules loaded, infrastructure
+metrics present (Lambda invocations, reconciler ticks). These are always-on metrics that do
+not depend on TA executions.
+
+**Full**: all smoke checks plus execution metrics with expected dimensions (Status, Mode,
+Scope, Type), recording rule values populated, no critical alerts in `firing` state.
+
+See [docs/observability.md](observability.md) for the metrics catalog and alerting philosophy.
+
+### Metric Lag
+
+The CloudWatch pipeline latency is 5–7 minutes. Monitoring tests run after functional tests
+and use `Eventually("5m", "15s")`, so the total window from first TA execution to metric
+assertion is sufficient. Infrastructure metrics (Lambda invocations, reconciler ticks) are
+always-on and do not depend on test-driven TA execution.
 
 ## Developer Workflow: Testing Code Changes
 
@@ -53,8 +100,9 @@ make ephemeral-zoa-e2e ID=<your-env-id> \
   ZOA_REPO=https://github.com/my-fork/rosa-hyperfleet-zoa.git
 ```
 
-If you are only changing **test code** (files in `test/e2e/`) and not API/TA code, skip steps
-1–4 — the existing Lambda is fine, you just need the tests to use your branch (via `ZOA_REF`).
+If you are only changing **test code** (files in `test/e2e/` or `test/e2e-monitoring/`) and
+not API/TA code, skip steps 1–4 — the existing Lambda is fine, you just need the tests to use
+your branch (via `ZOA_REF`).
 
 ### When is image management automatic?
 
@@ -66,10 +114,9 @@ If you are only changing **test code** (files in `test/e2e/`) and not API/TA cod
 
 ## Running the Tests
 
-The suite drives the built `zoa` CLI against a real, already-provisioned RC and/or MC ZOA Lambda
-API. It never needs a specific environment shape beyond "give me a URL" — the same suite runs
-unmodified against a dev-account ephemeral env, a CI ephemeral env, or (in principle) a standing
-integration environment.
+Both suites drive against a real, already-provisioned environment. They never need a specific
+environment shape beyond "give me a URL" — the same suites run unmodified against a dev-account
+ephemeral env, a CI ephemeral env, or (in principle) a standing integration environment.
 
 ### From `rosa-hyperfleet` (Recommended)
 
@@ -79,8 +126,8 @@ see [`rosa-hyperfleet/docs/development-environment.md`](https://github.com/opens
 ```bash
 cd rosa-hyperfleet
 
-# Deep suite — clones rosa-hyperfleet-zoa@main inside the test container.
-# AWS credentials (rrp-rc, rrp-mc profiles) are set up automatically.
+# Full suite (functional + monitoring) — clones rosa-hyperfleet-zoa@main inside the test container.
+# AWS credentials (rrp-rc, rrp-mc profiles) and RHOBS_API_URL are set up automatically.
 make ephemeral-zoa-e2e \
   ID=<your-env-id> \
   ZOA_REF=my-feature-branch \
@@ -91,6 +138,12 @@ make ephemeral-zoa-e2e-smoke ID=<your-env-id>
 
 # Verbose output
 GINKGO_FLAGS=-ginkgo.v make ephemeral-zoa-e2e ID=<your-env-id>
+
+# Only functional tests (skip monitoring)
+ZOA_MAKE_TARGET=test-e2e-zoa make ephemeral-zoa-e2e ID=<your-env-id>
+
+# Only monitoring tests
+ZOA_MAKE_TARGET=test-e2e-monitoring make ephemeral-zoa-e2e ID=<your-env-id>
 ```
 
 `ZOA_REF` defaults to `main`, `ZOA_REPO` defaults to the upstream repo. To test uncommitted
@@ -101,20 +154,20 @@ This is the recommended path because:
 
 - AWS credentials are handled automatically (the container maps your host profiles to
   `rrp-rc`/`rrp-mc` inside the container).
-- ZOA Lambda URLs are resolved from Terraform outputs.
+- ZOA Lambda URLs and RHOBS API URL are resolved from Terraform outputs.
 - No manual env var setup needed.
 
 ### From This Repo Directly
 
-If you are iterating on `test/e2e/*.go` itself and want fast feedback without container overhead,
-you can run the suite directly against an existing ephemeral environment. You need two things:
-the Lambda Function URLs and AWS credentials for both the RC and MC accounts.
+If you are iterating on test code and want fast feedback without container overhead,
+you can run the suite directly against an existing ephemeral environment. You need the
+Lambda Function URLs and AWS credentials for both the RC and MC accounts.
 
 **Step 1 — Get the Lambda URLs.** From the `rosa-hyperfleet` checkout:
 
 ```bash
 make ephemeral-list ID=<your-env-id>
-# Look for the ZOA RC and MC API URLs in the output
+# Look for the ZOA RC and MC API URLs and RHOBS API URL in the output
 ```
 
 **Step 2 — Run both RC and MC together.** Your host `~/.aws/config` has profiles named
@@ -128,9 +181,12 @@ export ZOA_RC_API_URL="https://yyyy.lambda-url.us-east-1.on.aws/"
 export ZOA_MC_API_URL="https://zzzz.lambda-url.us-east-1.on.aws/"
 export ZOA_RC_AWS_PROFILE="rrp-regional-dev"
 export ZOA_MC_AWS_PROFILE="rrp-management-dev"
+export RHOBS_API_URL="https://xxxxx.execute-api.us-east-1.amazonaws.com/prod"
 
-make test-e2e              # full deep suite
-make test-e2e-smoke        # smoke only
+make test-e2e              # full: functional + monitoring
+make test-e2e-smoke        # smoke: functional + monitoring
+make test-e2e-zoa          # full: functional only
+make test-e2e-monitoring   # full: monitoring only
 GINKGO_FLAGS=-ginkgo.v make test-e2e   # verbose output
 ```
 
@@ -140,6 +196,20 @@ process runs its specs sequentially. If you only set one URL, only that target r
 Each target carries a `DeploymentTarget` field (`"rc"` or `"mc"`) derived from which URL env var was set. Specs
 use this to pick the correct `--gather` value and expected tarball layout without hard-coding RC vs
 MC — so the same test file is safe under parallel execution (each process only sees one target).
+
+**Step 3 (optional) — Run only RC or only MC.**
+
+```bash
+# RC only
+export ZOA_RC_API_URL="https://yyyy.lambda-url.us-east-1.on.aws/"
+export ZOA_RC_AWS_PROFILE="rrp-regional-dev"
+make test-e2e
+
+# MC only
+export ZOA_MC_API_URL="https://zzzz.lambda-url.us-east-1.on.aws/"
+export ZOA_MC_AWS_PROFILE="rrp-management-dev"
+make test-e2e
+```
 
 ### `must_gather` platform dumps
 
@@ -161,20 +231,6 @@ Run only must_gather specs:
 GINKGO_FLAGS='-ginkgo.focus=must_gather' make test-e2e
 ```
 
-**Step 3 (optional) — Run only RC or only MC.**
-
-```bash
-# RC only
-export ZOA_RC_API_URL="https://yyyy.lambda-url.us-east-1.on.aws/"
-export ZOA_RC_AWS_PROFILE="rrp-regional-dev"
-make test-e2e
-
-# MC only
-export ZOA_MC_API_URL="https://zzzz.lambda-url.us-east-1.on.aws/"
-export ZOA_MC_AWS_PROFILE="rrp-management-dev"
-make test-e2e
-```
-
 ## AWS Credentials
 
 RC and MC are **separate AWS accounts** with separate IAM principals. The test suite handles this
@@ -194,6 +250,9 @@ The test suite defaults to `rrp-rc` and `rrp-mc` (the names used inside CI conta
 Override with `ZOA_RC_AWS_PROFILE` / `ZOA_MC_AWS_PROFILE` when running from your host.
 Inside CI containers or `make ephemeral-zoa-e2e`, the defaults (`rrp-rc`/`rrp-mc`) are correct —
 no override needed.
+
+The monitoring suite reuses `ZOA_RC_AWS_PROFILE` for SigV4 signing against the RHOBS API
+Gateway (which requires RC account credentials).
 
 ### How the Test Suite Uses Profiles
 
@@ -291,3 +350,6 @@ for the full image override mechanism.
 | `InvalidSignatureException` or `AccessDeniedException` on MC calls            | Using the RC profile to call the MC Lambda (different AWS account) | Set `ZOA_MC_AWS_PROFILE=rrp-management-dev` (or your MC profile); verify with `AWS_PROFILE=<profile> aws sts get-caller-identity` |
 | `InvalidSignatureException` or `AccessDeniedException` on RC calls            | Wrong profile for the RC account                                 | Set `ZOA_RC_AWS_PROFILE=rrp-regional-dev` (or your RC profile); verify with `AWS_PROFILE=<profile> aws sts get-caller-identity`   |
 | `make ephemeral-zoa-e2e` fails to clone with a branch-not-found error         | `ZOA_REF` points at a branch that hasn't been pushed             | Push your branch first — this clones from the remote, not your local working tree                                           |
+| Monitoring suite skipped (local) or fails (CI)                                 | `RHOBS_API_URL` not set                                          | Export `RHOBS_API_URL`; get it from `make ephemeral-list` in `rosa-hyperfleet`                                              |
+| Monitoring specs fail with `403 Forbidden`                                     | SigV4 signing failed — wrong profile or expired session          | Verify with `awscurl --service execute-api --region us-east-1 "$RHOBS_API_URL/api/v1/query?query=up"` using the RC profile  |
+| Monitoring specs timeout on `Eventually` for metrics                           | CloudWatch pipeline lag > 5 min (transient)                      | Retry; if persistent, check YACE pod health: `oc get pod -n cloudwatch-exporter`                                            |
