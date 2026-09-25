@@ -221,12 +221,28 @@ stateDiagram-v2
 
 **Summary**: ZOA Access Lambda — session management and approval routing via public API Gateway
 
-**Description**: Implement a dedicated Lambda function (no VPC attachment, in the RC account) behind a regional public API Gateway with custom domain (`https://zoa-access.{region}.hyperfleet.example.com`). The Access Lambda handles:
+**Description**: Implement a third handler mode (`HANDLER_MODE=access`) in the existing `zoa-lambda` binary — same container image, same `Containerfile`, same Go binary as the per-VPC `api` and `worker` modes. Deployed as a Lambda function (no VPC attachment, in the RC account) behind a regional public API Gateway with custom domain (`https://zoa-access.{region}.hyperfleet.example.com`).
+
+**Shared image, three handler modes:**
+
+The `zoa-lambda` container image serves all three Lambda roles. The `HANDLER_MODE` environment variable selects which routes are active:
+
+| Mode | Routes | Caller | Deployment |
+|---|---|---|---|
+| `access` | `/sessions/start`, `/sessions`, `/sessions/stop/{id}`, `/targets`, `/approve/{id}`, `/reject/{id}` | Laptop (Jump Account role via APIGW) | RC account, no VPC, 1 per region |
+| `api` | `/run`, `/runs`, `/actions`, `/audit`, `/version`, `/approve/{id}`, `/reject/{id}` | Boundary container (ECS task role via Function URL) | Per-VPC (RC + each MC) |
+| `worker` | EventBridge reconciler/GC/reaper events, self-invoke `execute` events | EventBridge + Lambda self-invoke | Per-VPC (RC + each MC) |
+
+**Note**: `/approve/{id}` and `/reject/{id}` are available on **both** `access` and `api` modes. This way an approver does NOT need to create a boundary container just to approve — they can do it from their laptop via ZOA Access APIGW (`kinit` → `rh-aws-saml-login` → `zoa approve <id> --region R`). But if an SRE is already inside a boundary container, they can approve a peer's request from there too. Same code path, same DynamoDB write — just reachable from both entry points. (Approval workflow is a future epic, but the routes are prepared now.)
+
+The Access Lambda handles:
 
 - **Session lifecycle**: `POST /sessions/start`, `GET /sessions`, `POST /sessions/stop/{id}`
-- **Placement routing**: resolve target cluster to VPC to Function URL from `boundary-targets` DynamoDB table (or SSM Parameter Store in RC)
+- **Target listing**: `GET /targets` (reads `boundary-targets` DynamoDB table, RC-local)
+- **Placement routing**: resolve target cluster → VPC → Function URL from `boundary-targets` DynamoDB table
 - **Cross-account session creation**: `sts:AssumeRole` into MC account to `ecs:RunTask` there
 - **Identity recording**: map SigV4 caller (Jump Account role) to SRE identity, write to `boundary-sessions` DynamoDB table
+- **Future: Approval/rejection**: write `approved`/`rejected` status to DynamoDB (per-VPC reconciler handles activation)
 
 Key design: Access Lambda does NOT create EKS access entries or execute TAs. Keeps IAM minimal.
 
@@ -234,7 +250,7 @@ API Gateway provides: custom domain (CLI autodiscovery by convention), WAF integ
 
 Resource-based policy: ONLY Jump Account roles (one per environment: dev, int, stage, prod).
 
-**Repos**: `rosa-hyperfleet-zoa` (Lambda code), `rosa-hyperfleet` (Terraform)
+**Repos**: `rosa-hyperfleet-zoa` (Lambda code — new `access` handler mode), `rosa-hyperfleet` (Terraform)
 
 ---
 
@@ -301,6 +317,10 @@ Base image: UBI9 (consistent with zoa-lambda and zoa-runner).
 | `zoa boundary list --region R` | List own boundary sessions (active/stopped) | ZOA Access APIGW |
 | `zoa boundary stop --region R ID` | Graceful stop (S3 sync, then terminate) | ZOA Access APIGW |
 | `zoa boundary join --region R ID` | Reconnect to existing session via SSM | ZOA Access APIGW + SSM |
+| `zoa approve --region R ID` | Approve a pending request (future — stub for now) | ZOA Access APIGW |
+| `zoa reject --region R ID --reason "..."` | Reject a pending request (future — stub for now) | ZOA Access APIGW |
+
+**Note**: `zoa approve` and `zoa reject` are prepared as CLI commands in this epic (routes exist on both Access and API Lambda) but return `501 Not Implemented` until the approval workflow epic ships. The commands are included now so the CLI surface is complete and SRE muscle memory can develop early.
 
 **Design decisions:**
 - `--region` required for all boundary/target commands (tells CLI which APIGW to call)
@@ -453,8 +473,8 @@ Jump Account stays thin (just region pointers). All operational detail (VPCs, su
 - API Gateway (regional, REST/HTTP, public)
 - Custom domain + Route53 record (`zoa-access.{region}.hyperfleet.example.com`)
 - WAF WebACL (IP-based rules for Red Hat ranges, geo-blocking)
-- Lambda function (no VPC, same `zoa-lambda` image with `HANDLER_MODE=access`)
-- IAM execution role: `ecs:RunTask` (RC + cross-account MC), DynamoDB read/write, `sts:AssumeRole`, CloudWatch Logs
+- Lambda function (no VPC, **same `zoa-lambda` container image** from ECR, differentiated by `HANDLER_MODE=access` env var — no separate build or Containerfile)
+- IAM execution role: `ecs:RunTask` (RC + cross-account MC), DynamoDB read/write (`boundary-sessions`, `boundary-targets`, future: `executions` for approvals), `sts:AssumeRole`, CloudWatch Logs
 - Lambda resource-based policy: ONLY Jump Account roles
 
 **New module: `terraform/modules/zoa-boundary/`**
@@ -648,6 +668,16 @@ The identity model chosen now constrains what the approval workflow can enforce 
 - The DynamoDB schema for `boundary-sessions` should store both the username AND the full ARN — the ARN encodes which IAM role was used (useful if we go with role-mapping), the username is the human-readable key (useful for LDAP lookup or session tag approaches)
 - No hard dependency on a specific identity resolution mechanism — the approval workflow epic will make this decision based on what the SAML federation and Jump Account IAM setup can support
 
+### Approval Workflow Readiness — Routes Prepared, Logic Deferred
+
+The `/approve/{id}` and `/reject/{id}` routes are included in **both** the `access` and `api` handler modes from day one, even though the approval workflow is a separate epic. This ensures:
+
+- **No boundary required to approve**: An approver only needs `kinit` → `rh-aws-saml-login` → `zoa approve <id> --region R` from their laptop. The request goes through ZOA Access APIGW. No ECS task creation, no SSM session — minimum friction.
+- **Approve from inside boundary too**: If an SRE is already inside a boundary container and a peer requests approval, they can approve from there via the per-VPC API Lambda. Same code, same DynamoDB write.
+- **Reconciler picks up approvals**: The per-VPC Worker Lambda reconciler detects `status=approved` on the next tick and dispatches the execution. The approval writer (Access or API Lambda) does NOT execute TAs — it only changes state in DynamoDB.
+
+For this epic, the routes return a stub response (e.g., `501 Not Implemented — approval workflow not yet enabled`). The approval workflow epic will implement the full logic: validation (approver != requester), notification (SNS → Slack), policy evaluation (OPA/Rego), and the reconciler dispatch path.
+
 ### Break-Glass Readiness — Container and Infra Preparation
 
 Break-glass is a separate epic, but the boundary container and Terraform must be designed now to support it without redesign. The core requirement: when break-glass is approved, the SRE should just type `kubectl` or `aws` — no manual credential setup, no `sts assume-role`, no kubeconfig editing.
@@ -686,7 +716,7 @@ The ZOA Boundary container reaches per-VPC Lambda Function URLs through NAT Gate
 
 Traffic from NAT Gateway to a Lambda Function URL in the same region stays on the AWS backbone network (does not traverse the public internet), and Function URLs require SigV4 authentication (unauthenticated requests are rejected before Lambda code runs). The resource-based policy will restrict callers to ONLY ZOA Boundary task roles.
 
-A future hardening story could replace Function URL with a VPC Endpoint for Lambda (SDK `lambda:InvokeWithResponseStream`) or a Private API Gateway with VPC Endpoint — eliminating the publicly-addressable endpoint entirely. This is not required for this epic but the container and CLI design do not preclude it.
+A future hardening story could place a Private API Gateway with VPC Endpoint in front of the per-VPC Lambda — eliminating the publicly-addressable Function URL entirely while keeping the same HTTP semantics. The SDK-based `lambda:Invoke` approach is NOT viable because the ZOA API requires HTTP routing and native response streaming (`RESPONSE_STREAM` invoke mode) — SDK invocation would break both. This is not required for this epic but the container and CLI design do not preclude a Private APIGW migration.
 
 ---
 
