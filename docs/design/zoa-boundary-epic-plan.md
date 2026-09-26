@@ -175,14 +175,22 @@ stateDiagram-v2
     creating --> active: ECS task RUNNING
     creating --> failed: ECS task failed to start
 
-    active --> terminated: zoa boundary stop (immediate ecs:StopTask)
-    active --> terminated: reaper (4h deadline exceeded)
+    active --> terminated: zoa boundary stop
+    active --> terminated: reaper (4h deadline)
 
     failed --> [*]
     terminated --> [*]
 
-    note right of active: SRE can join/disconnect/rejoin\nSession state persists in container\nSSM records all terminal I/O\nauditd logs each command execution
-    note right of terminated: Reasons: sre_exit, deadline_exceeded,\nreaper, error\nDynamoDB updated, metric emitted
+    note right of active
+        SRE can join/disconnect/rejoin
+        Session state persists in container
+        SSM records all terminal I/O
+        auditd logs each command execution
+    end note
+    note right of terminated
+        Reasons: sre_exit / deadline_exceeded / reaper / error
+        DynamoDB updated and metric emitted
+    end note
 ```
 
 ## Epic Description (for ROSAENG-60291)
