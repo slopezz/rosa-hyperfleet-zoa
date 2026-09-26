@@ -181,7 +181,7 @@ stateDiagram-v2
     failed --> [*]
     terminated --> [*]
 
-    note right of active: SRE can join/disconnect/rejoin\nSession state persists in container\nSSM records all terminal I/O\nPROMPT_COMMAND logs each command
+    note right of active: SRE can join/disconnect/rejoin\nSession state persists in container\nSSM records all terminal I/O\nauditd logs each command execution
     note right of terminated: Reasons: sre_exit, deadline_exceeded,\nreaper, error\nDynamoDB updated, metric emitted
 ```
 
@@ -264,37 +264,40 @@ Purpose-built container for HyperFleet ZOA (not reusing `rosa-boundary` from ROS
 - `jq`, `tar`, `gzip`, `unzip`, `zip`
 - `vim`, `less`, `git`, `procps-ng` (ps), `bind-utils` (dig/nslookup), `findutils`, `which`
 - Claude Code (Amazon Bedrock integration)
-- `auditd` not needed (SSM session logging + PROMPT_COMMAND covers audit)
+- `auditd` preferred for structured command audit (see session recording section below)
 
-**Session recording (two-layer audit, no EFS, no S3 workspace sync):**
+**Session recording (three-layer audit, no EFS, no S3 workspace sync):**
+
+Based on the [original architecture design](https://gist.github.com/slopezz/ffdadd0d26167710b4f92b3b65d04488#session-recording-three-layers), three complementary audit layers:
 
 | Layer | Mechanism | What it captures | Where it goes | Queryable? |
 |---|---|---|---|---|
-| **1. SSM session logging** | Built-in ECS Exec → SSM Agent | Full terminal I/O (every character typed and displayed) | CloudWatch Logs (`/ecs/zoa-boundary/ssm-sessions`), KMS-encrypted | CW Logs Insights (raw text search) |
-| **2. PROMPT_COMMAND hook** | Bash `PROMPT_COMMAND` fires after each command | Structured per-command audit: timestamp, sessionId, operator, command, exit code | TBD: DynamoDB (`boundary-commands` table) or CloudWatch Logs (structured JSON) | Yes — SQL-like queries on any field |
+| **1. SSM session logging** | Built-in ECS Exec → SSM Agent | Full terminal I/O (every character typed AND displayed — input + output) | CloudWatch Logs (`/ecs/zoa-boundary/ssm-sessions`), KMS-encrypted | CW Logs Insights (raw text search). Forensic replay. |
+| **2. auditd** (preferred) or PROMPT_COMMAND (fallback) | `auditd` kernel-level `execve` interception, targeted rules for `kubectl`, `zoa`, `aws`, `oc` | Per-binary execution: which command was invoked, arguments, exit code | CloudWatch Logs (`/ecs/zoa-boundary/commands`) via CloudWatch agent | Yes — structured fields, SQL-like queries |
+| **3. ZOA DynamoDB audit** | Application-level (already exists) | TA executions, session start/stop/join, approvals | DynamoDB `audit` table (existing) | Yes — `zoa audit` CLI |
 
-**Layer 1 (SSM)** is zero-effort — configure `execute_command_configuration` on the ECS cluster with a CW Logs log group and KMS key (same pattern as rosa-boundary v1). Every `ecs execute-command` session streams terminal I/O in real-time. This is the **immutable FedRAMP baseline** — complete evidence of everything that happened.
+**Layer 1 (SSM)** is zero-effort — configure `execute_command_configuration` on the ECS cluster with a CW Logs log group and KMS key (same pattern as rosa-boundary v1). Every `ecs execute-command` session streams terminal I/O in real-time. This is the **immutable FedRAMP baseline** — complete evidence of everything that happened, including all command output.
 
-**Layer 2 (PROMPT_COMMAND)** is the **structured, searchable index**. A bash profile script (`/etc/profile.d/zoa-audit.sh`) sets `PROMPT_COMMAND` to emit a JSON record after every command:
+**Layer 2 (auditd — preferred)** intercepts `execve` syscalls at the kernel level. Targeted rules capture only security-relevant binaries:
 
-```json
-{
-  "timestamp": "2026-09-26T16:55:00Z",
-  "sessionId": "task-abc123",
-  "operator": "slopezma",
-  "target": "mc01",
-  "env": "us-east-1",
-  "command": "zoa run get_resource --namespace kube-system --resource deployment/coredns",
-  "exitCode": 0,
-  "workingDir": "/home/sre"
-}
+```bash
+-a always,exit -F arch=b64 -S execve -F path=/usr/local/bin/kubectl -k rosa-cmd
+-a always,exit -F arch=b64 -S execve -F path=/usr/local/bin/zoa -k rosa-cmd
+-a always,exit -F arch=b64 -S execve -F path=/usr/local/bin/aws -k rosa-cmd
+-a always,exit -F arch=b64 -S execve -F path=/usr/local/bin/oc -k rosa-cmd
 ```
 
-The PROMPT_COMMAND hook requires IAM permissions on the ECS task role (e.g., `logs:PutLogEvents` or `dynamodb:PutItem` depending on the chosen backend). An SRE could technically `unset PROMPT_COMMAND` — but this is detectable: Layer 1 (SSM) records the `unset` command itself, and the sudden absence of Layer 2 events while SSM shows activity is an audit anomaly that can trigger an alert.
+CloudWatch agent streams these to a separate log group for structured queries. Key advantage over PROMPT_COMMAND: auditd catches commands from scripts, pipes, and sub-processes — not just what the SRE types at the prompt. Much harder to evade (kernel-level vs bash-level).
 
-**Backend decision (Layer 2) deferred to implementation**: DynamoDB gives consistent query patterns with existing ZOA audit tables; CW Logs gives native Insights queries and cheaper storage for high-volume data. Both support export to S3 for long-term retention and integration with external compliance tools.
+**⚠️ Fargate validation required**: `auditd` needs `CAP_AUDIT_WRITE` (usually available on Fargate) and `CAP_AUDIT_CONTROL` (for rule configuration — **may be restricted**). Must validate early in implementation. rosa-boundary v1 includes auditd in its Containerfile — check if it's actually functional on Fargate.
 
-**Future RH compliance integration**: Both layers' data can be exported to S3 (CW Logs via subscription filter, DynamoDB via export or stream). From S3, data can feed into Red Hat compliance tooling (RHACS, Splunk, or other SIEM) as requirements crystallize. Keeping data in a standard AWS service now ensures maximum flexibility for gluing to RH tools later.
+**Fallback (PROMPT_COMMAND)**: If auditd is blocked on Fargate, a bash profile script (`/etc/profile.d/zoa-audit.sh`) sets `PROMPT_COMMAND` to emit a JSON record after every command. Covers top-level shell commands only (not sub-processes). SRE can `unset PROMPT_COMMAND` — but SSM (Layer 1) records the `unset` itself, and the gap is detectable.
+
+**Why both SSM and auditd?** SSM captures what the SRE **saw** (input + output = forensic replay). auditd captures what the SRE **did** (structured, searchable, no output noise). One answers "show me the exact terminal at 14:32", the other answers "list all kubectl commands slopezma ran today."
+
+**Layer 3 (ZOA DynamoDB)** already exists — every `zoa run`, `zoa boundary start/stop/join`, and future `zoa approve/reject` writes to the `audit` DynamoDB table. This is the application-level trail.
+
+**Future RH compliance integration**: All three layers' data can be exported to S3 (CW Logs via subscription filter, DynamoDB via export or stream). From S3, data can feed into Red Hat compliance tooling (RHACS, Splunk, or other SIEM) as requirements crystallize.
 
 **Excluded from bastion image (not needed for SRE operations):**
 - `terraform` (infra provisioning belongs in pipelines, not SRE shells)
@@ -308,8 +311,8 @@ The PROMPT_COMMAND hook requires IAM permissions on the ECS task role (e.g., `lo
 - `ZOA_TARGET` env var (target identifier: rc, mc01, etc.)
 - SSM Session Manager ready (ECS Exec support)
 - Time-boxed: 4h hard deadline (container exits, not extendable)
-- SSM session logging to CloudWatch Logs (KMS-encrypted, real-time terminal I/O)
-- PROMPT_COMMAND structured audit (per-command JSON, see session recording section above)
+- SSM session logging to CloudWatch Logs (KMS-encrypted, real-time terminal I/O — forensic replay)
+- auditd structured command audit to CloudWatch Logs (or PROMPT_COMMAND fallback — see session recording section above)
 - Network-isolated: only reaches Lambda Function URLs (via NAT) and EKS API (same VPC, for break-glass only)
 
 Base image: UBI9 (consistent with zoa-lambda and zoa-runner).
@@ -417,7 +420,7 @@ Extend the existing per-VPC Worker Lambda with a `reaper` scheduled task (EventB
 - 4h hard deadline, not extendable (new container = fresh audit trail)
 - Reaper runs on the same per-VPC Worker Lambda (already has EventBridge schedules for reconciler/GC)
 - IAM: Worker Lambda role needs `ecs:StopTask` + `ecs:DescribeTasks` for local ECS cluster
-- Future enhancement: inactivity-based early termination (query PROMPT_COMMAND audit for last command timestamp, or CloudWatch Logs for last SSM event)
+- Future enhancement: inactivity-based early termination (query auditd log for last command timestamp, or CloudWatch Logs for last SSM event)
 
 #### DynamoDB Types
 
@@ -613,7 +616,9 @@ For ephemeral (dev Jump Account), multiple entries coexist:
 - app-interface configuration for `jump-sre`, `jump-manager`, `jump-director` role assignments
 - Cross-account IAM role in Jump Account allowing `ssm:PutParameter` from RC pipeline role
 
-**This story can be assigned to a different engineer** — it is IAM/app-interface/infra work, not Go code. It is a **blocker** for CLI autodiscovery and ZOA Access Lambda authentication.
+**This story can be assigned to a different engineer** — it is IAM/app-interface/infra work, not Go code. It is a **blocker** for CLI autodiscovery and ZOA Access Lambda authentication in int/stage/prod.
+
+**Bootstrapping (dev/ephemeral — no Jump Account needed):** Until Jump Accounts are provisioned, the `/zoa/environments` SSM parameter lives in the **RC account** instead. SREs already have RC credentials (`rrp-rc` profile) for dev/ephemeral work. The CLI reads SSM from whatever credentials are active — it doesn't care which account owns the parameter. The RC Terraform pipeline writes the parameter locally (no cross-account wiring needed). When Jump Accounts arrive, Terraform moves the parameter to the Jump Account and SREs switch to `rh-aws-saml-login` profiles. This means **story 3 does NOT block stories 1+2 for dev/ephemeral development and testing**.
 
 **Repos**: `rosa-hyperfleet` (Terraform pipeline step, Jump Account IAM module, DynamoDB table)
 
