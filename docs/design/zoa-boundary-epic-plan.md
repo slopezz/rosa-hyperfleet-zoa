@@ -37,9 +37,9 @@ sequenceDiagram
     Note over SRE,JA: Authentication (requires RH VPN for kinit only)
     SRE->>JA: kinit + rh-aws-saml-login → Jump Account IAM role
 
-    Note over SRE,PS: Region autodiscovery (direct SSM read, no Lambda)
-    SRE->>PS: zoa regions → read /zoa/regions
-    PS-->>SRE: {us-east-1: apigw_url, eu-west-1: apigw_url, ...}
+    Note over SRE,PS: Environment autodiscovery (direct SSM read, no Lambda)
+    SRE->>PS: zoa environments → read /zoa/environments
+    PS-->>SRE: {us-east-1: apigw_url, us-east-1-xg4y: apigw_url, ...}
 
     Note over SRE,AL: Target discovery (via ZOA Access)
     SRE->>AGW: zoa targets --region us-east-1 (SigV4, Jump Account role)
@@ -74,8 +74,8 @@ Shows why region pointers live in the Jump Account (CLI needs them before contac
 
 ```mermaid
 graph TD
-    subgraph jumpAccount [Jump Account — thin pointer layer]
-        paramRegions["/zoa/regions SSM Parameter<br/>{region: apigw_url}"]
+    subgraph jumpAccount [Jump Account — thin pointer layer, 1 per env]
+        paramEnvs["/zoa/environments SSM Parameter<br/>{deployment_name: apigw_url}"]
     end
 
     subgraph rcAccount [RC Account — full target registry]
@@ -92,11 +92,11 @@ graph TD
         mcPipeline["MC Pipeline"]
     end
 
-    zoaCLI -->|"zoa regions<br/>(direct SSM read)"| paramRegions
-    zoaCLI -->|"zoa targets --region R<br/>(APIGW → Lambda)"| accessLambda
+    zoaCLI -->|"zoa environments<br/>(direct SSM read)"| paramEnvs
+    zoaCLI -->|"zoa targets --env E<br/>(APIGW → Lambda)"| accessLambda
     accessLambda -->|"local read<br/>(same account, no cross-account)"| boundaryTargets
 
-    rcPipeline -->|"cross-account ssm:PutParameter"| paramRegions
+    rcPipeline -->|"cross-account ssm:PutParameter"| paramEnvs
     rcPipeline -->|"local DynamoDB write"| boundaryTargets
     mcPipeline -->|"cross-account via zoa-data-access role"| boundaryTargets
 ```
@@ -311,23 +311,24 @@ Base image: UBI9 (consistent with zoa-lambda and zoa-runner).
 
 | Command | Purpose | Endpoint |
 |---|---|---|
-| `zoa regions` | List ZOA-enabled regions (autodiscover from Jump Account SSM Parameter Store) | SSM Parameter Store (direct) |
-| `zoa targets --region R` | List available targets in a region (rc, mc01, mc02...) | ZOA Access APIGW |
-| `zoa boundary start --region R --target T` | Create ECS task, wait for RUNNING, print connect info | ZOA Access APIGW |
-| `zoa boundary list --region R` | List own boundary sessions (active/stopped) | ZOA Access APIGW |
-| `zoa boundary stop --region R ID` | Graceful stop (S3 sync, then terminate) | ZOA Access APIGW |
-| `zoa boundary join --region R ID` | Reconnect to existing session via SSM | ZOA Access APIGW + SSM |
-| `zoa approve --region R ID` | Approve a pending request (future — stub for now) | ZOA Access APIGW |
-| `zoa reject --region R ID --reason "..."` | Reject a pending request (future — stub for now) | ZOA Access APIGW |
+| `zoa environments` | List ZOA-enabled environments (autodiscover from Jump Account SSM `/zoa/environments`) | SSM Parameter Store (direct) |
+| `zoa targets --env E` | List available targets in an environment (rc, mc01, mc02...) | ZOA Access APIGW |
+| `zoa boundary start --env E --target T` | Create ECS task, wait for RUNNING, print connect info | ZOA Access APIGW |
+| `zoa boundary list --env E` | List boundary sessions (active/stopped) | ZOA Access APIGW |
+| `zoa boundary stop --env E ID` | Graceful stop (S3 sync, then terminate) | ZOA Access APIGW |
+| `zoa boundary join --env E ID` | Reconnect to existing session via SSM | ZOA Access APIGW + SSM |
+| `zoa approve --env E ID` | Approve a pending request (future — stub for now) | ZOA Access APIGW |
+| `zoa reject --env E ID --reason "..."` | Reject a pending request (future — stub for now) | ZOA Access APIGW |
 
 **Note**: `zoa approve` and `zoa reject` are prepared as CLI commands in this epic (routes exist on both Access and API Lambda) but return `501 Not Implemented` until the approval workflow epic ships. The commands are included now so the CLI surface is complete and SRE muscle memory can develop early.
 
 **Design decisions:**
-- `--region` required for all boundary/target commands (tells CLI which APIGW to call)
-- Region APIGW URL autodiscovered: CLI reads a fixed-name SSM parameter in Jump Account (`/zoa/regions`) containing a JSON map of `{region: apigw_url}`
+- `--env` required for all boundary/target commands (tells CLI which APIGW to call). The value is the `deployment_name` from SSM (e.g., `us-east-1` for stable envs, `us-east-1-xg4y` for ephemeral)
+- Environment APIGW URL autodiscovered: CLI reads a fixed-name SSM parameter in Jump Account (`/zoa/environments`) containing a JSON map of `{deployment_name: apigw_url}`
 - `zoa boundary start --connect` and `zoa boundary join` both wrap `aws ecs execute-command` under the hood, which requires the **`session-manager-plugin`** binary installed on the SRE's laptop (same dependency as rosa-boundary v1 — this is standard SRE tooling)
 - `zoa boundary start` flags: `--connect` (auto-join after RUNNING), `--no-wait`, `--timeout` (default 4h)
 - Naming follows kubectl/aws-cli muscle memory patterns
+- `--env` can also be set via `ZOA_ENV` environment variable (like `ZOA_API_URL` today) so SRE can `export ZOA_ENV=us-east-1` and omit `--env` from subsequent commands
 
 **Prerequisite**: `session-manager-plugin` must be installed on the SRE's laptop. It handles the WebSocket session protocol for `ecs execute-command`. Install: `brew install --cask session-manager-plugin` (macOS) or RPM (Linux). The CLI should detect its absence and print a clear error message with install instructions.
 
@@ -357,25 +358,92 @@ Open question: does `rh-aws-saml-login` always use the Kerberos principal as the
 
 ---
 
-### 4. SSM Parameter Store Autodiscovery (Jump Account)
+### 4. Jump Account + SSM Parameter Store Autodiscovery
 
-**Summary**: Region and target autodiscovery via AWS Parameter Store in Jump Account
+**Summary**: Jump Account IAM setup, SRE role tiers via app-interface, and environment autodiscovery via SSM Parameter Store
 
-**Description**: Each regional pipeline (Tekton/Terraform) publishes metadata to a well-known SSM Parameter Store path in the AWS Jump Account. The ZOA CLI reads these parameters to autodiscover available regions and endpoints.
+**Description**: Provision Jump Accounts (one per environment) with tiered IAM roles for SRE access, and configure SSM Parameter Store for CLI autodiscovery of ZOA endpoints.
+
+**Why Jump Accounts?**
+
+Jump Accounts are the **only AWS accounts SREs directly authenticate to**. They exist to:
+1. **Decouple SRE identity from workload accounts** — SREs never get credentials for RC/MC accounts directly
+2. **Centralize access control** — role assignments in app-interface control who can access what
+3. **Enable audit** — CloudTrail in the Jump Account logs every SRE authentication event
+4. **Support role tiers** — different IAM roles for different permission levels (SRE, manager, director)
+
+One Jump Account per environment is sufficient because:
+- All deployments in an environment share the same trust boundary (dev is dev, stage is stage)
+- The Jump Account only holds IAM roles and SSM parameters — no workloads, no data
+- SRE authenticates to the environment they need: `rh-aws-saml-login` profiles map to Jump Accounts
+
+**Jump Account inventory (initial provisioning: dev, int, stage — prod deferred):**
+
+| Jump Account | Environment | Contains |
+|---|---|---|
+| dev | ephemeral | IAM roles + SSM with N ephemeral deployments (dynamic, created/destroyed by CI and devs) |
+| int | integration | IAM roles + SSM with integration deployments (stable, 1 per region) |
+| stage | stage | IAM roles + SSM with stage deployments (stable, 1 per region) |
+| prod (future) | production | IAM roles + SSM with prod deployments + potential canary |
+
+**SRE role tiers via app-interface:**
+
+Three shared IAM roles per Jump Account, assigned to SREs via app-interface RBAC. When an SRE runs `rh-aws-saml-login`, SAML federation maps them to the appropriate role based on their app-interface configuration:
+
+| Role Name | Who | Permissions (current epic) | Future (approval workflow) |
+|---|---|---|---|
+| `jump-sre` | All SREs | Create/join/stop boundary sessions, execute TAs | Request break-glass, request elevated TAs |
+| `jump-manager` | Team leads, managers | Same as SRE | + Approve/reject SRE requests |
+| `jump-director` | Directors, VP | Same as SRE | + Approve elevated/break-glass requests |
+
+SigV4 ARN format: `arn:aws:sts::JUMP_ACCOUNT:assumed-role/jump-sre/slopezma`
+- Role name (`jump-sre`) → encodes the role tier (usable for future approval policy: "only `jump-manager` or `jump-director` can approve")
+- Session name (`slopezma`) → stable SRE identity from Kerberos principal via SAML (usable for audit attribution and ownership checks)
+
+For this epic, all three roles have identical permissions (boundary session management). The differentiation matters in the future approval workflow epic — the infrastructure must be in place now.
 
 **Two-layer discovery architecture:**
 
 | Data | Location | Writer | Reader |
 |---|---|---|---|
-| Region list + APIGW URLs | Jump Account SSM (`/zoa/regions`) | RC Terraform (cross-account) | CLI directly |
+| Environment list + APIGW URLs | Jump Account SSM (`/zoa/environments`) | RC Terraform (cross-account) | CLI directly |
 | Target registry (rc, mc01, VPCs, Function URLs, subnets, task defs) | RC account DynamoDB (`boundary-targets` table) | RC + MC Terraform pipelines (local) | ZOA Access Lambda (local, same account) |
 
-Jump Account stays thin (just region pointers). All operational detail (VPCs, subnets, SGs, task role ARNs) stays in RC — the ZOA Access Lambda reads it locally without cross-account calls.
+Jump Account stays thin (just environment pointers). All operational detail (VPCs, subnets, SGs, task role ARNs) stays in RC — the ZOA Access Lambda reads it locally without cross-account calls.
 
 **Parameter layout (Jump Account):**
-- `/zoa/regions` — JSON map: `{"us-east-1": {"apigw_url": "https://zoa-access.us-east-1.hyperfleet.example.com", "enabled": true}, ...}`
-- Written by each region's RC Terraform pipeline via cross-account `sts:AssumeRole`
-- On region teardown, Terraform removes the region entry
+- `/zoa/environments` — JSON map keyed by `deployment_name` (unique per deployment within an environment):
+
+```json
+{
+  "us-east-1": {
+    "apigw_url": "https://zoa-access.us-east-1.int0.rosa.devshift.net",
+    "deployment_name": "us-east-1",
+    "enabled": true
+  }
+}
+```
+
+For ephemeral (dev Jump Account), multiple entries coexist:
+
+```json
+{
+  "us-east-1-xg4y": {
+    "apigw_url": "https://zoa-access.us-east-1-xg4y.dev0.rosa.devshift.net",
+    "deployment_name": "us-east-1-xg4y",
+    "enabled": true
+  },
+  "us-east-1-ab12": {
+    "apigw_url": "https://zoa-access.us-east-1-ab12.dev0.rosa.devshift.net",
+    "deployment_name": "us-east-1-ab12",
+    "enabled": true
+  }
+}
+```
+
+- `deployment_name` is the unique identifier used throughout the platform (equals `aws_region` for normal deployments, `aws_region-uuid` for ephemeral — see `config/defaults.yaml`)
+- Written by each RC Terraform pipeline via cross-account `sts:AssumeRole`
+- On environment teardown, Terraform removes the entry (critical for ephemeral lifecycle)
 
 **Target registry (RC account, DynamoDB `boundary-targets` table):**
 - PK: `targetId` (e.g., `rc`, `mc01`)
@@ -384,15 +452,24 @@ Jump Account stays thin (just region pointers). All operational detail (VPCs, su
 - Read by ZOA Access Lambda when creating boundary sessions or listing targets
 
 **Pipeline integration:**
-- RC Terraform: writes `/zoa/regions` to Jump Account SSM (cross-account `ssm:PutParameter`)
+- RC Terraform: writes `/zoa/environments` entry to Jump Account SSM (cross-account `ssm:PutParameter`)
 - RC Terraform: writes RC target entry to `boundary-targets` DynamoDB (local)
 - MC Terraform: writes MC target entries to `boundary-targets` DynamoDB (cross-account via `zoa-data-access` role, same mechanism MCs already use for executions table)
+- Ephemeral teardown: removes entry from Jump Account SSM (cross-account `ssm:PutParameter` — idempotent)
+
+**Cross-account IAM wiring:**
+- Jump Account needs a "pipeline writer" IAM role that RC pipeline roles can assume
+- Permission: `ssm:PutParameter` and `ssm:DeleteParameter` on `/zoa/environments` only
+- Trust policy: allow `sts:AssumeRole` from RC pipeline roles across all RC accounts in that environment
 
 **Prerequisites:**
-- AWS Jump Account per environment (dev, int, stage, prod) — may need another team to provision if not existing
+- AWS Jump Account per environment (dev, int, stage) — may need another team to provision
+- app-interface configuration for `jump-sre`, `jump-manager`, `jump-director` role assignments
 - Cross-account IAM role in Jump Account allowing `ssm:PutParameter` from RC pipeline role
 
-**Repos**: `rosa-hyperfleet` (Terraform pipeline step, DynamoDB table)
+**This story can be assigned to a different engineer** — it is IAM/app-interface/infra work, not Go code. It is a **blocker** for CLI autodiscovery and ZOA Access Lambda authentication.
+
+**Repos**: `rosa-hyperfleet` (Terraform pipeline step, Jump Account IAM module, DynamoDB table)
 
 ---
 
@@ -632,10 +709,24 @@ Wire into CI: `openshift/release` Prow job configuration for boundary e2e (may n
 **Description**: Once boundary containers are operational and validated:
 
 - Remove the `TEMPORARY` direct SigV4 path from laptop to per-VPC Function URLs
-- Update per-VPC Lambda resource-based policies: remove SRE IAM roles, keep ONLY ZOA Boundary task roles
+- Update per-VPC Lambda resource-based policies: remove SRE IAM roles, keep ONLY ZOA Boundary task roles + CI service account roles
 - Update architecture diagrams to remove `TEMPORARY` annotations
 
 **Note**: The current `terraform/modules/bastion/` is NOT removed in this epic. The bastion remains until the break-glass epic is delivered — SREs still need bastion for direct EKS access scenarios that break-glass will eventually replace. Bastion decommission will be a story in the break-glass epic.
+
+**E2E testing impact — important design decision:**
+
+Removing the direct laptop-to-Function-URL path breaks the current e2e test pattern (`zoa run` from CI container directly). Options:
+
+| Option | How it works | Pros | Cons |
+|---|---|---|---|
+| **A: CI service account exception** | Keep CI pipeline IAM roles in the per-VPC Lambda resource-based policy. Remove SRE personal roles only. | Zero e2e changes. CI keeps working as-is. | Direct path remains for CI — not full removal. But CI is non-interactive, automated, and already audited by Prow. |
+| **B: E2E from inside boundary** | CI creates a boundary container, uses `ecs execute-command` to run e2e test commands inside. | Truly validates the boundary path end-to-end. | Complex CI setup. Need test binary in boundary image or downloadable. SSM session overhead per test run. Significantly slower. |
+| **C: SSM port forwarding** | CI creates boundary, sets up SSM port forwarding to tunnel requests through the boundary. | CI test code doesn't change much — just a different endpoint. | Does NOT work — the restriction is identity-based (IAM resource policy), not network-based. Port-forwarded requests still carry the CI role's identity, not the boundary task role. |
+
+**Recommended: Option A** (CI exception) for the near term. The direct path is a security concern for interactive SRE use (no session auditing, no time-boxing). CI pipelines are already non-interactive, fully logged by Prow, and run with service account identities — they don't have the same audit gaps. The Lambda resource-based policy becomes: `allow: [zoa-boundary-task-role, ci-e2e-service-role]`.
+
+Option B is the ideal long-term target — e2e tests should eventually exercise the boundary path to validate it. But requiring it from day one makes the e2e story much heavier and risks blocking the epic on CI complexity. A follow-up story can migrate e2e to boundary-based execution.
 
 This is the final story in this epic — depends on all others being validated in production.
 
@@ -656,9 +747,28 @@ Every ZOA API request (both ZOA Access and per-VPC Lambda) must carry the **orig
 
 The identity model chosen now constrains what the approval workflow can enforce later. Three possible approaches — the decision does NOT need to be made in this epic, but the boundary design must not preclude any of them:
 
+**Current plan: Shared roles per tier via app-interface**
+
+With `rh-aws-saml-login`, the SRE gets a temporary IAM role in the Jump Account based on their app-interface configuration. The SigV4 ARN encodes both the role tier AND the SRE's identity:
+
+```
+arn:aws:sts::JUMP_ACCOUNT:assumed-role/jump-sre/slopezma
+                                       ^^^^^^^^ ^^^^^^^^
+                                       role tier  SRE identity (Kerberos principal)
+```
+
+Three role tiers (identical permissions today, differentiated in future approval workflow):
+- `jump-sre` — all SREs
+- `jump-manager` — team leads, managers (future: can approve SRE requests)
+- `jump-director` — directors (future: can approve elevated/break-glass requests)
+
+This gives us audit AND authorization information from SigV4 alone — no LDAP lookup, no SAML session tags, no external identity store needed. The role name is the authorization tier, the session name is the human identity.
+
+**Why this may be sufficient (and alternatives if not):**
+
 | Approach | How identity flows | Pros | Cons |
 |---|---|---|---|
-| **IAM role mapping in Jump Account** | Each SRE (or role tier: sre, lead, director) maps to a different IAM role. SigV4 ARN directly encodes the role. | Simple — identity is the ARN. Lambda reads role from SigV4 with zero external calls. | IAM-heavy. Requires per-tier (or per-user) role management in Jump Account. Adding new tiers requires IAM changes. |
+| **IAM role tiers (current plan)** | 3 shared roles (`jump-sre`, `jump-manager`, `jump-director`). SigV4 ARN encodes role tier + SRE name. | Simple — zero external calls. Both identity and authorization from SigV4. Works today with app-interface. | Only 3 tiers — no fine-grained group memberships. Adding tiers requires IAM + app-interface changes. |
 | **SAML session tags** | Kerberos/SAML federation injects attributes (username, groups, department) as AWS session tags. Tags flow through SigV4 and are extractable by Lambda. | Rich identity without per-user IAM roles. Group memberships available at request time. | Depends on SAML IdP (rh-aws-saml-login) supporting tag injection. Tag size limits (500 chars total). |
 | **External identity store (LDAP/Rover)** | Lambda receives SRE username from SigV4 session name, then looks up group memberships and role from Red Hat LDAP or a Rover dump cached in S3. | Most flexible — full org chart, group memberships, geo, team. Decoupled from IAM. | Adds a dependency (LDAP/S3 cache). Cache staleness risk. Extra latency on first lookup. |
 
@@ -722,9 +832,11 @@ A future hardening story could place a Private API Gateway with VPC Endpoint in 
 
 ## Open Questions / Dependencies
 
-1. **Jump Account provisioning**: Do Jump Accounts already exist per environment (dev, int, stage, prod)? If not, need another team to provision them. This is a blocker for stories 3, 4, and 11.
-2. **Custom domain DNS**: Who owns the DNS zone for `hyperfleet.example.com` (or whatever the real domain is)? Route53 hosted zone delegation needed for API Gateway custom domains.
-3. **Break-glass interaction**: Story 7 (reaper) and the boundary container design should account for future break-glass EKS access entries. Not implementing break-glass in this epic, but IAM and network design must not preclude it.
-4. **Bedrock model availability per region**: Not all Claude models are available in all AWS regions. Need to verify Haiku availability in each HyperFleet deployment region and adjust `allowed_bedrock_models` accordingly.
-5. **SSM Session Manager plugin**: SREs need `session-manager-plugin` installed on their laptops for `zoa boundary join`. Is this already standard SRE tooling? (It is for rosa-boundary v1.)
-6. **rh-aws-saml-login session name stability**: Does `rh-aws-saml-login` always use the Kerberos principal (e.g., `slopezma`) as the STS session name? If it uses something else (random string, timestamp), we need an alternative identity anchor for ownership checks across re-authentications. This is critical for the identity bridge design.
+1. **Jump Account provisioning**: Do Jump Accounts already exist per environment (dev, int, stage)? If not, need another team to provision them. This is a blocker for stories 3, 4, and 11. Prod Jump Account is deferred.
+2. **app-interface role configuration**: Can we configure three role tiers (`jump-sre`, `jump-manager`, `jump-director`) per Jump Account in app-interface? Need to validate the SAML → IAM role mapping flow with the identity team.
+3. **Custom domain DNS**: Who owns the DNS zone for the APIGW custom domains? Route53 hosted zone delegation needed for API Gateway custom domains (e.g., `zoa-access.us-east-1.int0.rosa.devshift.net`).
+4. **Break-glass interaction**: Story 7 (reaper) and the boundary container design should account for future break-glass EKS access entries. Not implementing break-glass in this epic, but IAM and network design must not preclude it.
+5. **Bedrock model availability per region**: Not all Claude models are available in all AWS regions. Need to verify Haiku availability in each HyperFleet deployment region and adjust `allowed_bedrock_models` accordingly.
+6. **SSM Session Manager plugin**: SREs need `session-manager-plugin` installed on their laptops for `zoa boundary join`. Is this already standard SRE tooling? (It is for rosa-boundary v1.)
+7. **rh-aws-saml-login session name stability**: Does `rh-aws-saml-login` always use the Kerberos principal (e.g., `slopezma`) as the STS session name? If it uses something else (random string, timestamp), we need an alternative identity anchor for ownership checks across re-authentications. This is critical for the identity bridge design.
+8. **Ephemeral SSM parameter lifecycle**: In the dev Jump Account, ephemeral environment entries must be reliably cleaned up on teardown. If an ephemeral teardown fails or is abandoned, stale entries will accumulate. The reaper or a separate GC mechanism may need to detect and clean orphaned entries.
