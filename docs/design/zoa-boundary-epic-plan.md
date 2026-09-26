@@ -215,7 +215,7 @@ stateDiagram-v2
 
 ---
 
-## Child Issues (13 stories)
+## Child Issues (14 stories)
 
 ### 1. ZOA Access Lambda + API Gateway
 
@@ -704,33 +704,57 @@ Wire into CI: `openshift/release` Prow job configuration for boundary e2e (may n
 
 ### 13. Remove Direct Laptop-to-Function-URL Temporary Path
 
-**Summary**: Remove temporary direct SigV4 path from laptop to per-VPC Lambda Function URLs
+**Summary**: Remove SRE direct access to RC/MC account roles — enforce ZOA Boundary as the only interactive access path
 
-**Description**: Once boundary containers are operational and validated:
+**Description**: Today, SREs and CI both use the same pattern: assume an admin role directly in the RC/MC account (`eval "$(aws configure export-credentials --profile rrp-regional-dev)"`) and call Lambda Function URLs from their laptop or CI container. This is the `TEMPORARY` path in the architecture diagram.
 
-- Remove the `TEMPORARY` direct SigV4 path from laptop to per-VPC Function URLs
-- Update per-VPC Lambda resource-based policies: remove SRE IAM roles, keep ONLY ZOA Boundary task roles + CI service account roles
+Once boundary containers are operational and validated:
+
+- **Remove SRE direct RC/MC account role assumption** (app-interface change): SREs lose the ability to `aws configure export-credentials --profile rrp-rc` from their laptop. They only get Jump Account roles.
+- **Jump Account roles cannot call Function URLs directly**: different AWS account, no cross-account resource policy on the Lambda — IAM denies the request before it reaches Lambda.
+- **SREs must go through**: Jump Account → ZOA Access APIGW → Boundary container → Function URL (same account, via ECS task role)
 - Update architecture diagrams to remove `TEMPORARY` annotations
 
 **Note**: The current `terraform/modules/bastion/` is NOT removed in this epic. The bastion remains until the break-glass epic is delivered — SREs still need bastion for direct EKS access scenarios that break-glass will eventually replace. Bastion decommission will be a story in the break-glass epic.
 
-**E2E testing impact — important design decision:**
+**Why this is a separate story (not automatic):**
 
-Removing the direct laptop-to-Function-URL path breaks the current e2e test pattern (`zoa run` from CI container directly). Options:
-
-| Option | How it works | Pros | Cons |
-|---|---|---|---|
-| **A: CI service account exception** | Keep CI pipeline IAM roles in the per-VPC Lambda resource-based policy. Remove SRE personal roles only. | Zero e2e changes. CI keeps working as-is. | Direct path remains for CI — not full removal. But CI is non-interactive, automated, and already audited by Prow. |
-| **B: E2E from inside boundary** | CI creates a boundary container, uses `ecs execute-command` to run e2e test commands inside. | Truly validates the boundary path end-to-end. | Complex CI setup. Need test binary in boundary image or downloadable. SSM session overhead per test run. Significantly slower. |
-| **C: SSM port forwarding** | CI creates boundary, sets up SSM port forwarding to tunnel requests through the boundary. | CI test code doesn't change much — just a different endpoint. | Does NOT work — the restriction is identity-based (IAM resource policy), not network-based. Port-forwarded requests still carry the CI role's identity, not the boundary task role. |
-
-**Recommended: Option A** (CI exception) for the near term. The direct path is a security concern for interactive SRE use (no session auditing, no time-boxing). CI pipelines are already non-interactive, fully logged by Prow, and run with service account identities — they don't have the same audit gaps. The Lambda resource-based policy becomes: `allow: [zoa-boundary-task-role, ci-e2e-service-role]`.
-
-Option B is the ideal long-term target — e2e tests should eventually exercise the boundary path to validate it. But requiring it from day one makes the e2e story much heavier and risks blocking the epic on CI complexity. A follow-up story can migrate e2e to boundary-based execution.
+The restriction is at the **IAM role assignment level in app-interface**, not at the Lambda policy level. Today there is no Lambda resource-based policy restricting callers — any same-account principal with `lambda:InvokeFunctionUrl` can call it. The security comes from removing the SRE's ability to BE a same-account principal (they only get Jump Account roles, which are cross-account and cannot call the Function URL).
 
 This is the final story in this epic — depends on all others being validated in production.
 
-**Repo**: `rosa-hyperfleet`
+**Repo**: `rosa-hyperfleet` (diagrams), app-interface (IAM role changes)
+
+---
+
+### 14. Investigate: CI E2E via ZOA Boundary (Spike)
+
+**Summary**: Investigate how CI e2e tests can run through ZOA Boundary containers instead of direct Function URL access
+
+**Description**: Today, CI e2e tests use the same direct path as SREs: assume RC/MC account role → call Function URL. Once story 13 removes SRE direct access, CI keeps working (CI pipeline roles remain in app-interface), but CI and humans use **different paths** — which means e2e tests don't validate the boundary path that humans actually use.
+
+**The ideal end state**: CI e2e tests exercise the same path as SREs — create a boundary container, run tests from inside it. This ensures the boundary path is continuously tested.
+
+**Investigation questions:**
+
+1. **SSM execute-command for non-interactive use**: Can `aws ecs execute-command` run a command non-interactively and stream stdout/stderr back to CI? (It requires `session-manager-plugin`, which may not be in the Prow CI image.)
+2. **Test binary delivery**: How does the test binary get into the boundary container? Options:
+   - Bake `ginkgo` + test suite into boundary image (bloats the SRE image with test dependencies)
+   - Download test binary at runtime from S3 or container registry (adds latency, needs network access)
+   - Mount from CI via SSM (not possible — SSM is a terminal session, not a volume mount)
+3. **CI overhead**: Boundary container startup time (~30s for ECS Fargate) + SSM session setup adds overhead per test run. Acceptable for nightly, too slow for presubmit?
+4. **Hybrid approach**: Presubmit CI keeps direct access (fast, tests TA logic). Nightly CI uses boundary path (slower, tests boundary integration). Is this sufficient?
+5. **Alternative: CI-specific boundary**: A lightweight "CI boundary" task definition with test tools pre-installed, created by CI pipeline, tests run inside. Not the same image as SRE boundary but same network path.
+
+**Acceptance criteria:**
+- Document recommended approach with pros/cons
+- Proof-of-concept showing e2e tests running through a boundary container (if feasible)
+- Estimated CI time impact
+- Decision: exception-only (CI keeps direct), hybrid (nightly via boundary), or full (all CI via boundary)
+
+**This can be worked after the epic is otherwise complete.** It does not block the boundary rollout — CI keeps working with direct access until this investigation concludes.
+
+**Repos**: `rosa-hyperfleet` (CI infra), `rosa-hyperfleet-zoa` (e2e test wiring)
 
 ---
 
