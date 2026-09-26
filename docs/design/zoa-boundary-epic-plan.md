@@ -167,7 +167,7 @@ sequenceDiagram
 
 #### 5. Session lifecycle and reaper
 
-Shows the full lifecycle of a boundary session from creation through termination, including the reaper safety net. The reaper runs on the per-VPC Worker Lambda (same EventBridge infrastructure as the existing reconciler/GC) and enforces the 4h hard deadline. Sessions that the SRE exits cleanly trigger an S3 sync of workspace artifacts before termination.
+Shows the full lifecycle of a boundary session from creation through termination, including the reaper safety net. The reaper runs on the per-VPC Worker Lambda (same EventBridge infrastructure as the existing reconciler/GC) and enforces the 4h hard deadline. No workspace sync on exit — all audit data is captured in real-time via SSM session logging and structured command audit (no EFS, no S3 workspace escrow).
 
 ```mermaid
 stateDiagram-v2
@@ -175,16 +175,13 @@ stateDiagram-v2
     creating --> active: ECS task RUNNING
     creating --> failed: ECS task failed to start
 
-    active --> stopping: zoa boundary stop (SRE exit)
+    active --> terminated: zoa boundary stop (immediate ecs:StopTask)
     active --> terminated: reaper (4h deadline exceeded)
-
-    stopping --> terminated: S3 sync complete + ecs:StopTask
 
     failed --> [*]
     terminated --> [*]
 
-    note right of active: SRE can join/disconnect/rejoin\nSession state persists in container\nSSM records all terminal I/O
-    note right of stopping: Graceful: SIGTERM → S3 sync\n/home/sre workspace → S3 WORM\nMax 30s for sync, then force stop
+    note right of active: SRE can join/disconnect/rejoin\nSession state persists in container\nSSM records all terminal I/O\nPROMPT_COMMAND logs each command
     note right of terminated: Reasons: sre_exit, deadline_exceeded,\nreaper, error\nDynamoDB updated, metric emitted
 ```
 
@@ -267,7 +264,37 @@ Purpose-built container for HyperFleet ZOA (not reusing `rosa-boundary` from ROS
 - `jq`, `tar`, `gzip`, `unzip`, `zip`
 - `vim`, `less`, `git`, `procps-ng` (ps), `bind-utils` (dig/nslookup), `findutils`, `which`
 - Claude Code (Amazon Bedrock integration)
-- `auditd` + CloudWatch agent (session recording)
+- `auditd` not needed (SSM session logging + PROMPT_COMMAND covers audit)
+
+**Session recording (two-layer audit, no EFS, no S3 workspace sync):**
+
+| Layer | Mechanism | What it captures | Where it goes | Queryable? |
+|---|---|---|---|---|
+| **1. SSM session logging** | Built-in ECS Exec → SSM Agent | Full terminal I/O (every character typed and displayed) | CloudWatch Logs (`/ecs/zoa-boundary/ssm-sessions`), KMS-encrypted | CW Logs Insights (raw text search) |
+| **2. PROMPT_COMMAND hook** | Bash `PROMPT_COMMAND` fires after each command | Structured per-command audit: timestamp, sessionId, operator, command, exit code | TBD: DynamoDB (`boundary-commands` table) or CloudWatch Logs (structured JSON) | Yes — SQL-like queries on any field |
+
+**Layer 1 (SSM)** is zero-effort — configure `execute_command_configuration` on the ECS cluster with a CW Logs log group and KMS key (same pattern as rosa-boundary v1). Every `ecs execute-command` session streams terminal I/O in real-time. This is the **immutable FedRAMP baseline** — complete evidence of everything that happened.
+
+**Layer 2 (PROMPT_COMMAND)** is the **structured, searchable index**. A bash profile script (`/etc/profile.d/zoa-audit.sh`) sets `PROMPT_COMMAND` to emit a JSON record after every command:
+
+```json
+{
+  "timestamp": "2026-09-26T16:55:00Z",
+  "sessionId": "task-abc123",
+  "operator": "slopezma",
+  "target": "mc01",
+  "env": "us-east-1",
+  "command": "zoa run get_resource --namespace kube-system --resource deployment/coredns",
+  "exitCode": 0,
+  "workingDir": "/home/sre"
+}
+```
+
+The PROMPT_COMMAND hook requires IAM permissions on the ECS task role (e.g., `logs:PutLogEvents` or `dynamodb:PutItem` depending on the chosen backend). An SRE could technically `unset PROMPT_COMMAND` — but this is detectable: Layer 1 (SSM) records the `unset` command itself, and the sudden absence of Layer 2 events while SSM shows activity is an audit anomaly that can trigger an alert.
+
+**Backend decision (Layer 2) deferred to implementation**: DynamoDB gives consistent query patterns with existing ZOA audit tables; CW Logs gives native Insights queries and cheaper storage for high-volume data. Both support export to S3 for long-term retention and integration with external compliance tools.
+
+**Future RH compliance integration**: Both layers' data can be exported to S3 (CW Logs via subscription filter, DynamoDB via export or stream). From S3, data can feed into Red Hat compliance tooling (RHACS, Splunk, or other SIEM) as requirements crystallize. Keeping data in a standard AWS service now ensures maximum flexibility for gluing to RH tools later.
 
 **Excluded from bastion image (not needed for SRE operations):**
 - `terraform` (infra provisioning belongs in pipelines, not SRE shells)
@@ -281,7 +308,8 @@ Purpose-built container for HyperFleet ZOA (not reusing `rosa-boundary` from ROS
 - `ZOA_TARGET` env var (target identifier: rc, mc01, etc.)
 - SSM Session Manager ready (ECS Exec support)
 - Time-boxed: 4h hard deadline (container exits, not extendable)
-- Session artifacts synced to S3 on exit (SIGTERM handler)
+- SSM session logging to CloudWatch Logs (KMS-encrypted, real-time terminal I/O)
+- PROMPT_COMMAND structured audit (per-command JSON, see session recording section above)
 - Network-isolated: only reaches Lambda Function URLs (via NAT) and EKS API (same VPC, for break-glass only)
 
 Base image: UBI9 (consistent with zoa-lambda and zoa-runner).
@@ -306,7 +334,7 @@ Base image: UBI9 (consistent with zoa-lambda and zoa-runner).
 | Command | Purpose | Endpoint | Audit logged |
 |---|---|---|---|
 | `zoa boundary start --env E --target T` | Create ECS task, wait RUNNING | ZOA Access APIGW | **Yes** |
-| `zoa boundary stop ID` | Graceful stop (S3 sync) | ZOA Access APIGW | **Yes** |
+| `zoa boundary stop ID` | Stop session (immediate `ecs:StopTask`) | ZOA Access APIGW | **Yes** |
 | `zoa boundary join ID` | Reconnect via SSM | ZOA Access APIGW | **Yes** |
 | `zoa boundary list [--env E]` | Active sessions (default `--status active`) | ZOA Access APIGW | No |
 | `zoa boundary sessions [--env E]` | Session history (all statuses, like `zoa runs`) | ZOA Access APIGW | No |
@@ -389,7 +417,7 @@ Extend the existing per-VPC Worker Lambda with a `reaper` scheduled task (EventB
 - 4h hard deadline, not extendable (new container = fresh audit trail)
 - Reaper runs on the same per-VPC Worker Lambda (already has EventBridge schedules for reconciler/GC)
 - IAM: Worker Lambda role needs `ecs:StopTask` + `ecs:DescribeTasks` for local ECS cluster
-- Future enhancement: inactivity-based early termination (query CloudWatch Logs for last SSM event)
+- Future enhancement: inactivity-based early termination (query PROMPT_COMMAND audit for last command timestamp, or CloudWatch Logs for last SSM event)
 
 #### DynamoDB Types
 
@@ -405,7 +433,6 @@ New Go types in `pkg/store/` for `boundary-sessions` table:
 **Session statuses:**
 - `creating` — ECS RunTask called, waiting for RUNNING
 - `active` — container is RUNNING, SRE can join
-- `stopping` — graceful shutdown initiated (S3 sync in progress)
 - `terminated` — container stopped (reason: sre_exit / deadline_exceeded / reaper / error)
 - `failed` — ECS task failed to start
 
@@ -434,10 +461,11 @@ Go interfaces: `Session` struct, `SessionStore` interface with `Put`, `Get`, `Li
 **New module: `terraform/modules/zoa-boundary/`**
 - ECS task definition (Fargate, ZOA Boundary image from ECR)
 - ECS cluster (or reuse existing)
-- IAM task role: `lambda:InvokeFunctionUrl`, `bedrock:InvokeModel` (scoped to Haiku, regional), `ssmmessages:*`, CloudWatch Logs
+- IAM task role: `lambda:InvokeFunctionUrl`, `bedrock:InvokeModel` (scoped to Haiku, regional), `ssmmessages:*`, CloudWatch Logs, `kms:GenerateDataKey`/`kms:Decrypt` (for SSM session encryption)
 - IAM task execution role: ECR pull, CloudWatch Logs
 - Security group: egress to Function URL (443), EKS API (443, future break-glass), AWS services, Bedrock. No inbound.
-- S3 bucket/prefix for session artifact escrow
+- CloudWatch Logs log group for SSM session recording (`/ecs/zoa-boundary/ssm-sessions`), KMS-encrypted
+- KMS key for ECS Exec session encryption and CloudWatch Logs
 - Bedrock scoped to `allowed_bedrock_models` Terraform var (default: Haiku only, per-region)
 
 **Bedrock access control (Claude Code in boundary container):**
