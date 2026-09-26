@@ -294,20 +294,41 @@ Base image: UBI9 (consistent with zoa-lambda and zoa-runner).
 
 #### CLI Session Commands
 
+**Top-level discovery commands** (no boundary needed, not audit-logged):
+
 | Command | Purpose | Endpoint |
 |---|---|---|
 | `zoa environments` | List ZOA-enabled environments (SSM `/zoa/environments`) | SSM (direct) |
-| `zoa targets --env E` | List targets in environment | ZOA Access APIGW |
-| `zoa boundary start --env E --target T` | Create ECS task, wait RUNNING | ZOA Access APIGW |
-| `zoa boundary list --env E` | List sessions (active/stopped) | ZOA Access APIGW |
-| `zoa boundary stop --env E ID` | Graceful stop (S3 sync) | ZOA Access APIGW |
-| `zoa boundary join --env E ID` | Reconnect via SSM | ZOA Access APIGW + SSM |
-| `zoa approve --env E ID` | Approve (stub) | ZOA Access APIGW |
-| `zoa reject --env E ID --reason "..."` | Reject (stub) | ZOA Access APIGW |
+| `zoa targets --env E` | List targets in environment (rc, mc01, mc02...) | ZOA Access APIGW |
+
+**Boundary lifecycle commands** (under `zoa boundary` parent, audit-logged where noted):
+
+| Command | Purpose | Endpoint | Audit logged |
+|---|---|---|---|
+| `zoa boundary start --env E --target T` | Create ECS task, wait RUNNING | ZOA Access APIGW | **Yes** |
+| `zoa boundary stop ID` | Graceful stop (S3 sync) | ZOA Access APIGW | **Yes** |
+| `zoa boundary join ID` | Reconnect via SSM | ZOA Access APIGW | **Yes** |
+| `zoa boundary list [--env E]` | Active sessions (default `--status active`) | ZOA Access APIGW | No |
+| `zoa boundary sessions [--env E]` | Session history (all statuses, like `zoa runs`) | ZOA Access APIGW | No |
+
+**Approval commands** (top-level — approver should NOT need to create a boundary just to approve):
+
+| Command | Purpose | Endpoint | Audit logged |
+|---|---|---|---|
+| `zoa approve ID` | Approve (stub for now — `501 Not Implemented`) | ZOA Access APIGW | **Yes** |
+| `zoa reject ID --reason "..."` | Reject (stub for now) | ZOA Access APIGW | **Yes** |
+
+**Audit logging**: The Access Lambda writes audit entries to the same `audit` DynamoDB table used for TA executions for `start`, `stop`, `join`, `approve`, `reject`. Discovery commands (`environments`, `targets`) and read-only queries (`list`, `sessions`) are NOT audit-logged — they have no side effects and no sensitive data. This keeps audit volume manageable and focused on actionable operations.
 
 `--env` = `deployment_name` from SSM. Also settable via `ZOA_ENV` environment variable (like `ZOA_API_URL` today) so SRE can `export ZOA_ENV=us-east-1` and omit `--env` from subsequent commands. Requires `session-manager-plugin` on laptop.
 
-`zoa approve` and `zoa reject` are prepared as CLI commands in this epic (routes exist on both Access and API Lambda) but return `501 Not Implemented` until the approval workflow epic ships. The commands are included now so the CLI surface is complete and SRE muscle memory can develop early.
+`zoa approve` and `zoa reject` are top-level commands (not under `zoa boundary`) because approval should be frictionless — approver just needs `kinit` → `rh-aws-saml-login` → `zoa approve ID`. Routes exist on both Access and API Lambda but return `501 Not Implemented` until the approval workflow epic ships.
+
+**CLI hierarchy rationale:**
+- `zoa environments` and `zoa targets` are top-level because they're discovery commands SREs use before deciding to create a boundary
+- `zoa boundary *` groups all session lifecycle operations — SRE types `zoa boundary <tab>` and sees all options
+- `zoa boundary sessions` mirrors `zoa runs` for TA execution history — same filter patterns, same table output
+- `zoa approve` / `zoa reject` are top-level because they're part of the approval workflow, not the boundary workflow
 
 **Design decisions:**
 - `zoa boundary start --connect` and `zoa boundary join` both wrap `aws ecs execute-command` under the hood, which requires the **`session-manager-plugin`** binary installed on the SRE's laptop (same dependency as rosa-boundary v1 — this is standard SRE tooling)
