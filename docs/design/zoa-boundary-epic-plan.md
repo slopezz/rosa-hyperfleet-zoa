@@ -37,18 +37,18 @@ sequenceDiagram
     Note over SRE,JA: Authentication (requires RH VPN for kinit only)
     SRE->>JA: kinit + rh-aws-saml-login → Jump Account IAM role
 
-    Note over SRE,PS: Environment autodiscovery (direct SSM read, no Lambda)
-    SRE->>PS: zoa environments → read /zoa/environments
+    Note over SRE,PS: Deployment autodiscovery (direct SSM read, no Lambda)
+    SRE->>PS: zoa targets → read /zoa/deployments
     PS-->>SRE: {us-east-1: apigw_url, us-east-1-xg4y: apigw_url, ...}
 
     Note over SRE,AL: Target discovery (via ZOA Access)
-    SRE->>AGW: zoa targets --region us-east-1 (SigV4, Jump Account role)
+    SRE->>AGW: zoa targets us-east-1 (SigV4, Jump Account role)
     AGW->>AL: GET /targets
     AL->>DDB: read boundary-targets table (RC-local)
     AL-->>SRE: [rc, mc01, mc02]
 
     Note over SRE,ECS: Session creation (Access Lambda creates ECS task)
-    SRE->>AGW: zoa boundary start --region us-east-1 --target mc01
+    SRE->>AGW: zoa session start us-east-1 mc01
     AGW->>AL: POST /sessions/start
     AL->>DDB: write boundary-sessions {taskId, operator, target, deadline}
     AL->>ECS: ecs:RunTask in mc01 VPC (inject ZOA_ENDPOINT, ZOA_TARGET)
@@ -57,7 +57,7 @@ sequenceDiagram
     AL-->>SRE: {taskId, status: active}
 
     Note over SRE,ECS: Interactive session (SSM WebSocket)
-    SRE->>ECS: zoa boundary join ID → aws ecs execute-command (SSM)
+    SRE->>ECS: zoa session join ID → aws ecs execute-command (SSM)
     Note over ECS: SRE inside audited ZOA Boundary container
 
     Note over ECS,EKS: TA execution (from inside container)
@@ -75,7 +75,7 @@ Shows why region pointers live in the Jump Account (CLI needs them before contac
 ```mermaid
 graph TD
     subgraph jumpAccount [Jump Account — thin pointer layer, 1 per env]
-        paramEnvs["/zoa/environments SSM Parameter<br/>{deployment_name: apigw_url}"]
+        paramEnvs["/zoa/deployments SSM Parameter<br/>{deployment_name: apigw_url}"]
     end
 
     subgraph rcAccount [RC Account — full target registry]
@@ -92,8 +92,8 @@ graph TD
         mcPipeline["MC Pipeline"]
     end
 
-    zoaCLI -->|"zoa environments<br/>(direct SSM read)"| paramEnvs
-    zoaCLI -->|"zoa targets --env E<br/>(APIGW → Lambda)"| accessLambda
+    zoaCLI -->|"zoa targets<br/>(direct SSM read)"| paramEnvs
+    zoaCLI -->|"zoa targets &lt;deployment&gt;<br/>(APIGW → Lambda)"| accessLambda
     accessLambda -->|"local read<br/>(same account, no cross-account)"| boundaryTargets
 
     rcPipeline -->|"cross-account ssm:PutParameter"| paramEnvs
@@ -171,11 +171,11 @@ Shows the full lifecycle of a boundary session from creation through termination
 
 ```mermaid
 stateDiagram-v2
-    [*] --> creating: zoa boundary start
+    [*] --> creating: zoa session start
     creating --> active: ECS task RUNNING
     creating --> failed: ECS task failed to start
 
-    active --> terminated: zoa boundary stop
+    active --> terminated: zoa session stop
     active --> terminated: reaper (4h deadline)
 
     failed --> [*]
@@ -205,7 +205,7 @@ stateDiagram-v2
 **What will be delivered:**
 - ZOA Access Lambda (Go, no VPC) + public API Gateway with custom domain per region
 - ZOA Boundary container image (`Containerfile.boundary` in rosa-hyperfleet-zoa) with zoa CLI, aws CLI v2, kubectl, jq, tar, Claude Code (Bedrock)
-- ZOA CLI commands for session management (`zoa regions`, `zoa targets`, `zoa boundary start/stop/list/join`)
+- ZOA CLI commands for discovery (`zoa targets`) and session management (`zoa session start/stop/join/list/history`)
 - SSM Parameter Store autodiscovery in Jump Account (regions, APIGW URLs)
 - Identity bridge: ECS task ARN to SRE identity via DynamoDB
 - DynamoDB `boundary-sessions` table for session state tracking
@@ -303,7 +303,7 @@ CloudWatch agent streams these to a separate log group for structured queries. K
 
 **Why both SSM and auditd?** SSM captures what the SRE **saw** (input + output = forensic replay). auditd captures what the SRE **did** (structured, searchable, no output noise). One answers "show me the exact terminal at 14:32", the other answers "list all kubectl commands slopezma ran today."
 
-**Layer 3 (ZOA DynamoDB)** already exists — every `zoa run`, `zoa boundary start/stop/join`, and future `zoa approve/reject` writes to the `audit` DynamoDB table. This is the application-level trail.
+**Layer 3 (ZOA DynamoDB)** already exists — every `zoa run`, `zoa session start/stop/join`, and future `zoa approve/reject` writes to the `audit` DynamoDB table. This is the application-level trail.
 
 **Future RH compliance integration**: All three layers' data can be exported to S3 (CW Logs via subscription filter, DynamoDB via export or stream). From S3, data can feed into Red Hat compliance tooling (RHACS, Splunk, or other SIEM) as requirements crystallize.
 
@@ -331,48 +331,113 @@ Base image: UBI9 (consistent with zoa-lambda and zoa-runner).
 - EKS API reachable from container (same VPC, SG allows 443 to EKS) — but no EKS Access Entry exists for the task role
 - `kubectl` and `aws eks get-token` are installed — they just need credentials to work
 
-#### CLI Session Commands
+#### CLI Commands
 
-**Top-level discovery commands** (no boundary needed, not audit-logged):
+**Full CLI hierarchy** (grouped in `--help` output, TA commands stay top-level for shortest typing):
+
+```
+$ zoa --help
+
+ZOA — Zero Operator Access CLI
+
+Trusted Actions (inside session — ZOA_API_URL auto-set):
+  run          Execute a Trusted Action
+  runs         List recent executions
+  get          Get execution details
+  output       Show execution output
+  logs         Show execution logs
+  download     Download output file
+  actions      List available Trusted Actions
+  describe     Show TA details
+
+Discovery (from laptop — reads SSM / ZOA Access):
+  targets      List deployments, or targets within a deployment
+
+Sessions (from laptop — manages boundary containers):
+  session      Manage sessions (start, stop, join, list, history)
+
+Break-Glass (future):
+  breakglass   Emergency direct access (request, connect, revoke, list)
+
+Approval:
+  approve      Approve a request
+  reject       Reject a request
+
+Audit:
+  audit        View audit trail (all event types)
+
+Meta:
+  version      Print version info
+  completion   Generate shell completions
+```
+
+**Discovery — `zoa targets`** (positional drill-down, not audit-logged):
+
+`zoa targets` serves two levels. With no args, it lists deployments (from SSM). With a `deployment_name` arg, it lists targets within that deployment (from ZOA Access APIGW → `boundary-targets` DynamoDB):
 
 | Command | Purpose | Endpoint |
 |---|---|---|
-| `zoa environments` | List ZOA-enabled environments (SSM `/zoa/environments`) | SSM (direct) |
-| `zoa targets --env E` | List targets in environment (rc, mc01, mc02...) | ZOA Access APIGW |
+| `zoa targets` | List deployments (`deployment_name` values from SSM `/zoa/deployments`) | SSM (direct) |
+| `zoa targets <deployment>` | List targets in deployment (rc, mc01, mc02) | ZOA Access APIGW |
 
-**Boundary lifecycle commands** (under `zoa boundary` parent, audit-logged where noted):
+Example output:
+
+```
+$ zoa targets
+DEPLOYMENT               REGION      STATUS
+us-east-1                us-east-1   active
+us-east-1-eph-f8d5483c   us-east-1   active
+
+$ zoa targets us-east-1
+TARGET    TYPE    REGION      STATUS
+rc        RC      us-east-1   ready
+mc01      MC      us-east-1   ready
+mc02      MC      us-east-1   ready
+```
+
+`deployment_name` (the positional arg) maps directly to the internal config variable `deployment_name` — equals `aws_region` for normal deployments (e.g., `us-east-1`), `aws_region-eph_prefix` for ephemeral (e.g., `us-east-1-eph-f8d5483c`). The REGION column shows the actual AWS region, which matters when deployment_name ≠ region.
+
+**Session lifecycle — `zoa session`** (audit-logged where noted):
 
 | Command | Purpose | Endpoint | Audit logged |
 |---|---|---|---|
-| `zoa boundary start --env E --target T` | Create ECS task, wait RUNNING | ZOA Access APIGW | **Yes** |
-| `zoa boundary stop ID` | Stop session (immediate `ecs:StopTask`) | ZOA Access APIGW | **Yes** |
-| `zoa boundary join ID` | Reconnect via SSM | ZOA Access APIGW | **Yes** |
-| `zoa boundary list [--env E]` | Active sessions (default `--status active`) | ZOA Access APIGW | No |
-| `zoa boundary sessions [--env E]` | Session history (all statuses, like `zoa runs`) | ZOA Access APIGW | No |
+| `zoa session start <deployment> <target>` | Create ECS task, wait RUNNING | ZOA Access APIGW | **Yes** |
+| `zoa session stop <id>` | Stop session (immediate `ecs:StopTask`) | ZOA Access APIGW | **Yes** |
+| `zoa session join <id>` | Reconnect via SSM | ZOA Access APIGW | **Yes** |
+| `zoa session list` | Active sessions (default `--status active`) | ZOA Access APIGW | No |
+| `zoa session history` | Past sessions (all statuses, like `zoa runs`) | ZOA Access APIGW | No |
 
-**Approval commands** (top-level — approver should NOT need to create a boundary just to approve):
+Positional args for `start`: `<deployment>` = `deployment_name`, `<target>` = target ID (rc, mc01). Also available as flags for scripts: `zoa session start -d us-east-1 -t mc01`.
+
+**Approval commands** (top-level — approver should NOT need to create a session just to approve):
 
 | Command | Purpose | Endpoint | Audit logged |
 |---|---|---|---|
-| `zoa approve ID` | Approve (stub for now — `501 Not Implemented`) | ZOA Access APIGW | **Yes** |
-| `zoa reject ID --reason "..."` | Reject (stub for now) | ZOA Access APIGW | **Yes** |
+| `zoa approve <id>` | Approve (stub for now — `501 Not Implemented`) | ZOA Access APIGW | **Yes** |
+| `zoa reject <id> --reason "..."` | Reject (stub for now) | ZOA Access APIGW | **Yes** |
 
-**Audit logging**: The Access Lambda writes audit entries to the same `audit` DynamoDB table used for TA executions for `start`, `stop`, `join`, `approve`, `reject`. Discovery commands (`environments`, `targets`) and read-only queries (`list`, `sessions`) are NOT audit-logged — they have no side effects and no sensitive data. This keeps audit volume manageable and focused on actionable operations.
+**Unified audit** — `zoa audit` covers ALL event types (TA executions + session lifecycle + future break-glass). Filter by `--type ta|session|breakglass` to narrow scope. Same filter flags as `zoa runs` (`--since`, `--until`, `--operator`, `--status`, `--limit`, `-o json`).
 
-`--env` = `deployment_name` from SSM. Also settable via `ZOA_ENV` environment variable (like `ZOA_API_URL` today) so SRE can `export ZOA_ENV=us-east-1` and omit `--env` from subsequent commands. Requires `session-manager-plugin` on laptop.
+**Audit logging policy**: The Access Lambda writes audit entries to the same `audit` DynamoDB table used for TA executions for `start`, `stop`, `join`, `approve`, `reject`. Discovery (`targets`) and read-only queries (`list`, `history`) are NOT audit-logged — they have no side effects and no sensitive data.
 
-`zoa approve` and `zoa reject` are top-level commands (not under `zoa boundary`) because approval should be frictionless — approver just needs `kinit` → `rh-aws-saml-login` → `zoa approve ID`. Routes exist on both Access and API Lambda but return `501 Not Implemented` until the approval workflow epic ships.
+**Context auto-detection** — the CLI auto-detects where the SRE is:
+- `ZOA_API_URL` set → inside a session (ECS container) → TA commands work directly, discovery/session commands not needed
+- `ZOA_API_URL` not set → on laptop → discovery and session commands resolve APIGW URL from SSM using `ZOA_DEPLOYMENT` env var or positional arg
 
-**CLI hierarchy rationale:**
-- `zoa environments` and `zoa targets` are top-level because they're discovery commands SREs use before deciding to create a boundary
-- `zoa boundary *` groups all session lifecycle operations — SRE types `zoa boundary <tab>` and sees all options
-- `zoa boundary sessions` mirrors `zoa runs` for TA execution history — same filter patterns, same table output
-- `zoa approve` / `zoa reject` are top-level because they're part of the approval workflow, not the boundary workflow
+`ZOA_DEPLOYMENT` env var (settable via `export ZOA_DEPLOYMENT=us-east-1`) eliminates the need for positional args on repeated commands. Like `AWS_REGION` — set once, forget.
+
+`zoa approve` and `zoa reject` are top-level commands (not under `zoa session`) because approval should be frictionless — approver just needs `kinit` → `rh-aws-saml-login` → `zoa approve ID`. Routes exist on both Access and API Lambda but return `501 Not Implemented` until the approval workflow epic ships.
+
+**CLI naming rationale:**
+- **`targets`** (not `environments`): "environment" already means dev/int/stage/prod in the project vocabulary. The SRE selects their environment by authenticating (AWS profile / Jump Account). `targets` answers "what can I operate on?" — works at both levels (deployments and EKS clusters).
+- **`session`** (not `boundary`): "Boundary" is internal project jargon. SREs understand "session" universally (SSH, SSM, tmux). Also avoids tab-completion collision with `breakglass` (both start with `b`).
+- **`session history`** (not `session sessions`): Avoids the awkward noun repetition that `boundary sessions` would have.
+- **Positional args** for `session start`: `zoa session start us-east-1 mc01` reads like English and saves 16 characters vs `--deployment us-east-1 --target mc01`.
+- **TA commands stay top-level**: `zoa run` is 80%+ of CLI usage (inside sessions). No breaking change. Grouped visually in `--help` but flat in command path.
 
 **Design decisions:**
-- `zoa boundary start --connect` and `zoa boundary join` both wrap `aws ecs execute-command` under the hood, which requires the **`session-manager-plugin`** binary installed on the SRE's laptop (same dependency as rosa-boundary v1 — this is standard SRE tooling)
-- `zoa boundary start` flags: `--connect` (auto-join after RUNNING), `--no-wait`, `--timeout` (default 4h)
-- Naming follows kubectl/aws-cli muscle memory patterns
+- `zoa session start --connect` and `zoa session join` both wrap `aws ecs execute-command` under the hood, which requires the **`session-manager-plugin`** binary installed on the SRE's laptop (same dependency as rosa-boundary v1 — this is standard SRE tooling)
+- `zoa session start` flags: `--connect` (auto-join after RUNNING), `--no-wait`, `--timeout` (default 4h)
 
 **Prerequisite**: `session-manager-plugin` must be installed on the SRE's laptop. It handles the WebSocket session protocol for `ecs execute-command`. Install: `brew install --cask session-manager-plugin` (macOS) or RPM (Linux). The CLI should detect its absence and print a clear error message with install instructions.
 
@@ -380,11 +445,11 @@ Base image: UBI9 (consistent with zoa-lambda and zoa-runner).
 
 | Command | Visibility | Ownership enforcement |
 |---|---|---|
-| `zoa boundary list` | **All SREs' sessions** (active and inactive) | None — any SRE can see all sessions for situational awareness (who is connected where) |
-| `zoa boundary stop` | Own sessions only | Server-side: Access Lambda validates `operator == caller` |
-| `zoa boundary join` | Own sessions only | Server-side: Access Lambda validates `operator == caller` |
+| `zoa session list` | **All SREs' sessions** (active and inactive) | None — any SRE can see all sessions for situational awareness (who is connected where) |
+| `zoa session stop` | Own sessions only | Server-side: Access Lambda validates `operator == caller` |
+| `zoa session join` | Own sessions only | Server-side: Access Lambda validates `operator == caller` |
 
-`zoa boundary list` supports filters similar to `zoa runs`: `--status active|terminated|all`, `--target`, `--operator` (filter by SRE username), `--since`, `--before`. Default: `--status active` (show who is currently connected).
+`zoa session list` supports filters similar to `zoa runs`: `--status active|terminated|all`, `--target`, `--operator` (filter by SRE username), `--since`, `--before`. Default: `--status active` (show who is currently connected).
 
 **SRE identity across re-authentication:**
 
@@ -411,7 +476,7 @@ Inside a ZOA Boundary container, SigV4 requests are signed with the ECS task rol
 
 **Current state**: Today the `Operator` field stores the full IAM ARN from SigV4 (e.g., `arn:aws:sts::123:assumed-role/sre-role/slopezma`). The session name portion already carries the SRE identity. With the boundary model, the ARN changes to the ECS task role, so the DynamoDB lookup becomes necessary.
 
-**Identity stability across re-authentication**: The `operator` field must store the **username** (extracted from the SigV4 session name, e.g., `slopezma`), not the full temporary ARN. This ensures that an SRE who re-authenticates to the Jump Account (gets new temporary credentials) can still be matched to their existing boundary sessions and TA executions. The full ARN is stored separately as `operatorARN` for audit/forensic purposes.
+**Identity stability across re-authentication**: The `operator` field must store the **username** (extracted from the SigV4 session name, e.g., `slopezma`), not the full temporary ARN. This ensures that an SRE who re-authenticates to the Jump Account (gets new temporary credentials) can still be matched to their existing sessions and TA executions. The full ARN is stored separately as `operatorARN` for audit/forensic purposes.
 
 **Ownership enforcement**: The per-VPC Lambda and ZOA Access Lambda both compare `operator == caller_session_name` for ownership checks (stop, join). Listing is unrestricted — any SRE can see all sessions.
 
@@ -437,7 +502,7 @@ New Go types in `pkg/store/` for `boundary-sessions` table:
 **Schema:**
 - PK: `sessionId` (ECS task ID)
 - Attributes: `operator`, `operatorARN`, `targetCluster`, `region`, `taskArn`, `ecsCluster`, `status`, `createdAt`, `deadline`, `terminatedAt`, `terminationReason`, `vpcId`
-- GSI: `operator-index` (PK=operator, SK=createdAt) — for `zoa boundary list` filtering by SRE
+- GSI: `operator-index` (PK=operator, SK=createdAt) — for `zoa session list` filtering by SRE
 - TTL: 30 days (session metadata, not long-term audit — the audit table already covers FedRAMP)
 - Optional break-glass fields: `breakglassScope`, `breakglassStatus`, `breakglassExpiresAt` (NULL until break-glass epic)
 
@@ -549,7 +614,7 @@ Three shared IAM roles per Jump Account, assigned to SREs via app-interface RBAC
 
 | Role Name | Who | Permissions (current epic) | Future (approval workflow) |
 |---|---|---|---|
-| `jump-sre` | All SREs | Create/join/stop boundary sessions, execute TAs | Request break-glass, request elevated TAs |
+| `jump-sre` | All SREs | Create/join/stop sessions, execute TAs | Request break-glass, request elevated TAs |
 | `jump-manager` | Team leads, managers | Same as SRE | + Approve/reject SRE requests |
 | `jump-director` | Directors, VP | Same as SRE | + Approve elevated/break-glass requests |
 
@@ -563,13 +628,13 @@ For this epic, all three roles have identical permissions (boundary session mana
 
 | Data | Location | Writer | Reader |
 |---|---|---|---|
-| Environment list + APIGW URLs | Jump Account SSM (`/zoa/environments`) | RC Terraform (cross-account) | CLI directly |
+| Deployment list + APIGW URLs | Jump Account SSM (`/zoa/deployments`) | RC Terraform (cross-account) | CLI directly |
 | Target registry (rc, mc01, VPCs, Function URLs, subnets, task defs) | RC account DynamoDB (`boundary-targets` table) | RC + MC Terraform pipelines (local) | ZOA Access Lambda (local, same account) |
 
-Jump Account stays thin (just environment pointers). All operational detail (VPCs, subnets, SGs, task role ARNs) stays in RC — the ZOA Access Lambda reads it locally without cross-account calls.
+Jump Account stays thin (just deployment pointers). All operational detail (VPCs, subnets, SGs, task role ARNs) stays in RC — the ZOA Access Lambda reads it locally without cross-account calls.
 
 **Parameter layout (Jump Account):**
-- `/zoa/environments` — JSON map keyed by `deployment_name` (unique per deployment within an environment):
+- `/zoa/deployments` — JSON map keyed by `deployment_name` (unique per deployment within an environment):
 
 ```json
 {
@@ -606,17 +671,17 @@ For ephemeral (dev Jump Account), multiple entries coexist:
 - PK: `targetId` (e.g., `rc`, `mc01`)
 - Attributes: `vpcId`, `subnetIds`, `securityGroupId`, `ecsClusterArn`, `taskDefinitionArn`, `functionUrl`, `accountId`, `status` (enabled/disabled)
 - Written by RC and MC Terraform pipelines as part of ZOA module outputs
-- Read by ZOA Access Lambda when creating boundary sessions or listing targets
+- Read by ZOA Access Lambda when creating sessions or listing targets
 
 **Pipeline integration:**
-- RC Terraform: writes `/zoa/environments` entry to Jump Account SSM (cross-account `ssm:PutParameter`)
+- RC Terraform: writes `/zoa/deployments` entry to Jump Account SSM (cross-account `ssm:PutParameter`)
 - RC Terraform: writes RC target entry to `boundary-targets` DynamoDB (local)
 - MC Terraform: writes MC target entries to `boundary-targets` DynamoDB (cross-account via `zoa-data-access` role, same mechanism MCs already use for executions table)
 - Ephemeral teardown: removes entry from Jump Account SSM (cross-account `ssm:PutParameter` — idempotent)
 
 **Cross-account IAM wiring:**
 - Jump Account needs a "pipeline writer" IAM role that RC pipeline roles can assume
-- Permission: `ssm:PutParameter` and `ssm:DeleteParameter` on `/zoa/environments` only
+- Permission: `ssm:PutParameter` and `ssm:DeleteParameter` on `/zoa/deployments` only
 - Trust policy: allow `sts:AssumeRole` from RC pipeline roles across all RC accounts in that environment
 
 **Prerequisites:**
@@ -626,7 +691,7 @@ For ephemeral (dev Jump Account), multiple entries coexist:
 
 **This story can be assigned to a different engineer** — it is IAM/app-interface/infra work, not Go code. It is a **blocker** for CLI autodiscovery and ZOA Access Lambda authentication in int/stage/prod.
 
-**Bootstrapping (dev/ephemeral — no Jump Account needed):** Until Jump Accounts are provisioned, the `/zoa/environments` SSM parameter lives in the **RC account** instead. SREs already have RC credentials (`rrp-rc` profile) for dev/ephemeral work. The CLI reads SSM from whatever credentials are active — it doesn't care which account owns the parameter. The RC Terraform pipeline writes the parameter locally (no cross-account wiring needed). When Jump Accounts arrive, Terraform moves the parameter to the Jump Account and SREs switch to `rh-aws-saml-login` profiles. This means **story 3 does NOT block stories 1+2 for dev/ephemeral development and testing**.
+**Bootstrapping (dev/ephemeral — no Jump Account needed):** Until Jump Accounts are provisioned, the `/zoa/deployments` SSM parameter lives in the **RC account** instead. SREs already have RC credentials (`rrp-rc` profile) for dev/ephemeral work. The CLI reads SSM from whatever credentials are active — it doesn't care which account owns the parameter. The RC Terraform pipeline writes the parameter locally (no cross-account wiring needed). When Jump Accounts arrive, Terraform moves the parameter to the Jump Account and SREs switch to `rh-aws-saml-login` profiles. This means **story 3 does NOT block stories 1+2 for dev/ephemeral development and testing**.
 
 **Repos**: `rosa-hyperfleet` (Terraform pipeline step, Jump Account IAM module, DynamoDB table)
 
@@ -659,7 +724,7 @@ For ephemeral (dev Jump Account), multiple entries coexist:
 - **Update `docs/design/zoa-architecture.md`** (rosa-hyperfleet): Move ZOA Access Lambda, rosa-boundary Integration, and Break-Glass sections from "Future Considerations" to the main body. Update architecture diagrams to show boundary as deployed (remove `PLANNED` labels).
 - **Update `README.md`** (rosa-hyperfleet-zoa): Update architecture diagram to show boundary as deployed. Remove `TEMPORARY` direct laptop path.
 - **New: `docs/boundary.md`** (rosa-hyperfleet-zoa): ZOA Boundary user guide — how to start/stop/join sessions, autodiscovery, troubleshooting, container tooling reference.
-- **Update `docs/cli-reference.md`** (rosa-hyperfleet-zoa): Add `zoa regions`, `zoa targets`, `zoa boundary` command family.
+- **Update `docs/cli-reference.md`** (rosa-hyperfleet-zoa): Add `zoa targets` discovery and `zoa session` command family.
 - **New: `docs/sop/boundary-troubleshooting.md`** (rosa-hyperfleet): SOP for stuck sessions, reaper failures, Jump Account access issues.
 
 **Repos**: `rosa-hyperfleet`, `rosa-hyperfleet-zoa`
@@ -676,7 +741,7 @@ For ephemeral (dev Jump Account), multiple entries coexist:
 - **Identity bridge**: verify TA executions from boundary container are attributed to correct SRE
 - **Reaper**: verify expired sessions are terminated
 - **Region/target autodiscovery**: verify CLI can discover regions and targets
-- **Cross-account**: verify MC boundary sessions work (Access Lambda creates task in MC VPC)
+- **Cross-account**: verify MC sessions work (Access Lambda creates task in MC VPC)
 - **Negative tests**: unauthorized caller rejected, wrong Jump Account role rejected, non-creator cannot join/stop
 
 Wire into CI: `openshift/release` Prow job configuration for boundary e2e (may need separate from existing ZOA e2e due to Jump Account dependency).
@@ -687,7 +752,7 @@ Wire into CI: `openshift/release` Prow job configuration for boundary e2e (may n
 
 ### 7. Observability — ZOA Access Lambda + Boundary Sessions
 
-**Summary**: EMF metrics, alerting rules, and Grafana dashboard panels for ZOA Access Lambda and boundary sessions
+**Summary**: EMF metrics, alerting rules, and Grafana dashboard panels for ZOA Access Lambda and sessions
 
 **Description**: Extend the existing ZOA observability stack (EMF -> CloudWatch -> YACE -> Prometheus -> Thanos -> Grafana) to cover the new components. Mirrors the pattern from [ROSAENG-65234](https://redhat.atlassian.net/browse/ROSAENG-65234).
 
@@ -821,7 +886,7 @@ This gives us audit AND authorization information from SigV4 alone — no LDAP l
 
 The `/approve/{id}` and `/reject/{id}` routes are included in **both** the `access` and `api` handler modes from day one, even though the approval workflow is a separate epic. This ensures:
 
-- **No boundary required to approve**: An approver only needs `kinit` → `rh-aws-saml-login` → `zoa approve <id> --region R` from their laptop. The request goes through ZOA Access APIGW. No ECS task creation, no SSM session — minimum friction.
+- **No session required to approve**: An approver only needs `kinit` → `rh-aws-saml-login` → `zoa approve <id>` from their laptop. The request goes through ZOA Access APIGW. No ECS task creation, no SSM session — minimum friction.
 - **Approve from inside boundary too**: If an SRE is already inside a boundary container and a peer requests approval, they can approve from there via the per-VPC API Lambda. Same code, same DynamoDB write.
 - **Reconciler picks up approvals**: The per-VPC Worker Lambda reconciler detects `status=approved` on the next tick and dispatches the execution. The approval writer (Access or API Lambda) does NOT execute TAs — it only changes state in DynamoDB.
 
@@ -835,7 +900,7 @@ Break-glass is a separate epic, but the boundary container and Terraform must be
 
 For **kube break-glass** (kube-read / kube-write / kube-admin):
 1. SRE requests: `zoa breakglass request --scope kube-write`
-2. Approver approves from laptop: `zoa approve <id> --region R`
+2. Approver approves from laptop: `zoa approve <id>`
 3. Per-VPC Lambda reconciler creates an EKS Access Entry for a break-glass IAM role, mapped to a pre-deployed ClusterRoleBinding (e.g., `breakglass-write` ClusterRole)
 4. SRE activates: `zoa breakglass connect <id>` — CLI or Lambda generates a kubeconfig (EKS endpoint + CA from config, token via `aws eks get-token` using the break-glass role) and writes it to `~/.kube/config`
 5. SRE types `kubectl get pods` — it just works
@@ -876,6 +941,6 @@ A future hardening story could place a Private API Gateway with VPC Endpoint in 
 3. **Custom domain DNS**: Who owns the DNS zone for the APIGW custom domains? Route53 hosted zone delegation needed for API Gateway custom domains (e.g., `zoa-access.us-east-1.int0.rosa.devshift.net`).
 4. **Break-glass interaction**: The reaper and the boundary container design should account for future break-glass EKS access entries. Not implementing break-glass in this epic, but IAM and network design must not preclude it.
 5. **Bedrock model availability per region**: Not all Claude models are available in all AWS regions. Need to verify Haiku availability in each HyperFleet deployment region and adjust `allowed_bedrock_models` accordingly.
-6. **SSM Session Manager plugin**: SREs need `session-manager-plugin` installed on their laptops for `zoa boundary join`. Is this already standard SRE tooling? (It is for rosa-boundary v1.)
+6. **SSM Session Manager plugin**: SREs need `session-manager-plugin` installed on their laptops for `zoa session join`. Is this already standard SRE tooling? (It is for rosa-boundary v1.)
 7. **rh-aws-saml-login session name stability**: Does `rh-aws-saml-login` always use the Kerberos principal (e.g., `slopezma`) as the STS session name? If it uses something else (random string, timestamp), we need an alternative identity anchor for ownership checks across re-authentications. This is critical for the identity bridge design.
 8. **Ephemeral SSM parameter lifecycle**: In the dev Jump Account, ephemeral environment entries must be reliably cleaned up on teardown. If an ephemeral teardown fails or is abandoned, stale entries will accumulate. The reaper or a separate GC mechanism may need to detect and clean orphaned entries.
