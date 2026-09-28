@@ -193,42 +193,56 @@ stateDiagram-v2
     end note
 ```
 
-## Epic Description (for ROSAENG-60291)
+## Jira Content
 
-### Proposed Title
-**ZOA Boundary: Audited SRE Access Containers + ZOA Access Lambda**
+### Epic: ROSAENG-60291
 
-### Proposed Description Structure (matching ROSAENG-65229 format)
+**Title**: ZOA Boundary: Audited SRE Access Containers + ZOA Access Lambda
 
-**TL;DR**: Today SREs call per-VPC Lambda Function URLs directly from their laptop — a temporary bootstrapping path that bypasses session auditing, network isolation, and the identity bridge needed for FedRAMP compliance. This epic delivers the target ZOA access model: SREs authenticate via their AWS Central Account, autodiscover available deployments/targets via SSM Parameter Store, and create time-boxed ECS Fargate containers ("ZOA Boundary") placed inside target VPCs. All TA execution happens exclusively from within these containers. The ZOA Access Lambda (public API Gateway, no VPC attachment) handles session lifecycle and approval routing. The direct laptop-to-Function-URL path is removed once boundary containers are operational.
+**Summary**: Deliver the target ZOA access model — SREs authenticate via their AWS Central Account, autodiscover deployments/targets, and create time-boxed ECS Fargate containers ("ZOA Boundary") placed inside target VPCs. All TA execution happens exclusively from within these containers. The ZOA Access Lambda (public API Gateway, no VPC attachment) handles session lifecycle and approval routing. Replaces the temporary direct laptop-to-Function-URL path.
 
-**What will be delivered:**
-- ZOA Access Lambda (Go, no VPC) + public API Gateway with custom domain per region
-- ZOA Boundary container image (`Containerfile.boundary` in rosa-hyperfleet-zoa) with zoa CLI, aws CLI v2, kubectl, jq, tar, Claude Code (Bedrock)
-- ZOA CLI commands for discovery (`zoa targets`) and session management (`zoa session start/stop/join/list/history`)
-- SSM Parameter Store autodiscovery in Central Account (deployments, APIGW URLs)
-- Identity bridge: ECS task ARN to SRE identity via DynamoDB
-- DynamoDB `boundary-sessions` table for session state tracking
-- Boundary session reaper (Lambda or EventBridge-triggered GC for 4h timeout)
-- Terraform modules: `zoa-access` (Lambda + APIGW), `zoa-boundary` (ECS task definition, IAM, SG)
-- Konflux pipeline for ZOA Boundary container image
-- Per-region pipeline step to publish metadata to Central Account SSM Parameter Store
-- Full observability stack: EMF metrics, YACE scrape, alerting rules, recording rules, Grafana dashboard
-- Documentation (architecture, CLI reference, SRE runbook)
-- E2E testing for boundary session lifecycle
-- Removal of direct laptop-to-Function-URL temporary path (bastion stays until break-glass epic)
+**Acceptance Criteria**:
+
+1. SRE can run `zoa targets` from laptop and see all available deployments (from SSM `/zoa/deployments`)
+2. SRE can run `zoa targets <deployment>` and see all targets (rc, mc01, mc02) within that deployment
+3. SRE can run `zoa session start <deployment> <target>` and get an interactive shell inside a boundary container in the target VPC
+4. SRE can execute TAs (`zoa run`) from inside the boundary container against the target cluster
+5. Every TA execution from a boundary container is attributed to the originating SRE (identity bridge: ECS task ARN → DynamoDB → SRE username)
+6. Sessions are time-boxed (4h default) and auto-terminated by the reaper
+7. SSM session logging captures full terminal I/O to CloudWatch Logs (KMS-encrypted)
+8. `zoa session list` shows all active sessions across SREs; `zoa session stop` and `zoa session join` enforce ownership
+9. `zoa audit` shows unified audit trail across TA executions and session lifecycle events
+10. All infrastructure is Terraform-managed (zoa-access, zoa-boundary modules) and GitOps-deployed
+11. Boundary container image is Konflux-built with Enterprise Contract
+12. Observability stack covers Access Lambda and boundary sessions (metrics, alerts, dashboards)
+13. E2E tests validate session lifecycle, identity bridge, reaper, and negative cases
+14. Architecture documentation, CLI reference, and SRE runbook are published
+15. Approve/reject routes exist on both Access and API Lambda (stub `501` — approval workflow is a separate epic)
+16. Container and infra are prepared for future break-glass (kubectl, aws CLI installed; EKS SG egress open; `breakglass_role_arns` variable reserved)
 
 ---
 
-## Child Issues (8 stories)
+## Child Issues (6 stories)
 
 ### 1. ZOA Boundary Core (rosa-hyperfleet-zoa)
 
-**Summary**: Access Lambda handler mode, boundary container image, CLI session commands, identity bridge, reaper, and DynamoDB types — all Go code in the ZOA repo
+**Title**: ZOA Boundary Core — Access Lambda, boundary container, CLI, identity bridge, reaper
 
-**Description**: Single PR delivering the complete ZOA Boundary implementation in `rosa-hyperfleet-zoa`. This merges what would otherwise be separate stories into one integrated deliverable because all components must be developed and tested together — there is no useful intermediate state.
+**Summary**: The centrepiece of the epic. Complete ZOA Boundary Go implementation in `rosa-hyperfleet-zoa`. Adds `HANDLER_MODE=access` as a third Lambda handler mode — public API Gateway entry point for session lifecycle (`/sessions/start`, `/sessions/stop/{id}`, `/sessions`, `/targets`) and future approval routing (`/approve/{id}`, `/reject/{id}`). Builds the boundary container image (`Containerfile.boundary`) — a purpose-built UBI9 image with zoa CLI, aws CLI v2, kubectl, oc, k9s, Claude Code (Bedrock), SSM session logging, and auditd-based structured command audit. Implements the full CLI surface: `zoa targets` (two-level positional autodiscovery from SSM → Access Lambda), `zoa session start/stop/join/list/history` (boundary lifecycle), and `zoa audit` (unified trail across TAs + sessions). Solves the identity bridge problem — resolving ECS task ARN back to the originating SRE via `boundary-sessions` DynamoDB lookup, so every TA execution from a shared container role is attributed to the correct individual. Extends the per-VPC Worker Lambda with a reaper scheduled task that auto-terminates sessions past the 4h deadline. Single integrated deliverable — all components must be developed and tested together, there is no useful intermediate state.
 
-**Scope (previously stories 1, 2, 3, 5, 6, 7):**
+**Acceptance Criteria**:
+1. `HANDLER_MODE=access` is a third Lambda handler mode (alongside `api` and `worker`) with routes for session management, target listing, and approval stubs
+2. `Containerfile.boundary` builds a UBI9 image with zoa CLI, aws CLI v2, kubectl, oc, jq, yq, Claude Code (Bedrock backend) — minimal attack surface
+3. `zoa targets` lists deployments from SSM; `zoa targets <deployment>` lists targets from ZOA Access Lambda
+4. `zoa session start/stop/join/list/history` manages boundary container lifecycle with SigV4 auth
+5. `zoa audit` shows unified audit trail (TA executions + session lifecycle) with `--type` filter
+6. Identity bridge resolves ECS task ARN → SRE username via `boundary-sessions` DynamoDB lookup
+7. Reaper (Worker Lambda scheduled task) terminates sessions past 4h deadline
+8. `zoa approve` / `zoa reject` routes return `501 Not Implemented` on both Access and API Lambda
+9. All new code has unit tests; conformance test updated for new handler mode
+10. `make all` passes (verify → test → build)
+
+**Repos**: `rosa-hyperfleet-zoa`
 
 #### Access Lambda — `HANDLER_MODE=access` (third mode)
 
@@ -258,21 +272,27 @@ Resource-based policy: ONLY Central Account roles (one per environment: dev, int
 
 #### Boundary Container Image — `Containerfile.boundary`
 
-Purpose-built container for HyperFleet ZOA (not reusing `rosa-boundary` from ROSA v1 — that image is tightly coupled to OCM, Backplane, and ROSA v1 credential flows).
+Purpose-built container for HyperFleet ZOA. Built from within the `rosa-hyperfleet-zoa` repo alongside the Lambda and runner images — same build pipeline, same base image (UBI9), same release cycle. This ensures the boundary container always ships a zoa CLI binary that matches the Lambda it talks to, avoiding version skew between CLI and API. The tooling set is tailored to HyperFleet's serverless architecture (Lambda Function URLs, SigV4 auth, EKS-only targets) rather than the OCM/Backplane ecosystem.
 
-**Pre-installed tooling (superset of current bastion `platform-image/Dockerfile` tools):**
-- `zoa` CLI (built from same repo)
+**Pre-installed tooling (minimum attack surface — every binary is auditable):**
+- `zoa` CLI (built from same repo, version-matched to Lambda)
 - AWS CLI v2
 - `kubectl`
-- `helm` (inspect Helm releases on target clusters)
-- `k9s` (TUI for k8s — SRE productivity)
-- `stern` (multi-pod log tailing)
 - `oc` (OpenShift CLI — must-gather, adm inspect)
 - `yq` (YAML processing)
 - `jq`, `tar`, `gzip`, `unzip`, `zip`
-- `vim`, `less`, `git`, `procps-ng` (ps), `bind-utils` (dig/nslookup), `findutils`, `which`
+- `vim`, `less`
+- `procps-ng` (ps — process debugging)
+- `bind-utils` (dig/nslookup — VPC DNS troubleshooting)
 - Claude Code (Amazon Bedrock integration)
 - `auditd` preferred for structured command audit (see session recording section below)
+
+**Deliberately excluded** (minimal attack surface — additional tools can be added via Containerfile PR if needed):
+- `curl`, `wget` — prevents downloading arbitrary binaries into the container
+- `helm`, `k9s`, `stern` — `kubectl` covers the same ground; add if SREs request
+- `git` — nothing to clone inside a boundary session
+- `terraform`, `skopeo`, `python3` — pipeline/build tools, not SRE operations
+- `tmux` — single-session container, no multiplexing needed
 
 **Session recording (three-layer audit, no EFS, no S3 workspace sync):**
 
@@ -284,7 +304,7 @@ Based on the [original architecture design](https://gist.github.com/slopezz/ffda
 | **2. auditd** (preferred) or PROMPT_COMMAND (fallback) | `auditd` kernel-level `execve` interception, targeted rules for `kubectl`, `zoa`, `aws`, `oc` | Per-binary execution: which command was invoked, arguments, exit code | CloudWatch Logs (`/ecs/zoa-boundary/commands`) via CloudWatch agent | Yes — structured fields, SQL-like queries |
 | **3. ZOA DynamoDB audit** | Application-level (already exists) | TA executions, session start/stop/join, approvals | DynamoDB `audit` table (existing) | Yes — `zoa audit` CLI |
 
-**Layer 1 (SSM)** is zero-effort — configure `execute_command_configuration` on the ECS cluster with a CW Logs log group and KMS key (same pattern as rosa-boundary v1). Every `ecs execute-command` session streams terminal I/O in real-time. This is the **immutable FedRAMP baseline** — complete evidence of everything that happened, including all command output.
+**Layer 1 (SSM)** is zero-effort — configure `execute_command_configuration` on the ECS cluster with a CW Logs log group and KMS key (standard ECS Exec pattern). Every `ecs execute-command` session streams terminal I/O in real-time. This is the **immutable FedRAMP baseline** — complete evidence of everything that happened, including all command output.
 
 **Layer 2 (auditd — preferred)** intercepts `execve` syscalls at the kernel level. Targeted rules capture only security-relevant binaries:
 
@@ -297,7 +317,7 @@ Based on the [original architecture design](https://gist.github.com/slopezz/ffda
 
 CloudWatch agent streams these to a separate log group for structured queries. Key advantage over PROMPT_COMMAND: auditd catches commands from scripts, pipes, and sub-processes — not just what the SRE types at the prompt. Much harder to evade (kernel-level vs bash-level).
 
-**⚠️ Fargate validation required**: `auditd` needs `CAP_AUDIT_WRITE` (usually available on Fargate) and `CAP_AUDIT_CONTROL` (for rule configuration — **may be restricted**). Must validate early in implementation. rosa-boundary v1 includes auditd in its Containerfile — check if it's actually functional on Fargate.
+**⚠️ Fargate validation required**: `auditd` needs `CAP_AUDIT_WRITE` (usually available on Fargate) and `CAP_AUDIT_CONTROL` (for rule configuration — **may be restricted**). Must validate early in implementation. If not available, fall back to PROMPT_COMMAND (Layer 2 fallback).
 
 **Fallback (PROMPT_COMMAND)**: If auditd is blocked on Fargate, a bash profile script (`/etc/profile.d/zoa-audit.sh`) sets `PROMPT_COMMAND` to emit a JSON record after every command. Covers top-level shell commands only (not sub-processes). SRE can `unset PROMPT_COMMAND` — but SSM (Layer 1) records the `unset` itself, and the gap is detectable.
 
@@ -436,7 +456,7 @@ Positional args for `start`: `<deployment>` = `deployment_name`, `<target>` = ta
 - **TA commands stay top-level**: `zoa run` is 80%+ of CLI usage (inside sessions). No breaking change. Grouped visually in `--help` but flat in command path.
 
 **Design decisions:**
-- `zoa session start --connect` and `zoa session join` both wrap `aws ecs execute-command` under the hood, which requires the **`session-manager-plugin`** binary installed on the SRE's laptop (same dependency as rosa-boundary v1 — this is standard SRE tooling)
+- `zoa session start --connect` and `zoa session join` both wrap `aws ecs execute-command` under the hood, which requires the **`session-manager-plugin`** binary installed on the SRE's laptop (standard SRE tooling, already required for HyperFleet bastion access)
 - `zoa session start` flags: `--connect` (auto-join after RUNNING), `--no-wait`, `--timeout` (default 4h)
 
 **Prerequisite**: `session-manager-plugin` must be installed on the SRE's laptop. It handles the WebSocket session protocol for `ecs execute-command`. Install: `brew install --cask session-manager-plugin` (macOS) or RPM (Linux). The CLI should detect its absence and print a clear error message with install instructions.
@@ -520,11 +540,22 @@ Go interfaces: `Session` struct, `SessionStore` interface with `Put`, `Get`, `Li
 
 ### 2. ZOA Boundary Infrastructure (rosa-hyperfleet)
 
-**Summary**: Terraform modules for ZOA Access Lambda, API Gateway, ECS task definitions, DynamoDB tables, IAM, security groups, and all infrastructure wiring
+**Title**: ZOA Boundary Infrastructure — Terraform modules, SSM autodiscovery, DynamoDB, IAM
 
-**Description**: Single PR delivering all Terraform and ArgoCD changes in `rosa-hyperfleet`. Worked in parallel with story 1 (ZOA repo) — both needed to test anything end-to-end.
+**Summary**: Complete AWS infrastructure for the ZOA Boundary deployment model — two new Terraform modules, DynamoDB tables, SSM autodiscovery, and cross-account IAM wiring. `terraform/modules/zoa-access/` deploys the Access Lambda behind a regional public API Gateway with custom domain, WAF (IP/geo rules), and Route53 DNS. `terraform/modules/zoa-boundary/` deploys the ECS Fargate task definition with IAM roles scoped to Function URL invocation + Bedrock (Haiku only, regional), security group (egress to Lambda Function URL via NAT + EKS API for future break-glass), CloudWatch Logs for SSM session recording (KMS-encrypted), and KMS key. Creates `boundary-sessions` and `boundary-targets` DynamoDB tables with GSIs for operator-based queries and TTL for automatic cleanup. Configures SSM Parameter Store autodiscovery in the Central Account (cross-account `ssm:PutParameter` from RC pipeline role) — for dev/ephemeral, SSM lives in the RC account to avoid cross-account dependency. Wires cross-account IAM: Access Lambda `sts:AssumeRole` into MC accounts for `ecs:RunTask`; MC boundary task role added to MC Lambda resource-based policy. Extends Worker Lambda IAM with `ecs:StopTask`/`ecs:DescribeTasks` and adds reaper EventBridge schedule. Worked in parallel with Story 1 — both needed to test anything end-to-end.
 
-**Scope (previously stories 6, 8):**
+**Acceptance Criteria**:
+1. `terraform/modules/zoa-access/` deploys: API Gateway (regional, public), Lambda (`HANDLER_MODE=access`), WAF, custom domain, Route53 record
+2. `terraform/modules/zoa-boundary/` deploys: ECS task definition (Fargate), IAM task role (Function URL + Bedrock + SSM + CW Logs), security group, CloudWatch Logs log group (KMS-encrypted), KMS key
+3. `boundary-sessions` and `boundary-targets` DynamoDB tables created with GSIs and TTL
+4. SSM `/zoa/deployments` parameter written to Central Account (or RC account for dev/ephemeral) by RC Terraform pipeline
+5. Cross-account IAM: Access Lambda can `ecs:RunTask` in MC accounts; MC boundary task role is permitted caller on MC Lambda Function URL
+6. Bedrock IAM scoped to `allowed_bedrock_models` Terraform var (default: Haiku only, regional)
+7. Worker Lambda has `ecs:StopTask` + `ecs:DescribeTasks` IAM and reaper EventBridge schedule
+8. `terraform validate` and `terraform plan` pass; `make pre-push` passes
+9. Ephemeral environment deploys end-to-end (RC + MC)
+
+**Description**:
 
 **New module: `terraform/modules/zoa-access/`**
 - API Gateway (regional, REST/HTTP, public)
@@ -561,8 +592,6 @@ arn:aws:bedrock:${region}::foundation-model/anthropic.claude-3-5-haiku-*
 arn:aws:bedrock:${region}:*:inference-profile/${region}.anthropic.claude-3-5-haiku-*
 ```
 
-Note: rosa-boundary v1 uses a wide-open policy (`arn:aws:bedrock:*:*:foundation-model/*` — all models, all regions). ZOA Boundary should be tighter from day one.
-
 **New DynamoDB tables in `terraform/modules/zoa/`:**
 - `boundary-sessions` — PK: `sessionId`, GSI: `operator-index`, TTL: 30 days
 - `boundary-targets` — PK: `targetId`, attributes: `vpcId`, `subnetIds`, `securityGroupId`, etc.
@@ -576,42 +605,9 @@ Note: rosa-boundary v1 uses a wide-open policy (`arn:aws:bedrock:*:*:foundation-
 - ZOA Access Lambda `sts:AssumeRole` into MC account for `ecs:RunTask`
 - MC boundary task role added to MC per-VPC Lambda resource policy
 
-**Repo**: `rosa-hyperfleet`
+#### SSM Parameter Store Autodiscovery (Central Account)
 
----
-
-### 3. Central Account SSM + Permission Restriction
-
-**Summary**: SSM Parameter Store autodiscovery in the existing Central Account, and future permission restriction for SRE roles
-
-**Description**: Configure SSM Parameter Store for CLI autodiscovery of ZOA endpoints in the **existing Central Account** (one per environment), and plan the future permission restriction that narrows SRE access from admin-like to ZOA-only.
-
-**Central Account — already exists, no provisioning needed:**
-
-SREs already access a **Central Account** (one per environment: dev, int, stage) via app-interface. Today's flow:
-1. SRE runs `rh-aws-saml-login` → gets a role in the Central Account
-2. From the Central Account, SRE does `sts:AssumeRole` to switch into RC/MC accounts (currently with admin-like permissions)
-
-This epic adds SSM Parameter Store to the Central Account for ZOA CLI autodiscovery. The Central Account is the right place because the CLI needs deployment pointers **before** contacting any ZOA service — SREs already have credentials here.
-
-**Single role, LDAP for approvals:**
-
-All SREs get the **same IAM role** in the Central Account — no tiered roles needed now. The future approval workflow will use **LDAP group membership** (not IAM role tiers) to determine who can approve what. This means:
-- No `jump-sre`, `jump-manager`, `jump-director` role differentiation
-- One shared role (whatever app-interface already provides) is sufficient
-- Approval authorization will query LDAP at request time: "Is this SRE in the `zoa-approvers` group?"
-
-SigV4 ARN format: `arn:aws:sts::CENTRAL_ACCOUNT:assumed-role/sre-role/slopezma`
-- `sre-role` — the existing shared IAM role (same for all SREs)
-- `slopezma` — stable SRE identity from Kerberos principal via SAML (used for audit attribution and ownership checks)
-
-**Future permission restriction (not this epic — separate story):**
-
-Today SREs have admin-like permissions when they switch-role from Central to RC/MC accounts. The ZOA Boundary model restricts this:
-- **Current**: Central Account → `sts:AssumeRole` → RC/MC (admin-like)
-- **Future**: Central Account → restricted to SSM read (`/zoa/deployments`) + ZOA Access APIGW invoke only. No more direct switch-role to RC/MC from the SRE's laptop.
-
-This restriction is enforced by narrowing the app-interface role permissions in the Central Account (story 8), not by provisioning new accounts.
+SREs already access a **Central Account** (one per environment: dev, int, stage) via app-interface. This story adds SSM Parameter Store for ZOA CLI autodiscovery. The Central Account is the right place because the CLI needs deployment pointers **before** contacting any ZOA service — SREs already have credentials here.
 
 **Two-layer discovery architecture:**
 
@@ -668,81 +664,57 @@ For ephemeral (dev Central Account), multiple entries coexist:
 - MC Terraform: writes MC target entries to `boundary-targets` DynamoDB (cross-account via `zoa-data-access` role, same mechanism MCs already use for executions table)
 - Ephemeral teardown: removes entry from Central Account SSM (cross-account `ssm:PutParameter` — idempotent)
 
-**Cross-account IAM wiring:**
+**Cross-account IAM wiring (Central Account):**
 - Central Account needs a "pipeline writer" IAM role that RC pipeline roles can assume
 - Permission: `ssm:PutParameter` and `ssm:DeleteParameter` on `/zoa/deployments` only
 - Trust policy: allow `sts:AssumeRole` from RC pipeline roles across all RC accounts in that environment
 
-**Prerequisites:**
-- Cross-account IAM role in Central Account allowing `ssm:PutParameter` from RC pipeline role
-- app-interface role already exists — no new provisioning needed
+**Bootstrapping (dev/ephemeral):** For dev/ephemeral, the `/zoa/deployments` SSM parameter can live in the **RC account** instead of the Central Account. SREs already have RC credentials (`rrp-rc` profile) for dev/ephemeral work. The CLI reads SSM from whatever credentials are active — it doesn't care which account owns the parameter. The RC Terraform pipeline writes the parameter locally (no cross-account wiring needed). This means **Central Account cross-account wiring does NOT block stories 1+2 for dev/ephemeral development and testing**.
 
-**This story can be assigned to a different engineer** — it is IAM/app-interface/infra work, not Go code. It is a **blocker** for CLI autodiscovery and ZOA Access Lambda authentication in int/stage/prod.
-
-**Bootstrapping (dev/ephemeral):** For dev/ephemeral, the `/zoa/deployments` SSM parameter can live in the **RC account** instead of the Central Account. SREs already have RC credentials (`rrp-rc` profile) for dev/ephemeral work. The CLI reads SSM from whatever credentials are active — it doesn't care which account owns the parameter. The RC Terraform pipeline writes the parameter locally (no cross-account wiring needed). This means **story 3 does NOT block stories 1+2 for dev/ephemeral development and testing**.
-
-**Repos**: `rosa-hyperfleet` (Terraform pipeline step, Central Account IAM role, DynamoDB table)
+**Repo**: `rosa-hyperfleet`
 
 ---
 
-### 4. Konflux Pipeline — ZOA Boundary Image
+### 3. Konflux Pipeline — ZOA Boundary Image
 
-**Summary**: Konflux build pipeline for ZOA Boundary container image
+**Title**: Konflux Pipeline — ZOA Boundary container image build and supply chain
 
-**Description**: Register `zoa-boundary` as a new Konflux Component alongside existing `zoa-lambda` and `zoa-runner`:
+**Summary**: Onboard the ZOA Boundary container image into the Konflux supply chain. Register `zoa-boundary` as a new Konflux Component alongside existing `zoa-lambda` and `zoa-runner` — same pattern, separate image. Create PR and push Tekton pipelines (`.tekton/zoa-boundary-pull-request.yaml` and `.tekton/zoa-boundary-push.yaml`), `IntegrationTestScenario` for Enterprise Contract validation, and `ImagesRepository` for Quay push (`quay.io/redhat-user-workloads/rosa-tenant/zoa-boundary:<commit-sha>`). Add skopeo mirror step in `rosa-hyperfleet` to copy from Quay to ECR (same mechanism as zoa-lambda/zoa-runner). Update MintMaker/renovate config for grouped dependency updates.
+
+**Acceptance Criteria**:
+1. `zoa-boundary` Konflux Component registered with `ImagesRepository` and `IntegrationTestScenario`
+2. PR pipeline (`.tekton/zoa-boundary-pull-request.yaml`) builds and validates on every PR
+3. Push pipeline (`.tekton/zoa-boundary-push.yaml`) builds, pushes to Quay, and mirrors to ECR
+4. Enterprise Contract passes (UBI9 base, no critical CVEs)
+5. MintMaker/renovate config updated for `zoa-boundary` dependencies
+
+**Description**: Register `zoa-boundary` as a new Konflux Component:
 
 - `Containerfile.boundary` in `rosa-hyperfleet-zoa`
 - UBI9 base image (consistent with other ZOA images)
-- IntegrationTestScenario (Enterprise Contract)
 - Push to Quay: `quay.io/redhat-user-workloads/rosa-tenant/zoa-boundary:<commit-sha>`
 - Skopeo mirror to ECR (same pipeline step as zoa-lambda/zoa-runner)
-- `.tekton/zoa-boundary-pull-request.yaml` and `.tekton/zoa-boundary-push.yaml`
-- MintMaker/renovate config updated
 
-**Repo**: `rosa-hyperfleet-zoa` (Containerfile + Tekton), `rosa-hyperfleet` (ECR + skopeo mirror)
+**Repos**: `rosa-hyperfleet-zoa` (Containerfile + Tekton), `rosa-hyperfleet` (ECR + skopeo mirror)
 
 ---
 
-### 5. Documentation
+### 4. Observability — ZOA Access Lambda + Boundary Sessions
 
-**Summary**: Architecture docs, CLI reference, and SRE runbook for ZOA Boundary
+**Title**: ZOA Boundary Observability — metrics, alerts, dashboards
 
-**Description**: Documentation deliverables:
+**Summary**: Extend the ZOA observability stack (EMF → CloudWatch → YACE → Prometheus → Thanos → Grafana) to cover the ZOA Access Lambda and boundary sessions. Mirrors the pattern from [ROSAENG-65234](https://redhat.atlassian.net/browse/ROSAENG-65234). Emit CloudWatch Embedded Metric Format (EMF) metrics from the Access Lambda for session lifecycle events (created, terminated, duration, active gauge), API traffic (request count, latency, errors), and identity bridge health (lookup latency, failures). Configure YACE CloudWatch Exporter scrape jobs for the `ZOA-Access` custom namespace (RC only) and ECS task metrics (CPU, memory, task count). Deploy alerting rules as PrometheusRule CRs: `ZOABoundaryReaperStalled` (critical), `ZOABoundarySessionCreationFailures`, `ZOAAccessLambdaErrors`, `ZOAIdentityBridgeFailures`, `ZOABoundaryOrphanedSessions` (warning). Add recording rules for session success rate and active session count. Build or extend the Grafana dashboard with panels for active sessions, creation rate, duration histogram, reaper activity, Access Lambda latency/errors, and identity bridge health. Validate with Thanos-based monitoring e2e specs on live ephemeral.
 
-- **Update `docs/design/zoa-architecture.md`** (rosa-hyperfleet): Move ZOA Access Lambda, rosa-boundary Integration, and Break-Glass sections from "Future Considerations" to the main body. Update architecture diagrams to show boundary as deployed (remove `PLANNED` labels).
-- **Update `README.md`** (rosa-hyperfleet-zoa): Update architecture diagram to show boundary as deployed. Remove `TEMPORARY` direct laptop path.
-- **New: `docs/boundary.md`** (rosa-hyperfleet-zoa): ZOA Boundary user guide — how to start/stop/join sessions, autodiscovery, troubleshooting, container tooling reference.
-- **Update `docs/cli-reference.md`** (rosa-hyperfleet-zoa): Add `zoa targets` discovery and `zoa session` command family.
-- **New: `docs/sop/boundary-troubleshooting.md`** (rosa-hyperfleet): SOP for stuck sessions, reaper failures, Central Account access issues.
+**Acceptance Criteria**:
+1. Access Lambda emits EMF metrics for session lifecycle (created, terminated, duration, active) and API traffic (request count, latency, errors)
+2. Identity bridge metrics emitted (lookup latency, failures)
+3. YACE scrape jobs configured for `ZOA-Access` namespace and ECS boundary task metrics
+4. At least 5 alerting rules deployed (reaper stalled, session creation failures, Access Lambda errors, identity bridge failures, orphaned sessions)
+5. Recording rules for session success rate and active session count
+6. Grafana dashboard with panels for active sessions, creation rate, duration histogram, reaper activity, Access Lambda health
+7. Monitoring e2e specs validate metric presence, recording rules, and alert rule groups on live ephemeral
 
-**Repos**: `rosa-hyperfleet`, `rosa-hyperfleet-zoa`
-
----
-
-### 6. E2E Testing
-
-**Summary**: End-to-end tests for boundary session lifecycle and ZOA Access Lambda
-
-**Description**: Extend the existing Ginkgo e2e suite:
-
-- **Session lifecycle**: start to stop to list to verify terminated
-- **Identity bridge**: verify TA executions from boundary container are attributed to correct SRE
-- **Reaper**: verify expired sessions are terminated
-- **Region/target autodiscovery**: verify CLI can discover regions and targets
-- **Cross-account**: verify MC sessions work (Access Lambda creates task in MC VPC)
-- **Negative tests**: unauthorized caller rejected, wrong account role rejected, non-creator cannot join/stop
-
-Wire into CI: `openshift/release` Prow job configuration for boundary e2e (may need separate from existing ZOA e2e due to Central Account dependency).
-
-**Repos**: `rosa-hyperfleet-zoa` (tests), `rosa-hyperfleet` (CI infra), `openshift/release` (Prow jobs)
-
----
-
-### 7. Observability — ZOA Access Lambda + Boundary Sessions
-
-**Summary**: EMF metrics, alerting rules, and Grafana dashboard panels for ZOA Access Lambda and sessions
-
-**Description**: Extend the existing ZOA observability stack (EMF -> CloudWatch -> YACE -> Prometheus -> Thanos -> Grafana) to cover the new components. Mirrors the pattern from [ROSAENG-65234](https://redhat.atlassian.net/browse/ROSAENG-65234).
+**Description**: Extend the existing ZOA observability stack to cover the new components:
 
 **EMF metrics (emitted from ZOA Access Lambda):**
 
@@ -785,44 +757,43 @@ Wire into CI: `openshift/release` Prow job configuration for boundary e2e (may n
 
 ---
 
-### 8. Restrict Direct Access + CI E2E Investigation
+### 5. E2E Testing
 
-**Summary**: Restrict SRE direct RC/MC account access to boundary-only in int/stage/prod; investigate CI e2e path through boundary containers
+**Title**: ZOA Boundary E2E — session lifecycle, identity bridge, reaper, autodiscovery
 
-**Description**: Today, SREs and CI both use the same pattern: assume an admin role directly in the RC/MC account (`eval "$(aws configure export-credentials --profile rrp-regional-dev)"`) and call Lambda Function URLs from their laptop or CI container. This is the `TEMPORARY` path in the architecture diagram.
+**Summary**: End-to-end validation for ZOA Boundary — extends the existing Ginkgo e2e suite with boundary-specific specs and wires into Prow CI. Covers the full session lifecycle (start → join → execute TA → stop → verify terminated in list), identity bridge correctness (TA execution from boundary container attributed to originating SRE, not to the shared ECS task role), reaper enforcement (session past 4h deadline auto-terminated), deployment/target autodiscovery (CLI reads SSM → Access Lambda → targets), cross-account MC sessions (Access Lambda creates ECS task in MC VPC via AssumeRole), and negative paths (unauthorized caller rejected, non-creator cannot join/stop). Wires into `openshift/release` Prow job configuration — may need a separate job from existing ZOA e2e due to Central Account credential dependency.
 
-This story has two phases because **we cannot remove SRE direct access until we figure out CI** — both use the same path today.
+**Acceptance Criteria**:
+1. Session lifecycle e2e: start → stop → list → verify terminated
+2. Identity bridge e2e: TA execution from boundary container is attributed to correct SRE (username matches)
+3. Reaper e2e: session past deadline is auto-terminated
+4. Autodiscovery e2e: CLI discovers deployments and targets from SSM / Access Lambda
+5. Cross-account e2e: MC session works (Access Lambda creates ECS task in MC VPC)
+6. Negative tests: unauthorized caller rejected, non-creator cannot join/stop
+7. Wired into CI via `openshift/release` Prow job configuration
+8. All boundary e2e specs pass on ephemeral environment
 
-**Phase 1: Investigate CI boundary path**
+**Description**: Extend the existing Ginkgo e2e suite with boundary-specific specs. Wire into CI via `openshift/release` Prow job (may need separate from existing ZOA e2e due to Central Account dependency).
 
-Before removing anything, investigate how CI e2e tests can run through ZOA Boundary containers:
+**Repos**: `rosa-hyperfleet-zoa` (tests), `rosa-hyperfleet` (CI infra), `openshift/release` (Prow jobs)
 
-1. **SSM execute-command for non-interactive use**: Can `aws ecs execute-command` run a command non-interactively and stream stdout/stderr back to CI? (Requires `session-manager-plugin` in Prow CI image.)
-2. **Test binary delivery**: How does the test binary get into the boundary container? Options: bake into image (bloats SRE image), download at runtime from S3 (latency), CI-specific boundary image (different from SRE image but same network path).
-3. **CI overhead**: Boundary container startup (~30s Fargate) + SSM session setup per test run. Acceptable for nightly, too slow for presubmit?
-4. **Hybrid approach**: Presubmit keeps direct access (fast, tests TA logic). Nightly uses boundary (validates integration). Is this sufficient?
-5. **Decision**: exception-only (CI keeps direct forever), hybrid (presubmit=direct, nightly=boundary), or full (all CI via boundary).
+---
 
-**Phase 2: Restrict access (int/stage/prod only)**
+### 6. Documentation
 
-Once Phase 1 has a working CI approach (or CI exception is accepted):
+**Title**: ZOA Boundary Documentation — architecture, CLI reference, SRE runbook
 
-- **Restrict SRE Central Account permissions in int/stage/prod** (app-interface change): SREs lose admin-like switch-role to RC/MC accounts from their laptop in non-dev environments. They only get SSM read + APIGW invoke permissions.
-- **Central Account roles cannot call Function URLs directly**: different AWS account, no cross-account resource policy — IAM denies the request.
-- **SREs must go through**: Central Account → ZOA Access APIGW → Boundary container → Function URL
-- Update architecture diagrams to remove `TEMPORARY` annotations
+**Summary**: Comprehensive documentation covering architecture, user guide, CLI reference, and operations. Update `docs/design/zoa-architecture.md` (rosa-hyperfleet) — move ZOA Access Lambda and boundary sections from "Future Considerations" to the main body, remove `PLANNED` labels from diagrams, update the architecture overview to show boundary as the deployed access model. Update `README.md` (rosa-hyperfleet-zoa) — update architecture diagram to show boundary as deployed, remove the `TEMPORARY` direct laptop path. New `docs/boundary.md` (rosa-hyperfleet-zoa) — ZOA Boundary user guide covering session start/stop/join, autodiscovery (`zoa targets`), container tooling reference, troubleshooting. Update `docs/cli-reference.md` (rosa-hyperfleet-zoa) — add `zoa targets` discovery command and `zoa session` command family with examples and flag documentation. New `docs/sop/boundary-troubleshooting.md` (rosa-hyperfleet) — SOP for stuck sessions, reaper failures, Central Account access issues, SSM session debugging.
 
-**Dev/ephemeral keeps admin profiles**: Developers and CI need direct account access in dev/ephemeral for testing, debugging, and iterating. The boundary is an operational security control for int/stage/prod — enforcing it in dev would slow down development for no security benefit (ephemeral environments are disposable, single-developer, no customer data).
+**Acceptance Criteria**:
+1. `docs/design/zoa-architecture.md` (rosa-hyperfleet) updated: ZOA Access Lambda and boundary sections moved from "Future Considerations" to main body; `PLANNED` labels removed from diagrams
+2. `README.md` (rosa-hyperfleet-zoa) updated: architecture diagram shows boundary as deployed; `TEMPORARY` direct laptop path removed
+3. New `docs/boundary.md` (rosa-hyperfleet-zoa): user guide for session start/stop/join, autodiscovery, container tooling
+4. `docs/cli-reference.md` (rosa-hyperfleet-zoa) updated: `zoa targets` and `zoa session` command family documented
+5. New `docs/sop/boundary-troubleshooting.md` (rosa-hyperfleet): SOP for stuck sessions, reaper failures, Central Account access issues
+6. All markdown passes `prettier` formatting
 
-**Why the restriction is at IAM, not Lambda:**
-
-There is no Lambda resource-based policy restricting callers today — any same-account principal with `lambda:InvokeFunctionUrl` can call it. The security comes from restricting the SRE's Central Account permissions: once SREs can only read SSM and invoke APIGW (not switch-role to RC/MC accounts), they cannot call Function URLs directly. CI pipeline roles remain in the RC/MC accounts and keep working.
-
-**Note**: The current `terraform/modules/bastion/` is NOT removed in this epic. The bastion remains until the break-glass epic.
-
-This is the final story in this epic — depends on all others being validated.
-
-**Repos**: `rosa-hyperfleet` (diagrams, CI infra), `rosa-hyperfleet-zoa` (e2e test wiring), app-interface (IAM role changes)
+**Repos**: `rosa-hyperfleet`, `rosa-hyperfleet-zoa`
 
 ---
 
@@ -902,6 +873,21 @@ For **AWS break-glass** (aws-read / aws-write / aws-admin):
 
 **Key principle**: The boundary container starts with **zero EKS access and zero AWS privilege beyond Lambda Function URL + Bedrock**. Break-glass dynamically injects access (EKS Access Entry + IAM role), and the `zoa breakglass connect` command configures the SRE's shell. When break-glass expires, the reconciler revokes the Access Entry and the credentials expire naturally (STS TTL).
 
+### Future: Direct Access Restriction (Break-Glass Epic Prerequisite)
+
+This epic does **not** restrict SRE direct access to RC/MC accounts. Today SREs can switch-role from the Central Account to RC/MC accounts with admin-like permissions, and CI pipelines use the same path. This remains unchanged.
+
+**Why not restrict now:** Restricting direct access requires three controls to ship together — they are a single atomic change:
+1. **Lambda resource-based policy** — restrict Function URL callers to boundary task role + CI pipeline role only
+2. **Central Account permission restriction** — narrow SRE's app-interface role to SSM read + APIGW invoke only (no switch-role to RC/MC)
+3. **Break-glass escape hatch** — `zoa breakglass` as the safety valve for emergencies
+
+Without break-glass, restricting direct access leaves SREs with no path to handle emergencies that TAs can't cover. The break-glass epic will implement all three controls together.
+
+**Dev/ephemeral will never restrict**: Developers and CI need direct account access for testing, debugging, and iterating. The restriction is an operational security control for int/stage/prod only.
+
+**CI keeps direct Function URL access permanently**: CI pipeline roles stay in the RC/MC accounts and call Function URLs directly. CI tests TA logic, not the boundary path. Boundary-specific e2e tests (Story 5) validate session lifecycle separately.
+
 ### Network Path: Function URL via NAT Gateway
 
 The ZOA Boundary container reaches per-VPC Lambda Function URLs through NAT Gateway. This is because Lambda Function URLs are **public HTTPS endpoints** (`*.lambda-url.region.on.aws`) even when the Lambda is VPC-attached — VPC attachment only controls the Lambda's outbound execution network (ENIs in private subnets for reaching EKS, DynamoDB, etc.), not its inbound invocation endpoint.
@@ -918,7 +904,6 @@ A future hardening story could place a Private API Gateway with VPC Endpoint in 
 2. **Custom domain DNS**: Who owns the DNS zone for the APIGW custom domains? Route53 hosted zone delegation needed for API Gateway custom domains (e.g., `zoa-access.us-east-1.int0.rosa.devshift.net`).
 3. **Break-glass interaction**: The reaper and the boundary container design should account for future break-glass EKS access entries. Not implementing break-glass in this epic, but IAM and network design must not preclude it.
 4. **Bedrock model availability per region**: Not all Claude models are available in all AWS regions. Need to verify Haiku availability in each HyperFleet deployment region and adjust `allowed_bedrock_models` accordingly.
-5. **SSM Session Manager plugin**: SREs need `session-manager-plugin` installed on their laptops for `zoa session join`. Is this already standard SRE tooling? (It is for rosa-boundary v1.)
-6. **rh-aws-saml-login session name stability**: Does `rh-aws-saml-login` always use the Kerberos principal (e.g., `slopezma`) as the STS session name? If it uses something else (random string, timestamp), we need an alternative identity anchor for ownership checks across re-authentications. This is critical for the identity bridge design.
-7. **Ephemeral SSM parameter lifecycle**: In the dev Central Account, ephemeral deployment entries must be reliably cleaned up on teardown. If an ephemeral teardown fails or is abandoned, stale entries will accumulate. The reaper or a separate GC mechanism may need to detect and clean orphaned entries.
-8. **LDAP integration for future approvals**: Confirm that LDAP group membership (e.g., `zoa-approvers`) is the approved mechanism for approval authorization. Validate network path from Lambda to LDAP, or plan a caching strategy (S3 group dump, refreshed periodically).
+5. **rh-aws-saml-login session name stability**: Does `rh-aws-saml-login` always use the Kerberos principal (e.g., `slopezma`) as the STS session name? If it uses something else (random string, timestamp), we need an alternative identity anchor for ownership checks across re-authentications. This is critical for the identity bridge design.
+6. **Ephemeral SSM parameter lifecycle**: In the dev Central Account, ephemeral deployment entries must be reliably cleaned up on teardown. If an ephemeral teardown fails or is abandoned, stale entries will accumulate. The reaper or a separate GC mechanism may need to detect and clean orphaned entries.
+7. **LDAP integration for future approvals**: Confirm that LDAP group membership (e.g., `zoa-approvers`) is the approved mechanism for approval authorization. Validate network path from Lambda to LDAP, or plan a caching strategy (S3 group dump, refreshed periodically).
