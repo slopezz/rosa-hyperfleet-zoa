@@ -61,6 +61,32 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Access mode: no EKS, no S3, no cross-account — just DynamoDB + ECS.
+	if cfg.IsAccessMode() {
+		dynamoClient := dynamodb.NewFromConfig(awsCfg)
+		sessionStore := store.NewSessionStore(dynamoClient, cfg.SessionsTable, cfg.DynamoDBTTLDays)
+		targetStore := store.NewTargetStore(dynamoClient, cfg.BoundaryTargetsTable)
+		auditStore := store.NewAuditStore(dynamoClient, cfg.AuditTable, cfg.DynamoDBTTLDays)
+
+		accessHandler := api.NewAccessHandler(api.AccessDeps{
+			Cfg:          cfg,
+			SessionStore: sessionStore,
+			TargetStore:  targetStore,
+			AuditStore:   auditStore,
+			Logger:       logger,
+		})
+
+		h := handler.New(handler.Deps{
+			Cfg:           cfg,
+			AccessHandler: accessHandler,
+			Logger:        logger,
+		})
+
+		logger.Info("Access mode: boundary session lifecycle handler")
+		lambda.Start(h.HandleEvent)
+		return
+	}
+
 	// For cross-account data access (MC→RC), assume the data-access role to get
 	// credentials that target the RC account's DynamoDB tables and S3 bucket.
 	dataStoreCfg := awsCfg

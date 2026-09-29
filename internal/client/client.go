@@ -340,6 +340,56 @@ func (c *Client) doRoot(ctx context.Context, method, path string, body any, resu
 	return nil
 }
 
+// --- Access / Boundary methods ---
+
+func (c *Client) ListTargets(ctx context.Context) (*TargetList, error) {
+	var resp TargetList
+	if err := c.doRoot(ctx, http.MethodGet, "/targets", nil, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+func (c *Client) ListTargetsByDeployment(ctx context.Context, deployment string) (*TargetList, error) {
+	var resp TargetList
+	if err := c.doRoot(ctx, http.MethodGet, "/targets/"+url.PathEscape(deployment), nil, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+func (c *Client) SessionStart(ctx context.Context, req *SessionStartRequest) (*SessionStartResponse, error) {
+	var resp SessionStartResponse
+	if err := c.doRoot(ctx, http.MethodPost, "/sessions/start", req, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+func (c *Client) SessionStop(ctx context.Context, sessionID string) error {
+	return c.doRoot(ctx, http.MethodPost, "/sessions/stop/"+url.PathEscape(sessionID), nil, nil)
+}
+
+func (c *Client) SessionJoin(ctx context.Context, sessionID string) (*SessionJoinResponse, error) {
+	var resp SessionJoinResponse
+	if err := c.doRoot(ctx, http.MethodPost, "/sessions/join/"+url.PathEscape(sessionID), nil, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+func (c *Client) ListSessions(ctx context.Context, query url.Values) (*SessionList, error) {
+	path := "/sessions"
+	if len(query) > 0 {
+		path += "?" + query.Encode()
+	}
+	var resp SessionList
+	if err := c.doRoot(ctx, http.MethodGet, path, nil, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 func sha256Hash(reader io.ReadSeeker) string {
 	h := sha256.New()
 	_, _ = io.Copy(h, reader)

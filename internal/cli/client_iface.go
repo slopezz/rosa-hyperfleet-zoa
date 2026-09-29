@@ -19,6 +19,14 @@ type APIClient interface {
 	ListAudit(ctx context.Context, query url.Values) (*client.AuditList, error)
 	ServerVersion(ctx context.Context) (*client.ServerVersionInfo, error)
 	RawGet(ctx context.Context, path string) (*http.Response, error)
+
+	// Access / Boundary methods
+	ListTargets(ctx context.Context) (*client.TargetList, error)
+	ListTargetsByDeployment(ctx context.Context, deployment string) (*client.TargetList, error)
+	SessionStart(ctx context.Context, req *client.SessionStartRequest) (*client.SessionStartResponse, error)
+	SessionStop(ctx context.Context, sessionID string) error
+	SessionJoin(ctx context.Context, sessionID string) (*client.SessionJoinResponse, error)
+	ListSessions(ctx context.Context, query url.Values) (*client.SessionList, error)
 }
 
 // Verify *client.Client satisfies APIClient at compile time.

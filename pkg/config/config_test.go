@@ -60,6 +60,91 @@ func TestLoad_WhenWorkerMode_ItShouldSucceedWithRequiredVars(t *testing.T) {
 	}
 }
 
+func setAccessEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("HANDLER_MODE", "access")
+	t.Setenv("SESSIONS_TABLE", "zoa-boundary-sessions")
+	t.Setenv("BOUNDARY_TARGETS_TABLE", "zoa-boundary-targets")
+	t.Setenv("AUDIT_TABLE", "zoa-audit")
+	t.Setenv("AWS_REGION", "us-east-1")
+}
+
+func TestLoad_WhenAccessMode_ItShouldSucceedWithRequiredVars(t *testing.T) {
+	setAccessEnv(t)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.HandlerMode != "access" {
+		t.Errorf("expected HandlerMode 'access', got %q", cfg.HandlerMode)
+	}
+	if !cfg.IsAccessMode() {
+		t.Error("expected IsAccessMode() true")
+	}
+	if cfg.IsAPIMode() {
+		t.Error("expected IsAPIMode() false")
+	}
+	if cfg.IsWorkerMode() {
+		t.Error("expected IsWorkerMode() false")
+	}
+	if cfg.SessionsTable != "zoa-boundary-sessions" {
+		t.Errorf("expected SessionsTable 'zoa-boundary-sessions', got %q", cfg.SessionsTable)
+	}
+	if cfg.BoundaryTargetsTable != "zoa-boundary-targets" {
+		t.Errorf("expected BoundaryTargetsTable 'zoa-boundary-targets', got %q", cfg.BoundaryTargetsTable)
+	}
+}
+
+func TestLoad_WhenAccessModeMissingSessionsTable_ItShouldReturnError(t *testing.T) {
+	setAccessEnv(t)
+	t.Setenv("SESSIONS_TABLE", "")
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("expected error when SESSIONS_TABLE is empty in access mode")
+	}
+}
+
+func TestLoad_WhenAccessModeMissingBoundaryTargetsTable_ItShouldReturnError(t *testing.T) {
+	setAccessEnv(t)
+	t.Setenv("BOUNDARY_TARGETS_TABLE", "")
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("expected error when BOUNDARY_TARGETS_TABLE is empty in access mode")
+	}
+}
+
+func TestLoad_WhenAccessModeMissingAuditTable_ItShouldReturnError(t *testing.T) {
+	setAccessEnv(t)
+	t.Setenv("AUDIT_TABLE", "")
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("expected error when AUDIT_TABLE is empty in access mode")
+	}
+}
+
+func TestLoad_WhenAccessModeDoesNotRequireEKS_ItShouldSucceed(t *testing.T) {
+	setAccessEnv(t)
+	// Access mode should NOT require EKS fields
+	t.Setenv("EKS_CLUSTER_ENDPOINT", "")
+	t.Setenv("EKS_CLUSTER_CA", "")
+	t.Setenv("EKS_CLUSTER_NAME", "")
+	t.Setenv("EXECUTION_TABLE", "")
+	t.Setenv("ARTIFACT_BUCKET", "")
+	t.Setenv("ZOA_DEPLOYMENT_TARGET", "")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !cfg.IsAccessMode() {
+		t.Error("expected IsAccessMode() true")
+	}
+}
+
 func TestLoad_WhenInvalidMode_ItShouldReturnError(t *testing.T) {
 	setRequiredEnv(t)
 	t.Setenv("HANDLER_MODE", "invalid")

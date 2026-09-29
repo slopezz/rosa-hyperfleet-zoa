@@ -1,0 +1,184 @@
+# ZOA Boundary — Ephemeral SRE investigation container
+#
+# Runs as an ECS Fargate task inside the target VPC. SREs connect
+# via ECS Exec (SSM). Contains ZOA CLI, kubectl, oc, aws CLI v2,
+# jq, yq, and Claude Code for interactive investigation.
+#
+# Stages:
+#   builder          — Go build (zoa CLI)
+#   tools            — kubectl + oc binaries
+#   claude-builder   — Claude Code binary (GitHub release)
+#   final            — production image
+
+ARG BASE_IMAGE=registry.access.redhat.com/ubi9/ubi-minimal:9.8-1790555810
+
+# Stage 1: builder
+# Build the ZOA CLI binary.
+FROM registry.access.redhat.com/ubi9/go-toolset:1.26.7-1790174511 AS builder
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
+USER 0
+RUN mkdir -p /workspace && chown 1001:0 /workspace
+USER 1001
+
+WORKDIR /workspace
+ENV GOCACHE=/workspace/.cache/go-build
+
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+
+RUN git config --global --add safe.directory /workspace && \
+    ZOA_VERSION=$(grep '^VERSION ' Makefile | awk '{print $3}') && \
+    GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown") && \
+    BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ) && \
+    VERSION_PKG="github.com/openshift-online/rosa-hyperfleet-zoa/internal/version" && \
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
+    -buildvcs=false \
+    -ldflags="-w -s -X ${VERSION_PKG}.Version=${ZOA_VERSION} -X ${VERSION_PKG}.GitCommit=${GIT_COMMIT} -X ${VERSION_PKG}.BuildDate=${BUILD_DATE}" \
+    -o /workspace/zoa ./cmd/zoa/
+
+
+# Stage 2: tools
+# Download kubectl and oc client binaries.
+FROM ${BASE_IMAGE} AS tools
+
+ARG TARGETARCH=amd64
+
+# renovate: datasource=github-releases depName=openshift/oc-mirror
+ARG OC_VERSION="4.17.0"
+ARG KUBECTL_VERSION="v1.32.0"
+
+RUN microdnf install --assumeyes --nodocs tar gzip && microdnf clean all
+
+WORKDIR /tools
+
+RUN curl --silent --location --fail \
+        "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${TARGETARCH}/kubectl" \
+        --output kubectl \
+    && chmod +x kubectl
+
+RUN curl --silent --location --fail \
+        "https://mirror.openshift.com/pub/openshift-v4/clients/ocp/${OC_VERSION}/openshift-client-linux.tar.gz" \
+        --output oc.tar.gz \
+    && tar --extract --gzip --file oc.tar.gz oc \
+    && chmod +x oc
+
+
+# Stage 3: yq
+# Download yq static binary.
+FROM ${BASE_IMAGE} AS yq-builder
+
+ARG TARGETARCH=amd64
+ARG YQ_VERSION="v4.44.6"
+
+RUN microdnf install --assumeyes --nodocs curl && microdnf clean all
+
+WORKDIR /yq-dl
+
+RUN curl --silent --location --fail \
+        "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_${TARGETARCH}" \
+        --output yq \
+    && chmod +x yq
+
+
+# Stage 4: aws-cli
+# Download and install AWS CLI v2.
+FROM ${BASE_IMAGE} AS aws-cli-builder
+
+RUN microdnf install --assumeyes --nodocs curl unzip && microdnf clean all
+
+WORKDIR /aws-dl
+
+RUN curl --silent --location --fail \
+        "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" \
+        --output awscli.zip \
+    && unzip -q awscli.zip \
+    && ./aws/install --install-dir /opt/aws-cli --bin-dir /opt/aws-bin \
+    && rm -rf aws awscli.zip
+
+
+# Stage 5: claude-builder
+# Claude Code standalone binary from GitHub releases.
+FROM ${BASE_IMAGE} AS claude-builder
+
+ARG TARGETARCH=amd64
+ENV CLAUDE_CODE_VERSION="2.1.199"
+
+RUN microdnf install --assumeyes --nodocs tar gzip curl && microdnf clean all
+
+WORKDIR /claude-dl
+
+RUN ARCH=$(echo "${TARGETARCH}" | sed 's/amd64/x64/; s/arm64/arm64/') && \
+    curl --silent --location --fail \
+        "https://github.com/anthropics/claude-code/releases/download/v${CLAUDE_CODE_VERSION}/claude-linux-${ARCH}.tar.gz" \
+        --output claude.tar.gz \
+    && mkdir -p /opt/claude \
+    && tar --extract --gzip --file claude.tar.gz --directory=/opt/claude \
+    && chmod +x /opt/claude/claude
+
+
+# Stage 6: final
+# Production image. Only this stage ships.
+# SECURITY: No curl, wget, or download tools — all binaries are COPYed from builder stages.
+FROM ${BASE_IMAGE} AS final
+
+ARG VERSION=0.0.1
+ARG RELEASE=1
+
+LABEL name="zoa-boundary" \
+      vendor="Red Hat, Inc." \
+      version="${VERSION}" \
+      release="${RELEASE}" \
+      summary="ZOA Boundary — ephemeral SRE investigation container" \
+      description="ECS Fargate task for audited SRE access to target VPCs" \
+      io.k8s.display-name="zoa-boundary" \
+      io.k8s.description="ZOA Boundary container with SRE tooling" \
+      com.redhat.component="zoa-boundary-container" \
+      distribution-scope="private" \
+      url="https://github.com/openshift-online/rosa-hyperfleet-zoa"
+
+RUN microdnf install --assumeyes --nodocs \
+        bash-completion \
+        bind-utils \
+        jq \
+        openssl \
+        procps-ng \
+        shadow-utils \
+        tar \
+        gzip \
+        vim-minimal \
+    && microdnf clean all \
+    && rm --recursive --force /var/cache/yum
+
+# ZOA CLI
+COPY --from=builder /workspace/zoa /usr/local/bin/zoa
+
+# kubectl and oc
+COPY --from=tools /tools/kubectl /usr/local/bin/kubectl
+COPY --from=tools /tools/oc /usr/local/bin/oc
+
+# yq (static binary — COPYed from builder, no curl in final image)
+COPY --from=yq-builder /yq-dl/yq /usr/local/bin/yq
+
+# AWS CLI v2 (COPYed from builder, no curl in final image)
+COPY --from=aws-cli-builder /opt/aws-cli /usr/local/aws-cli
+COPY --from=aws-cli-builder /opt/aws-bin /usr/local/bin
+
+# Claude Code
+COPY --from=claude-builder /opt/claude /usr/local/lib/claude-code
+RUN ln --symbolic /usr/local/lib/claude-code/claude /usr/local/bin/claude
+
+# Non-root user for ECS Exec sessions
+RUN useradd --create-home --shell /bin/bash sre
+
+# Reserved directories for future break-glass kubeconfig injection
+RUN mkdir -p /home/sre/.kube /home/sre/.aws \
+    && chown -R sre:sre /home/sre
+
+ENV HOME=/home/sre
+
+USER sre
+WORKDIR /home/sre
+
+CMD ["sleep", "infinity"]

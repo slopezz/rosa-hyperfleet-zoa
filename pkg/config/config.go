@@ -81,6 +81,26 @@ type Config struct {
 	// platform's responsibility and invisible to TA authors.
 	// Default: 180s (3 minutes). Tunable without code change.
 	AsyncSchedulingOverheadSeconds int
+
+	// --- Access mode fields (HANDLER_MODE=access) ---
+
+	// SessionsTable is the DynamoDB table for boundary session state.
+	SessionsTable string
+
+	// BoundaryTargetsTable is the DynamoDB table for boundary target registry.
+	BoundaryTargetsTable string
+
+	// ECSClusterARN is the default ECS cluster ARN for boundary tasks (RC targets).
+	ECSClusterARN string
+
+	// ECSTaskDefinitionARN is the default ECS task definition ARN for boundary containers.
+	ECSTaskDefinitionARN string
+
+	// ECSSubnets is a comma-separated list of subnet IDs for boundary ECS tasks.
+	ECSSubnets string
+
+	// ECSSecurityGroup is the security group ID for boundary ECS tasks.
+	ECSSecurityGroup string
 }
 
 func Load() (*Config, error) {
@@ -110,13 +130,37 @@ func Load() (*Config, error) {
 		WorkerFunctionName:             getEnv("AWS_LAMBDA_FUNCTION_NAME", ""),
 		JobsNamespace:                  getEnv("ZOA_JOBS_NAMESPACE", "zoa-jobs"),
 		AsyncSchedulingOverheadSeconds: getEnvInt("ASYNC_SCHEDULING_OVERHEAD_SECONDS", 180),
+		SessionsTable:                  getEnv("SESSIONS_TABLE", ""),
+		BoundaryTargetsTable:           getEnv("BOUNDARY_TARGETS_TABLE", ""),
+		ECSClusterARN:                  getEnv("ECS_CLUSTER_ARN", ""),
+		ECSTaskDefinitionARN:           getEnv("ECS_TASK_DEFINITION_ARN", ""),
+		ECSSubnets:                     getEnv("ECS_SUBNETS", ""),
+		ECSSecurityGroup:               getEnv("ECS_SECURITY_GROUP", ""),
 	}
 
-	validModes := map[string]bool{"api": true, "worker": true}
+	validModes := map[string]bool{"api": true, "worker": true, "access": true}
 	if !validModes[cfg.HandlerMode] {
-		return nil, fmt.Errorf("invalid HANDLER_MODE %q: must be 'api' or 'worker'", cfg.HandlerMode)
+		return nil, fmt.Errorf("invalid HANDLER_MODE %q: must be 'api', 'worker', or 'access'", cfg.HandlerMode)
 	}
 
+	// Access mode has a different set of required fields — it does NOT talk to EKS.
+	if cfg.IsAccessMode() {
+		if cfg.SessionsTable == "" {
+			return nil, fmt.Errorf("SESSIONS_TABLE is required in access mode")
+		}
+		if cfg.BoundaryTargetsTable == "" {
+			return nil, fmt.Errorf("BOUNDARY_TARGETS_TABLE is required in access mode")
+		}
+		if cfg.AuditTable == "" {
+			return nil, fmt.Errorf("AUDIT_TABLE is required in access mode")
+		}
+		if cfg.Region == "" {
+			return nil, fmt.Errorf("AWS_REGION is required in access mode")
+		}
+		return cfg, nil
+	}
+
+	// Common validation for api and worker modes.
 	if cfg.ExecutionsTable == "" {
 		return nil, fmt.Errorf("EXECUTION_TABLE is required")
 	}
@@ -178,6 +222,10 @@ func (c *Config) IsAPIMode() bool {
 
 func (c *Config) IsWorkerMode() bool {
 	return c.HandlerMode == "worker"
+}
+
+func (c *Config) IsAccessMode() bool {
+	return c.HandlerMode == "access"
 }
 
 func getEnv(key, fallback string) string {

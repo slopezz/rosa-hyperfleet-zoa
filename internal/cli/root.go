@@ -70,6 +70,8 @@ Set ZOA_API_URL to your ZOA endpoint (Function URL, API Gateway, or CNAME).`,
 		newActionsCommand(opts),
 		newDescribeCommand(opts),
 		newAuditCommand(opts),
+		newTargetsCommand(opts),
+		newSessionCommand(opts),
 		newVersionCommand(opts),
 		newCompletionCommand(),
 	)

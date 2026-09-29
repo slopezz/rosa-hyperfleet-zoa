@@ -1,0 +1,421 @@
+package store
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
+	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/expression"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+)
+
+// SessionStatus represents the lifecycle state of a boundary session.
+type SessionStatus string
+
+const (
+	SessionStatusCreating   SessionStatus = "creating"
+	SessionStatusActive     SessionStatus = "active"
+	SessionStatusTerminated SessionStatus = "terminated"
+	SessionStatusFailed     SessionStatus = "failed"
+)
+
+// Session represents a ZOA Boundary session in DynamoDB.
+type Session struct {
+	SessionID         string        `json:"session_id" dynamodbav:"sessionId"`
+	Operator          string        `json:"operator" dynamodbav:"operator"`
+	OperatorARN       string        `json:"operator_arn" dynamodbav:"operatorARN"`
+	TargetCluster     string        `json:"target_cluster" dynamodbav:"targetCluster"`
+	Region            string        `json:"region" dynamodbav:"region"`
+	TaskArn           string        `json:"task_arn,omitempty" dynamodbav:"taskArn,omitempty"`
+	EcsCluster        string        `json:"ecs_cluster,omitempty" dynamodbav:"ecsCluster,omitempty"`
+	Status            SessionStatus `json:"status" dynamodbav:"status"`
+	CreatedAt         string        `json:"created_at" dynamodbav:"createdAt"`
+	Deadline          string        `json:"deadline" dynamodbav:"deadline"`
+	TerminatedAt      string        `json:"terminated_at,omitempty" dynamodbav:"terminatedAt,omitempty"`
+	TerminationReason string        `json:"termination_reason,omitempty" dynamodbav:"terminationReason,omitempty"`
+	VpcId             string        `json:"vpc_id,omitempty" dynamodbav:"vpcId,omitempty"`
+	DeploymentName    string        `json:"deployment_name,omitempty" dynamodbav:"deploymentName,omitempty"`
+
+	DateBucket string `json:"-" dynamodbav:"dateBucket,omitempty"`
+	TTL        int64  `json:"-" dynamodbav:"ttl,omitempty"`
+}
+
+// SessionFilter holds optional filters for listing sessions.
+type SessionFilter struct {
+	Status   *SessionStatus
+	Operator *string
+	Target   *string
+	Since    *time.Time
+	Before   *time.Time
+	Limit    int
+}
+
+// SessionStore defines DynamoDB operations for boundary sessions.
+type SessionStore interface {
+	Put(ctx context.Context, session *Session) error
+	Get(ctx context.Context, sessionID string) (*Session, error)
+	List(ctx context.Context, filter *SessionFilter) ([]*Session, error)
+
+	// ListAll returns sessions across all operators via date-bucket-index.
+	// Follows the same pattern as ExecutionStore.ListAll — queries day-by-day
+	// from newest to oldest. CLI defaults to 24h to prevent unbounded queries.
+	ListAll(ctx context.Context, filter *SessionFilter) ([]*Session, error)
+
+	UpdateStatus(ctx context.Context, sessionID string, from, to SessionStatus, updates map[string]interface{}) error
+	ListByOperator(ctx context.Context, operator string, limit int) ([]*Session, error)
+	ListExpired(ctx context.Context) ([]*Session, error)
+}
+
+// DynamoDBSessionStore implements SessionStore backed by DynamoDB.
+type DynamoDBSessionStore struct {
+	client    DynamoDBAPI
+	tableName string
+	ttlDays   int
+}
+
+func NewSessionStore(client DynamoDBAPI, tableName string, ttlDays int) *DynamoDBSessionStore {
+	return &DynamoDBSessionStore{
+		client:    client,
+		tableName: tableName,
+		ttlDays:   ttlDays,
+	}
+}
+
+func (s *DynamoDBSessionStore) Put(ctx context.Context, session *Session) error {
+	session.TTL = time.Now().AddDate(0, 0, s.ttlDays).Unix()
+	session.DateBucket = session.CreatedAt[:10]
+
+	item, err := attributevalue.MarshalMap(session)
+	if err != nil {
+		return fmt.Errorf("marshaling session: %w", err)
+	}
+
+	_, err = s.client.PutItem(ctx, &dynamodb.PutItemInput{
+		TableName:           &s.tableName,
+		Item:                item,
+		ConditionExpression: aws.String("attribute_not_exists(sessionId)"),
+	})
+	if err != nil {
+		return fmt.Errorf("creating session: %w", err)
+	}
+	return nil
+}
+
+func (s *DynamoDBSessionStore) Get(ctx context.Context, sessionID string) (*Session, error) {
+	out, err := s.client.GetItem(ctx, &dynamodb.GetItemInput{
+		TableName: &s.tableName,
+		Key: map[string]types.AttributeValue{
+			"sessionId": &types.AttributeValueMemberS{Value: sessionID},
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("getting session: %w", err)
+	}
+	if out.Item == nil {
+		return nil, nil
+	}
+
+	var session Session
+	if err := attributevalue.UnmarshalMap(out.Item, &session); err != nil {
+		return nil, fmt.Errorf("unmarshaling session: %w", err)
+	}
+	return &session, nil
+}
+
+func (s *DynamoDBSessionStore) List(ctx context.Context, filter *SessionFilter) ([]*Session, error) {
+	// Use Scan with filters since sessions don't have a natural partition key
+	// for broad queries. Volume is low (tens of sessions, not thousands).
+	var conditions []expression.ConditionBuilder
+
+	if filter != nil {
+		if filter.Status != nil {
+			conditions = append(conditions, expression.Name("status").Equal(expression.Value(string(*filter.Status))))
+		}
+		if filter.Operator != nil {
+			conditions = append(conditions, expression.Name("operator").Equal(expression.Value(*filter.Operator)))
+		}
+		if filter.Target != nil {
+			conditions = append(conditions, expression.Name("targetCluster").Equal(expression.Value(*filter.Target)))
+		}
+	}
+
+	input := &dynamodb.ScanInput{
+		TableName: &s.tableName,
+	}
+
+	if len(conditions) > 0 {
+		combined := conditions[0]
+		for _, c := range conditions[1:] {
+			combined = combined.And(c)
+		}
+		expr, err := expression.NewBuilder().WithFilter(combined).Build()
+		if err != nil {
+			return nil, fmt.Errorf("building scan expression: %w", err)
+		}
+		input.FilterExpression = expr.Filter()
+		input.ExpressionAttributeNames = expr.Names()
+		input.ExpressionAttributeValues = expr.Values()
+	}
+
+	limit := 100
+	if filter != nil && filter.Limit > 0 {
+		limit = filter.Limit
+	}
+
+	var sessions []*Session
+	var lastKey map[string]types.AttributeValue
+	const maxPages = 5
+	for page := 0; page < maxPages; page++ {
+		input.ExclusiveStartKey = lastKey
+
+		out, err := s.client.Scan(ctx, input)
+		if err != nil {
+			return nil, fmt.Errorf("scanning sessions: %w", err)
+		}
+		for _, item := range out.Items {
+			var session Session
+			if err := attributevalue.UnmarshalMap(item, &session); err != nil {
+				return nil, fmt.Errorf("unmarshaling session: %w", err)
+			}
+			sessions = append(sessions, &session)
+		}
+
+		if len(sessions) >= limit {
+			sessions = sessions[:limit]
+			break
+		}
+
+		if out.LastEvaluatedKey == nil {
+			break
+		}
+		lastKey = out.LastEvaluatedKey
+	}
+	return sessions, nil
+}
+
+// ListAll returns sessions across all operators via date-bucket-index GSI
+// (PK=dateBucket, SK=createdAt). Queries day-by-day from newest to oldest,
+// matching the ExecutionStore.ListAll pattern. CLI enforces a default of 24h.
+func (s *DynamoDBSessionStore) ListAll(ctx context.Context, filter *SessionFilter) ([]*Session, error) {
+	resultLimit := 100
+	if filter != nil && filter.Limit > 0 {
+		resultLimit = filter.Limit
+	}
+
+	since := time.Now().Add(-24 * time.Hour)
+	if filter != nil && filter.Since != nil {
+		since = *filter.Since
+	}
+
+	endTime := time.Now().UTC()
+	if filter != nil && filter.Before != nil {
+		endTime = filter.Before.UTC()
+	}
+
+	sinceStr := since.Format(time.RFC3339Nano)
+	endDay := endTime.Truncate(24 * time.Hour)
+	startDay := since.UTC().Truncate(24 * time.Hour)
+
+	var sessions []*Session
+	for day := endDay; !day.Before(startDay); day = day.AddDate(0, 0, -1) {
+		bucket := day.Format("2006-01-02")
+
+		var keyCond expression.KeyConditionBuilder
+		if filter != nil && filter.Before != nil {
+			beforeStr := filter.Before.Format(time.RFC3339Nano)
+			keyCond = expression.KeyAnd(
+				expression.Key("dateBucket").Equal(expression.Value(bucket)),
+				expression.Key("createdAt").Between(
+					expression.Value(sinceStr),
+					expression.Value(beforeStr),
+				),
+			)
+		} else {
+			keyCond = expression.KeyAnd(
+				expression.Key("dateBucket").Equal(expression.Value(bucket)),
+				expression.Key("createdAt").GreaterThanEqual(expression.Value(sinceStr)),
+			)
+		}
+
+		builder := expression.NewBuilder().WithKeyCondition(keyCond)
+
+		// Apply non-key filters.
+		var conditions []expression.ConditionBuilder
+		if filter != nil {
+			if filter.Status != nil {
+				conditions = append(conditions, expression.Name("status").Equal(expression.Value(string(*filter.Status))))
+			}
+			if filter.Operator != nil {
+				conditions = append(conditions, expression.Name("operator").Equal(expression.Value(*filter.Operator)))
+			}
+			if filter.Target != nil {
+				conditions = append(conditions, expression.Name("targetCluster").Equal(expression.Value(*filter.Target)))
+			}
+		}
+		if len(conditions) > 0 {
+			combined := conditions[0]
+			for _, c := range conditions[1:] {
+				combined = combined.And(c)
+			}
+			builder = builder.WithFilter(combined)
+		}
+
+		expr, err := builder.Build()
+		if err != nil {
+			return nil, fmt.Errorf("building date-bucket query expression: %w", err)
+		}
+
+		const maxPages = 10
+		var lastKey map[string]types.AttributeValue
+		for page := 0; page < maxPages; page++ {
+			input := &dynamodb.QueryInput{
+				TableName:                 &s.tableName,
+				IndexName:                 aws.String("date-bucket-index"),
+				KeyConditionExpression:    expr.KeyCondition(),
+				ExpressionAttributeNames:  expr.Names(),
+				ExpressionAttributeValues: expr.Values(),
+				FilterExpression:          expr.Filter(),
+				ScanIndexForward:          aws.Bool(false),
+				ExclusiveStartKey:         lastKey,
+			}
+
+			out, err := s.client.Query(ctx, input)
+			if err != nil {
+				return nil, fmt.Errorf("querying session date-bucket: %w", err)
+			}
+
+			for _, item := range out.Items {
+				var session Session
+				if err := attributevalue.UnmarshalMap(item, &session); err != nil {
+					return nil, fmt.Errorf("unmarshaling session: %w", err)
+				}
+				sessions = append(sessions, &session)
+			}
+
+			if resultLimit > 0 && len(sessions) >= resultLimit {
+				sessions = sessions[:resultLimit]
+				return sessions, nil
+			}
+
+			if out.LastEvaluatedKey == nil {
+				break
+			}
+			lastKey = out.LastEvaluatedKey
+		}
+	}
+
+	return sessions, nil
+}
+
+func (s *DynamoDBSessionStore) UpdateStatus(ctx context.Context, sessionID string, from, to SessionStatus, updates map[string]interface{}) error {
+	now := time.Now().Format(time.RFC3339Nano)
+	update := expression.Set(
+		expression.Name("status"), expression.Value(string(to)),
+	)
+
+	if to == SessionStatusTerminated {
+		update = update.Set(expression.Name("terminatedAt"), expression.Value(now))
+	}
+
+	for key, val := range updates {
+		update = update.Set(expression.Name(key), expression.Value(val))
+	}
+
+	condition := expression.Name("status").Equal(expression.Value(string(from)))
+
+	expr, err := expression.NewBuilder().WithUpdate(update).WithCondition(condition).Build()
+	if err != nil {
+		return fmt.Errorf("building update expression: %w", err)
+	}
+
+	_, err = s.client.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+		TableName: &s.tableName,
+		Key: map[string]types.AttributeValue{
+			"sessionId": &types.AttributeValueMemberS{Value: sessionID},
+		},
+		UpdateExpression:          expr.Update(),
+		ConditionExpression:       expr.Condition(),
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+	})
+	return err
+}
+
+func (s *DynamoDBSessionStore) ListByOperator(ctx context.Context, operator string, limit int) ([]*Session, error) {
+	keyCond := expression.KeyAnd(
+		expression.Key("operator").Equal(expression.Value(operator)),
+		expression.Key("createdAt").GreaterThan(expression.Value("0")),
+	)
+
+	expr, err := expression.NewBuilder().WithKeyCondition(keyCond).Build()
+	if err != nil {
+		return nil, fmt.Errorf("building operator query expression: %w", err)
+	}
+
+	if limit == 0 {
+		limit = 50
+	}
+
+	input := &dynamodb.QueryInput{
+		TableName:                 &s.tableName,
+		IndexName:                 aws.String("operator-index"),
+		KeyConditionExpression:    expr.KeyCondition(),
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+		ScanIndexForward:          aws.Bool(false),
+		Limit:                     aws.Int32(int32(limit)),
+	}
+
+	out, err := s.client.Query(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("querying sessions by operator: %w", err)
+	}
+
+	sessions := make([]*Session, 0, len(out.Items))
+	for _, item := range out.Items {
+		var session Session
+		if err := attributevalue.UnmarshalMap(item, &session); err != nil {
+			return nil, fmt.Errorf("unmarshaling session: %w", err)
+		}
+		sessions = append(sessions, &session)
+	}
+	return sessions, nil
+}
+
+func (s *DynamoDBSessionStore) ListExpired(ctx context.Context) ([]*Session, error) {
+	now := time.Now().Format(time.RFC3339Nano)
+
+	statusCond := expression.Name("status").Equal(expression.Value(string(SessionStatusActive)))
+	deadlineCond := expression.Name("deadline").LessThan(expression.Value(now))
+	combined := statusCond.And(deadlineCond)
+
+	expr, err := expression.NewBuilder().WithFilter(combined).Build()
+	if err != nil {
+		return nil, fmt.Errorf("building expired sessions expression: %w", err)
+	}
+
+	input := &dynamodb.ScanInput{
+		TableName:                 &s.tableName,
+		FilterExpression:          expr.Filter(),
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+	}
+
+	out, err := s.client.Scan(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("scanning expired sessions: %w", err)
+	}
+
+	sessions := make([]*Session, 0, len(out.Items))
+	for _, item := range out.Items {
+		var session Session
+		if err := attributevalue.UnmarshalMap(item, &session); err != nil {
+			return nil, fmt.Errorf("unmarshaling session: %w", err)
+		}
+		sessions = append(sessions, &session)
+	}
+	return sessions, nil
+}
