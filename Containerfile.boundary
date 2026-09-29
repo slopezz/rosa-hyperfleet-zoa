@@ -137,28 +137,19 @@ RUN microdnf install --assumeyes --nodocs \
     && microdnf clean all \
     && rm --recursive --force /var/cache/yum
 
-# ZOA CLI
 COPY --from=builder /workspace/zoa /usr/local/bin/zoa
-
-# kubectl (EKS native client)
 COPY --from=tools /tools/kubectl /usr/local/bin/kubectl
-
-# AWS CLI v2
 COPY --from=aws-cli-builder /opt/aws-cli /usr/local/aws-cli
 COPY --from=aws-cli-builder /opt/aws-bin /usr/local/bin
-
-# Claude Code
 COPY --from=claude-builder /opt/claude /usr/local/lib/claude-code
 RUN ln --symbolic /usr/local/lib/claude-code/claude /usr/local/bin/claude
 
-# Non-root user for ECS Exec sessions
-RUN useradd --create-home --shell /bin/bash sre
-
-# Reserved directories for future break-glass kubeconfig injection
-RUN mkdir -p /home/sre/.kube /home/sre/.aws \
+RUN useradd --create-home --shell /bin/bash sre \
     && chown -R sre:sre /home/sre
 
-ENV HOME=/home/sre
+# Default prompt — ECS task entrypoint overrides with deployment/target context.
+ENV HOME=/home/sre \
+    PS1="[\u@zoa] \w \$ "
 
 USER sre
 WORKDIR /home/sre
