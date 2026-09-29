@@ -100,7 +100,6 @@ func (h *AccessHandler) registerRoutes() {
 	h.mux.HandleFunc("POST /sessions/join/{id}", h.handleSessionJoin)
 
 	h.mux.HandleFunc("GET /targets", h.handleTargetList)
-	h.mux.HandleFunc("GET /targets/{deployment}", h.handleTargetsByDeployment)
 
 	h.mux.HandleFunc("POST /approve/{id}", h.handleApproveStub)
 	h.mux.HandleFunc("POST /reject/{id}", h.handleRejectStub)
@@ -400,20 +399,6 @@ func (h *AccessHandler) handleTargetList(w http.ResponseWriter, r *http.Request)
 	targets, err := h.targetStore.List(ctx)
 	if err != nil {
 		h.logger.Error("failed to list targets", "error", err)
-		writeError(w, http.StatusInternalServerError, "internal_error", "failed to list targets")
-		return
-	}
-
-	writeJSON(w, http.StatusOK, map[string]interface{}{"items": targets, "count": len(targets)})
-}
-
-func (h *AccessHandler) handleTargetsByDeployment(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	deployment := r.PathValue("deployment")
-
-	targets, err := h.targetStore.ListByDeployment(ctx, deployment)
-	if err != nil {
-		h.logger.Error("failed to list targets by deployment", "deployment", deployment, "error", err)
 		writeError(w, http.StatusInternalServerError, "internal_error", "failed to list targets")
 		return
 	}

@@ -89,16 +89,6 @@ func (m *mockTargetStoreAccess) List(_ context.Context) ([]*store.Target, error)
 	return m.targets, nil
 }
 
-func (m *mockTargetStoreAccess) ListByDeployment(_ context.Context, deployment string) ([]*store.Target, error) {
-	var result []*store.Target
-	for _, t := range m.targets {
-		if t.DeploymentName == deployment {
-			result = append(result, t)
-		}
-	}
-	return result, nil
-}
-
 func testAccessHandler(sessionStore store.SessionStore, targetStore store.TargetStore) *AccessHandler {
 	cfg := &config.Config{
 		HandlerMode: "access",
@@ -189,28 +179,6 @@ func TestAccessHandler_WhenListTargets_ItShouldReturnAllTargets(t *testing.T) {
 	items, ok := resp["items"].([]interface{})
 	if !ok || len(items) != 2 {
 		t.Errorf("expected 2 targets, got %v", resp["items"])
-	}
-}
-
-func TestAccessHandler_WhenListTargetsByDeployment_ItShouldFilterByDeployment(t *testing.T) {
-	targets := &mockTargetStoreAccess{
-		targets: []*store.Target{
-			{TargetID: "mc01", TargetType: "MC", DeploymentName: "us-east-1"},
-		},
-	}
-	h := testAccessHandler(&mockSessionStoreAccess{}, targets)
-
-	rr := doAccessRequest(h, "GET", "/targets/us-east-1", nil, accessHeaders())
-
-	if rr.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
-	}
-
-	var resp map[string]interface{}
-	json.NewDecoder(rr.Body).Decode(&resp)
-	items, ok := resp["items"].([]interface{})
-	if !ok || len(items) != 1 {
-		t.Errorf("expected 1 target, got %v", resp["items"])
 	}
 }
 

@@ -14,6 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	awslambda "github.com/aws/aws-sdk-go-v2/service/lambda"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -61,11 +62,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Access mode: no EKS, no S3, no cross-account — just DynamoDB + ECS.
+	// Access mode: no EKS, no S3, no cross-account — DynamoDB + SSM + ECS.
 	if cfg.IsAccessMode() {
 		dynamoClient := dynamodb.NewFromConfig(awsCfg)
+		ssmClient := ssm.NewFromConfig(awsCfg)
 		sessionStore := store.NewSessionStore(dynamoClient, cfg.SessionsTable, cfg.DynamoDBTTLDays)
-		targetStore := store.NewTargetStore(dynamoClient, cfg.BoundaryTargetsTable)
+		targetStore := store.NewTargetStore(ssmClient, cfg.TargetsSSMPrefix)
 		auditStore := store.NewAuditStore(dynamoClient, cfg.AuditTable, cfg.DynamoDBTTLDays)
 
 		accessHandler := api.NewAccessHandler(api.AccessDeps{
