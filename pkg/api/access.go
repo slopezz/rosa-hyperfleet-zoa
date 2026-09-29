@@ -231,6 +231,7 @@ func (h *AccessHandler) handleSessionStart(w http.ResponseWriter, r *http.Reques
 func (h *AccessHandler) handleSessionList(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	q := r.URL.Query()
+	operatorARN := r.Header.Get("X-Operator")
 
 	filter := &store.SessionFilter{}
 	if v := q.Get("status"); v != "" {
@@ -241,9 +242,14 @@ func (h *AccessHandler) handleSessionList(w http.ResponseWriter, r *http.Request
 		filter.Target = &v
 	}
 
-	// Session list shows all sessions by default (same as `zoa runs` which shows
-	// all executions on a cluster). Filter by operator with ?operator=<username>.
-	if v := q.Get("operator"); v != "" {
+	// scope=mine: default for `session list` — show only caller's sessions.
+	// No scope param (or scope=all): `session history` — show all operators.
+	if q.Get("scope") == "mine" {
+		username, _, err := ExtractSREIdentity(operatorARN)
+		if err == nil && username != "" {
+			filter.Operator = &username
+		}
+	} else if v := q.Get("operator"); v != "" {
 		filter.Operator = &v
 	}
 
