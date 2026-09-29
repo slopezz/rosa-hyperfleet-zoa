@@ -24,7 +24,6 @@ func newSessionCommand(opts *GlobalOptions) *cobra.Command {
 		newSessionStopCommand(opts),
 		newSessionJoinCommand(opts),
 		newSessionListCommand(opts),
-		newSessionHistoryCommand(opts),
 	)
 
 	return cmd
@@ -136,11 +135,24 @@ func newSessionJoinCommand(opts *GlobalOptions) *cobra.Command {
 }
 
 func newSessionListCommand(opts *GlobalOptions) *cobra.Command {
-	var status, operator string
+	var status, operator, target, since, until string
 
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List boundary sessions",
+		Long: `List boundary sessions across all operators. Same visibility model as 'zoa runs'.
+Defaults to last 24 hours.`,
+		Example: `  # Active sessions (default last 24h)
+  zoa session list --status active
+
+  # All sessions in the last 7 days
+  zoa session list --since 7d
+
+  # Sessions for a specific operator
+  zoa session list --operator slopezma
+
+  # JSON output
+  zoa session list -o json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c, err := getClient(opts)
 			if err != nil {
@@ -154,67 +166,19 @@ func newSessionListCommand(opts *GlobalOptions) *cobra.Command {
 			if operator != "" {
 				query.Set("operator", operator)
 			}
-
-			list, err := c.ListSessions(cmd.Context(), query)
-			if err != nil {
-				return fmt.Errorf("listing sessions: %w", err)
+			if target != "" {
+				query.Set("target", target)
 			}
-
-			if opts.OutputFormat == output.FormatJSON {
-				enc := json.NewEncoder(os.Stdout)
-				enc.SetIndent("", "  ")
-				return enc.Encode(list)
-			}
-
-			if len(list.Items) == 0 {
-				fmt.Println("No sessions found")
-				return nil
-			}
-
-			tw := output.NewTable(os.Stdout)
-			fmt.Fprintln(tw, "SESSION ID\tOPERATOR\tTARGET\tSTATUS\tCREATED")
-			for _, s := range list.Items {
-				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
-					s.SessionID, s.Operator, s.Target, s.Status, output.Dash(s.CreatedAt))
-			}
-			return tw.Flush()
-		},
-	}
-
-	cmd.Flags().StringVar(&status, "status", "", "Filter by session status")
-	cmd.Flags().StringVar(&operator, "operator", "", "Filter by operator")
-
-	return cmd
-}
-
-func newSessionHistoryCommand(opts *GlobalOptions) *cobra.Command {
-	var since, until, operator string
-
-	cmd := &cobra.Command{
-		Use:   "history",
-		Short: "List all sessions across operators (with time filters)",
-		Long:  `Show historical sessions across all operators. Defaults to last 24 hours.`,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			c, err := getClient(opts)
-			if err != nil {
-				return fmt.Errorf("creating client: %w", err)
-			}
-
-			query := url.Values{}
-			query.Set("all", "true")
 			if since != "" {
 				query.Set("since", since)
 			}
 			if until != "" {
 				query.Set("until", until)
 			}
-			if operator != "" {
-				query.Set("operator", operator)
-			}
 
 			list, err := c.ListSessions(cmd.Context(), query)
 			if err != nil {
-				return fmt.Errorf("listing session history: %w", err)
+				return fmt.Errorf("listing sessions: %w", err)
 			}
 
 			if opts.OutputFormat == output.FormatJSON {
@@ -239,9 +203,11 @@ func newSessionHistoryCommand(opts *GlobalOptions) *cobra.Command {
 		},
 	}
 
+	cmd.Flags().StringVar(&status, "status", "", "Filter by status (active, terminated, failed)")
+	cmd.Flags().StringVar(&operator, "operator", "", "Filter by operator")
+	cmd.Flags().StringVar(&target, "target", "", "Filter by target cluster")
 	cmd.Flags().StringVar(&since, "since", "24h", "Show sessions since (e.g. 1h, 7d, 2026-01-01)")
 	cmd.Flags().StringVar(&until, "until", "", "Show sessions until (e.g. 1h, 2026-01-01)")
-	cmd.Flags().StringVar(&operator, "operator", "", "Filter by operator")
 
 	return cmd
 }

@@ -231,7 +231,6 @@ func (h *AccessHandler) handleSessionStart(w http.ResponseWriter, r *http.Reques
 func (h *AccessHandler) handleSessionList(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	q := r.URL.Query()
-	operatorARN := r.Header.Get("X-Operator")
 
 	filter := &store.SessionFilter{}
 	if v := q.Get("status"); v != "" {
@@ -242,17 +241,22 @@ func (h *AccessHandler) handleSessionList(w http.ResponseWriter, r *http.Request
 		filter.Target = &v
 	}
 
-	// Default to caller's own sessions. Pass ?all=true for cross-operator view
-	// (used by history/audit). This mirrors `zoa runs` defaulting to the caller's account.
-	if q.Get("all") != "true" {
-		username, _, err := ExtractSREIdentity(operatorARN)
-		if err == nil && username != "" {
-			filter.Operator = &username
-		}
-	}
-
+	// Session list shows all sessions by default (same as `zoa runs` which shows
+	// all executions on a cluster). Filter by operator with ?operator=<username>.
 	if v := q.Get("operator"); v != "" {
 		filter.Operator = &v
+	}
+
+	// Time filters — same as `zoa runs` (since/until with flexible formats).
+	if v := q.Get("since"); v != "" {
+		if t, err := parseTimeValue(v); err == nil {
+			filter.Since = &t
+		}
+	}
+	if v := q.Get("until"); v != "" {
+		if t, err := parseUntilTimeValue(v); err == nil {
+			filter.Before = &t
+		}
 	}
 
 	limit := 50
@@ -265,7 +269,9 @@ func (h *AccessHandler) handleSessionList(w http.ResponseWriter, r *http.Request
 	}
 	filter.Limit = limit
 
-	sessions, err := h.sessionStore.List(ctx, filter)
+	// Use ListAll (date-bucket-index) — same as `zoa runs`. CLI defaults to
+	// --since 24h to keep queries bounded.
+	sessions, err := h.sessionStore.ListAll(ctx, filter)
 	if err != nil {
 		h.logger.Error("failed to list sessions", "error", err)
 		writeError(w, http.StatusInternalServerError, "internal_error", "failed to list sessions")

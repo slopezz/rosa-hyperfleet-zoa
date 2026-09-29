@@ -385,37 +385,51 @@ func (s *DynamoDBSessionStore) ListByOperator(ctx context.Context, operator stri
 	return sessions, nil
 }
 
+// ListExpired queries status-deadline-index for active sessions past their deadline.
+// Uses the GSI (PK=status, SK=deadline) instead of a full table scan —
+// same pattern as the execution store's status-index queries.
 func (s *DynamoDBSessionStore) ListExpired(ctx context.Context) ([]*Session, error) {
 	now := time.Now().Format(time.RFC3339Nano)
 
-	statusCond := expression.Name("status").Equal(expression.Value(string(SessionStatusActive)))
-	deadlineCond := expression.Name("deadline").LessThan(expression.Value(now))
-	combined := statusCond.And(deadlineCond)
+	keyCond := expression.KeyAnd(
+		expression.Key("status").Equal(expression.Value(string(SessionStatusActive))),
+		expression.Key("deadline").LessThanEqual(expression.Value(now)),
+	)
 
-	expr, err := expression.NewBuilder().WithFilter(combined).Build()
+	expr, err := expression.NewBuilder().WithKeyCondition(keyCond).Build()
 	if err != nil {
 		return nil, fmt.Errorf("building expired sessions expression: %w", err)
 	}
 
-	input := &dynamodb.ScanInput{
-		TableName:                 &s.tableName,
-		FilterExpression:          expr.Filter(),
-		ExpressionAttributeNames:  expr.Names(),
-		ExpressionAttributeValues: expr.Values(),
-	}
-
-	out, err := s.client.Scan(ctx, input)
-	if err != nil {
-		return nil, fmt.Errorf("scanning expired sessions: %w", err)
-	}
-
-	sessions := make([]*Session, 0, len(out.Items))
-	for _, item := range out.Items {
-		var session Session
-		if err := attributevalue.UnmarshalMap(item, &session); err != nil {
-			return nil, fmt.Errorf("unmarshaling session: %w", err)
+	var sessions []*Session
+	var lastKey map[string]types.AttributeValue
+	for {
+		input := &dynamodb.QueryInput{
+			TableName:                 &s.tableName,
+			IndexName:                 aws.String("status-deadline-index"),
+			KeyConditionExpression:    expr.KeyCondition(),
+			ExpressionAttributeNames:  expr.Names(),
+			ExpressionAttributeValues: expr.Values(),
+			ExclusiveStartKey:         lastKey,
 		}
-		sessions = append(sessions, &session)
+
+		out, err := s.client.Query(ctx, input)
+		if err != nil {
+			return nil, fmt.Errorf("querying expired sessions: %w", err)
+		}
+
+		for _, item := range out.Items {
+			var session Session
+			if err := attributevalue.UnmarshalMap(item, &session); err != nil {
+				return nil, fmt.Errorf("unmarshaling session: %w", err)
+			}
+			sessions = append(sessions, &session)
+		}
+
+		lastKey = out.LastEvaluatedKey
+		if lastKey == nil {
+			break
+		}
 	}
 	return sessions, nil
 }
