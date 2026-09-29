@@ -1,20 +1,18 @@
 # ZOA Boundary — Ephemeral SRE investigation container
 #
 # Runs as an ECS Fargate task inside the target VPC. SREs connect
-# via ECS Exec (SSM). Contains ZOA CLI, kubectl, oc, aws CLI v2,
-# jq, yq, and Claude Code for interactive investigation.
+# via ECS Exec (SSM). Contains ZOA CLI, kubectl, AWS CLI v2,
+# jq, and Claude Code for interactive investigation.
 #
-# Stages:
-#   builder          — Go build (zoa CLI)
-#   tools            — kubectl binary (SHA256 verified)
-#   aws-cli-builder  — AWS CLI v2
-#   claude-builder   — Claude Code binary (SHASUMS256.txt verified)
-#   final            — production image (no curl/wget)
+# SECURITY: No curl, wget, or download tools in the final image —
+# all binaries are COPYed from builder stages. All external downloads
+# are checksum-verified.
 
 ARG BASE_IMAGE=registry.access.redhat.com/ubi9/ubi-minimal:9.8-1790555810
 
-# Stage 1: builder
-# Build the ZOA CLI binary.
+# --------------------------------------------------------------------------
+# builder — Go build (zoa CLI)
+# --------------------------------------------------------------------------
 FROM registry.access.redhat.com/ubi9/go-toolset:1.26.7-1790174511 AS builder
 ARG TARGETOS=linux
 ARG TARGETARCH=amd64
@@ -40,9 +38,10 @@ RUN git config --global --add safe.directory /workspace && \
     -o /workspace/zoa ./cmd/zoa/
 
 
-# Stage 2: tools
-# Download kubectl binary with SHA256 verification.
+# --------------------------------------------------------------------------
+# tools — kubectl binary with SHA256 verification
 # No oc — this is an EKS container, kubectl is the native client.
+# --------------------------------------------------------------------------
 FROM ${BASE_IMAGE} AS tools
 
 ARG TARGETARCH=amd64
@@ -62,8 +61,9 @@ RUN curl --silent --location --fail \
     && chmod +x kubectl
 
 
-# Stage 3: aws-cli
-# Download and install AWS CLI v2.
+# --------------------------------------------------------------------------
+# aws-cli-builder — AWS CLI v2
+# --------------------------------------------------------------------------
 FROM ${BASE_IMAGE} AS aws-cli-builder
 
 RUN microdnf install --assumeyes --nodocs curl unzip && microdnf clean all
@@ -78,8 +78,9 @@ RUN curl --silent --location --fail \
     && rm -rf aws awscli.zip
 
 
-# Stage 4: claude-builder
-# Claude Code standalone binary from GitHub releases.
+# --------------------------------------------------------------------------
+# claude-builder — Claude Code standalone binary (SHASUMS256.txt verified)
+# --------------------------------------------------------------------------
 FROM ${BASE_IMAGE} AS claude-builder
 
 ARG TARGETARCH=amd64
@@ -89,7 +90,6 @@ RUN microdnf install --assumeyes --nodocs tar gzip curl && microdnf clean all
 
 WORKDIR /claude-dl
 
-# Claude Code with SHASUMS256.txt verification (same pattern as rosa-boundary v1)
 RUN ARCH=$(echo "${TARGETARCH}" | sed 's/amd64/x64/; s/arm64/arm64/') && \
     TARBALL="claude-linux-${ARCH}.tar.gz" && \
     curl --silent --location --fail \
@@ -104,9 +104,9 @@ RUN ARCH=$(echo "${TARGETARCH}" | sed 's/amd64/x64/; s/arm64/arm64/') && \
     && chmod +x /opt/claude/claude
 
 
-# Stage 5: final
-# Production image. Only this stage ships.
-# SECURITY: No curl, wget, or download tools — all binaries are COPYed from builder stages.
+# --------------------------------------------------------------------------
+# final — Production image. Only this stage ships.
+# --------------------------------------------------------------------------
 FROM ${BASE_IMAGE} AS final
 
 ARG VERSION=0.0.1
@@ -140,10 +140,10 @@ RUN microdnf install --assumeyes --nodocs \
 # ZOA CLI
 COPY --from=builder /workspace/zoa /usr/local/bin/zoa
 
-# kubectl (EKS native client — no oc needed for EKS)
+# kubectl (EKS native client)
 COPY --from=tools /tools/kubectl /usr/local/bin/kubectl
 
-# AWS CLI v2 (COPYed from builder, no curl in final image)
+# AWS CLI v2
 COPY --from=aws-cli-builder /opt/aws-cli /usr/local/aws-cli
 COPY --from=aws-cli-builder /opt/aws-bin /usr/local/bin
 
