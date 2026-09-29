@@ -102,6 +102,7 @@ func newRealClient(opts *GlobalOptions) (*client.Client, error) {
 	return client.New(opts.APIURL, cfg.Credentials, client.Options{
 		AccountID: *identity.Account,
 		Operator:  *identity.Arn,
+		SessionID: os.Getenv("ZOA_SESSION_ID"),
 		Region:    opts.Region,
 	})
 }

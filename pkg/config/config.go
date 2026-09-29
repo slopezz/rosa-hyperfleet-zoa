@@ -82,9 +82,11 @@ type Config struct {
 	// Default: 180s (3 minutes). Tunable without code change.
 	AsyncSchedulingOverheadSeconds int
 
-	// --- Access mode fields (HANDLER_MODE=access) ---
+	// --- Access + API mode fields ---
 
 	// SessionsTable is the DynamoDB table for boundary session state.
+	// Required in access mode (session lifecycle). Optional in api mode
+	// (identity bridge: ECS task ARN → SRE identity).
 	SessionsTable string
 
 	// TargetsSSMPrefix is the SSM Parameter Store path prefix for target registry

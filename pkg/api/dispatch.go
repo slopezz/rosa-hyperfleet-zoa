@@ -47,8 +47,7 @@ type createResponse struct {
 
 func (h *Handler) handleCreate(w http.ResponseWriter, r *http.Request, actionName string) {
 	ctx := r.Context()
-	// TODO: Replace with identity resolution from ECS task ARN once rosa-boundary is integrated
-	operator := r.Header.Get("X-Operator")
+	operator, signerARN, sessionID := h.resolveIdentity(r)
 	accountID := r.Header.Get("X-Account-ID")
 
 	if accountID == "" {
@@ -227,6 +226,8 @@ func (h *Handler) handleCreate(w http.ResponseWriter, r *http.Request, actionNam
 		Force:           req.Force,
 		Jira:            req.Jira,
 		Operator:        operator,
+		SignerARN:       signerARN,
+		SessionID:       sessionID,
 		Params:          req.Params,
 		Revision:        version.GitCommit,
 		TimeoutSeconds:  timeoutSeconds,

@@ -30,13 +30,14 @@ type Handler struct {
 	cfg            *config.Config
 	executionStore store.ExecutionStore
 	auditStore     store.AuditStore
+	sessionStore   store.SessionStore
 	executor       *executor.Executor
 	s3Client       S3Getter
 	logger         *slog.Logger
 	mux            *http.ServeMux
 }
 
-func New(cfg *config.Config, execStore store.ExecutionStore, auditStore store.AuditStore, exec *executor.Executor, s3Client S3Getter, logger *slog.Logger) *Handler {
+func New(cfg *config.Config, execStore store.ExecutionStore, auditStore store.AuditStore, exec *executor.Executor, s3Client S3Getter, logger *slog.Logger, opts ...HandlerOption) *Handler {
 	h := &Handler{
 		cfg:            cfg,
 		executionStore: execStore,
@@ -46,8 +47,50 @@ func New(cfg *config.Config, execStore store.ExecutionStore, auditStore store.Au
 		logger:         logger,
 		mux:            http.NewServeMux(),
 	}
+	for _, opt := range opts {
+		opt(h)
+	}
 	h.registerRoutes()
 	return h
+}
+
+// HandlerOption configures optional Handler dependencies.
+type HandlerOption func(*Handler)
+
+// WithSessionStore enables the identity bridge — resolves ECS task ARN to SRE
+// identity via DynamoDB session lookup. Required when boundary containers call
+// the per-VPC Lambda. Without this, the handler falls back to the X-Operator header.
+func WithSessionStore(s store.SessionStore) HandlerOption {
+	return func(h *Handler) { h.sessionStore = s }
+}
+
+// resolveIdentity extracts the SRE operator and raw signer ARN from a request.
+// If the caller is a boundary ECS task, identity is resolved via the sessions
+// table (tamper-proof: task UUID from SigV4 → DynamoDB). Otherwise, identity
+// is extracted directly from the SigV4 ARN (personal IAM role from laptop).
+func (h *Handler) resolveIdentity(r *http.Request) (operator, signerARN, sessionID string) {
+	signerARN = r.Header.Get("X-Operator")
+	sessionID = r.Header.Get("X-Session-ID")
+
+	if h.sessionStore != nil && signerARN != "" {
+		resolved, err := ResolveIdentity(r.Context(), signerARN, h.sessionStore, "")
+		if err != nil {
+			h.logger.Warn("identity bridge lookup failed, using ARN extraction",
+				"signerARN", signerARN, "error", err)
+			username, _, _ := ExtractSREIdentity(signerARN)
+			operator = username
+		} else {
+			operator = resolved
+		}
+	} else {
+		username, _, _ := ExtractSREIdentity(signerARN)
+		operator = username
+	}
+
+	if operator == "" {
+		operator = signerARN
+	}
+	return operator, signerARN, sessionID
 }
 
 func (h *Handler) registerRoutes() {
@@ -406,12 +449,10 @@ func withDryRun(dryRun bool) AuditOption {
 	return func(o *auditOpts) { o.dryRun = dryRun }
 }
 
-// recordAudit persists an audit entry for the request. X-Account-ID and
-// X-Operator are always populated in legitimate requests because the ZOA CLI
-// sets them unconditionally (the CLI must have valid AWS credentials to sign
-// requests via SigV4, and it derives account-id from those credentials).
-// List/audit handlers no longer reject missing X-Account-ID to enable
-// cross-cluster visibility, but that path is unreachable from the CLI.
+// recordAudit persists an audit entry for the request. Identity is resolved
+// via the identity bridge (task UUID → sessions table for boundary callers,
+// direct ARN extraction for laptop callers). Both the resolved operator and
+// raw SigV4 signer ARN are recorded for forensic completeness.
 func (h *Handler) recordAudit(r *http.Request, statusCode int, action, executionID string, opts ...AuditOption) {
 	if h.auditStore == nil {
 		return
@@ -421,7 +462,7 @@ func (h *Handler) recordAudit(r *http.Request, statusCode int, action, execution
 		opt(&o)
 	}
 	accountID := r.Header.Get("X-Account-ID")
-	operator := r.Header.Get("X-Operator")
+	operator, signerARN, sessionID := h.resolveIdentity(r)
 	entry := &store.AuditEntry{
 		AccountID:     accountID,
 		Timestamp:     time.Now().Format(time.RFC3339Nano),
@@ -429,6 +470,8 @@ func (h *Handler) recordAudit(r *http.Request, statusCode int, action, execution
 		Path:          r.URL.Path,
 		StatusCode:    statusCode,
 		Operator:      operator,
+		SignerARN:     signerARN,
+		SessionID:     sessionID,
 		Action:        action,
 		TargetCluster: h.cfg.TargetCluster,
 		SourceIP:      r.Header.Get("X-Source-IP"),
