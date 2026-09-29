@@ -6,9 +6,11 @@
 #
 # Stages:
 #   builder          — Go build (zoa CLI)
-#   tools            — kubectl + oc binaries
-#   claude-builder   — Claude Code binary (GitHub release)
-#   final            — production image
+#   tools            — kubectl + oc binaries (SHA256 verified)
+#   yq-builder       — yq static binary (SHA256 verified)
+#   aws-cli-builder  — AWS CLI v2
+#   claude-builder   — Claude Code binary (SHASUMS256.txt verified)
+#   final            — production image (no curl/wget)
 
 ARG BASE_IMAGE=registry.access.redhat.com/ubi9/ubi-minimal:9.8-1790555810
 
@@ -53,9 +55,14 @@ RUN microdnf install --assumeyes --nodocs tar gzip && microdnf clean all
 
 WORKDIR /tools
 
+# kubectl with SHA256 checksum verification
 RUN curl --silent --location --fail \
         "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${TARGETARCH}/kubectl" \
         --output kubectl \
+    && curl --silent --location --fail \
+        "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${TARGETARCH}/kubectl.sha256" \
+        --output kubectl.sha256 \
+    && echo "$(cat kubectl.sha256)  kubectl" | sha256sum --check --status \
     && chmod +x kubectl
 
 RUN curl --silent --location --fail \
@@ -76,9 +83,14 @@ RUN microdnf install --assumeyes --nodocs curl && microdnf clean all
 
 WORKDIR /yq-dl
 
+# yq with SHA256 checksum verification
 RUN curl --silent --location --fail \
         "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_${TARGETARCH}" \
         --output yq \
+    && curl --silent --location --fail \
+        "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/checksums" \
+        --output checksums \
+    && grep "yq_linux_${TARGETARCH}$" checksums | sha256sum --check --status \
     && chmod +x yq
 
 
@@ -109,10 +121,16 @@ RUN microdnf install --assumeyes --nodocs tar gzip curl && microdnf clean all
 
 WORKDIR /claude-dl
 
+# Claude Code with SHASUMS256.txt verification (same pattern as rosa-boundary v1)
 RUN ARCH=$(echo "${TARGETARCH}" | sed 's/amd64/x64/; s/arm64/arm64/') && \
+    TARBALL="claude-linux-${ARCH}.tar.gz" && \
     curl --silent --location --fail \
-        "https://github.com/anthropics/claude-code/releases/download/v${CLAUDE_CODE_VERSION}/claude-linux-${ARCH}.tar.gz" \
+        "https://github.com/anthropics/claude-code/releases/download/v${CLAUDE_CODE_VERSION}/${TARBALL}" \
         --output claude.tar.gz \
+    && curl --silent --location --fail \
+        "https://github.com/anthropics/claude-code/releases/download/v${CLAUDE_CODE_VERSION}/SHASUMS256.txt" \
+        --output SHASUMS256.txt \
+    && grep "${TARBALL}" SHASUMS256.txt | sed "s|${TARBALL}|claude.tar.gz|" | sha256sum --check --status \
     && mkdir -p /opt/claude \
     && tar --extract --gzip --file claude.tar.gz --directory=/opt/claude \
     && chmod +x /opt/claude/claude

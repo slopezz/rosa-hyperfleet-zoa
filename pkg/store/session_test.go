@@ -141,7 +141,7 @@ func TestDynamoDBSessionStore_UpdateStatus_WhenTerminated_ItShouldSetTerminatedA
 	}
 }
 
-func TestDynamoDBSessionStore_ListExpired_WhenExpiredSessionsExist_ItShouldReturnThem(t *testing.T) {
+func TestDynamoDBSessionStore_ListExpired_WhenExpiredSessionsExist_ItShouldUseStatusDeadlineIndex(t *testing.T) {
 	expired := &Session{
 		SessionID:     "task-expired",
 		Operator:      "slopezma",
@@ -152,11 +152,14 @@ func TestDynamoDBSessionStore_ListExpired_WhenExpiredSessionsExist_ItShouldRetur
 	item, _ := attributevalue.MarshalMap(expired)
 
 	mock := &mockDynamoDBAPI{
-		scanFn: func(_ context.Context, params *dynamodb.ScanInput, _ ...func(*dynamodb.Options)) (*dynamodb.ScanOutput, error) {
-			if params.FilterExpression == nil {
-				t.Error("expected filter expression for expired sessions query")
+		queryFn: func(_ context.Context, params *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
+			if params.IndexName == nil || *params.IndexName != "status-deadline-index" {
+				t.Errorf("expected status-deadline-index GSI, got %v", params.IndexName)
 			}
-			return &dynamodb.ScanOutput{Items: []map[string]types.AttributeValue{item}}, nil
+			if params.KeyConditionExpression == nil {
+				t.Error("expected key condition expression for GSI query")
+			}
+			return &dynamodb.QueryOutput{Items: []map[string]types.AttributeValue{item}}, nil
 		},
 	}
 
