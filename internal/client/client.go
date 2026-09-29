@@ -26,13 +26,15 @@ type Client struct {
 	signer      *v4.Signer
 	accountID   string
 	operator    string
+	sessionID   string
 	timeout     time.Duration
 }
 
 // Options configures the ZOA client.
 type Options struct {
 	AccountID string // AWS account ID (derived from STS if empty)
-	Operator  string // SRE identity (email or IAM principal)
+	Operator  string // SRE identity (IAM ARN from STS GetCallerIdentity)
+	SessionID string // Boundary session ID (from ZOA_SESSION_ID env var, empty on laptop)
 	Region    string // AWS region override (auto-detected from URL if empty)
 }
 
@@ -54,6 +56,7 @@ func New(apiURL string, creds aws.CredentialsProvider, opts Options) (*Client, e
 		signer:      v4.NewSigner(),
 		accountID:   opts.AccountID,
 		operator:    opts.Operator,
+		sessionID:   opts.SessionID,
 		timeout:     30 * time.Second,
 	}, nil
 }
@@ -231,6 +234,9 @@ func (c *Client) do(ctx context.Context, method, path string, body any, result a
 	}
 	if c.operator != "" {
 		req.Header.Set("X-Operator", c.operator)
+	}
+	if c.sessionID != "" {
+		req.Header.Set("X-Session-ID", c.sessionID)
 	}
 
 	if c.signer != nil {

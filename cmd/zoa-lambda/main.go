@@ -159,7 +159,14 @@ func main() {
 		// Converts Function URL events to http.Request, serves via the HTTP handler,
 		// and returns a streaming response (up to 200MB).
 		auditStore := store.NewAuditStore(dynamoClient, cfg.AuditTable, cfg.DynamoDBTTLDays)
-		apiHandler := api.New(cfg, execStore, auditStore, exec, s3Client, logger)
+
+		var apiOpts []api.HandlerOption
+		if cfg.SessionsTable != "" {
+			sessionStore := store.NewSessionStore(dynamoClient, cfg.SessionsTable, cfg.DynamoDBTTLDays)
+			apiOpts = append(apiOpts, api.WithSessionStore(sessionStore))
+			logger.Info("identity bridge enabled", "sessionsTable", cfg.SessionsTable)
+		}
+		apiHandler := api.New(cfg, execStore, auditStore, exec, s3Client, logger, apiOpts...)
 		streamingHandler := lambdahttp.NewStreamingHandler(apiHandler)
 
 		logger.Info("API mode: native Lambda Function URL streaming handler")

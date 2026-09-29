@@ -25,6 +25,8 @@ type Execution struct {
 	AccountID       string            `json:"account_id" dynamodbav:"accountId"`
 	TargetCluster   string            `json:"target_cluster" dynamodbav:"targetCluster"`
 	Operator        string            `json:"operator" dynamodbav:"operator"`
+	SignerARN       string            `json:"signer_arn,omitempty" dynamodbav:"signerARN,omitempty"`
+	SessionID       string            `json:"session_id,omitempty" dynamodbav:"sessionId,omitempty"`
 	Status          Status            `json:"status" dynamodbav:"status"`
 	ExecutionMode   string            `json:"execution_mode" dynamodbav:"executionMode"`
 	Scope           string            `json:"scope" dynamodbav:"scope"`
@@ -72,6 +74,8 @@ type AuditEntry struct {
 	Path          string `json:"path" dynamodbav:"path"`
 	StatusCode    int    `json:"status_code" dynamodbav:"statusCode"`
 	Operator      string `json:"operator" dynamodbav:"operator"`
+	SignerARN     string `json:"signer_arn,omitempty" dynamodbav:"signerARN,omitempty"`
+	SessionID     string `json:"session_id,omitempty" dynamodbav:"sessionId,omitempty"`
 	Action        string `json:"action,omitempty" dynamodbav:"action,omitempty"`
 	TargetCluster string `json:"target_cluster,omitempty" dynamodbav:"targetCluster,omitempty"`
 	SourceIP      string `json:"source_ip,omitempty" dynamodbav:"sourceIp,omitempty"`
