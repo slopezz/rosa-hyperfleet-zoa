@@ -87,8 +87,9 @@ type Config struct {
 	// SessionsTable is the DynamoDB table for boundary session state.
 	SessionsTable string
 
-	// BoundaryTargetsTable is the DynamoDB table for boundary target registry.
-	BoundaryTargetsTable string
+	// TargetsSSMPrefix is the SSM Parameter Store path prefix for target registry
+	// (e.g., /zoa/targets/us-east-1). Each cluster writes its own parameter.
+	TargetsSSMPrefix string
 
 	// ECSClusterARN is the default ECS cluster ARN for boundary tasks (RC targets).
 	ECSClusterARN string
@@ -131,7 +132,7 @@ func Load() (*Config, error) {
 		JobsNamespace:                  getEnv("ZOA_JOBS_NAMESPACE", "zoa-jobs"),
 		AsyncSchedulingOverheadSeconds: getEnvInt("ASYNC_SCHEDULING_OVERHEAD_SECONDS", 180),
 		SessionsTable:                  getEnv("SESSIONS_TABLE", ""),
-		BoundaryTargetsTable:           getEnv("BOUNDARY_TARGETS_TABLE", ""),
+		TargetsSSMPrefix:               getEnv("TARGETS_SSM_PREFIX", ""),
 		ECSClusterARN:                  getEnv("ECS_CLUSTER_ARN", ""),
 		ECSTaskDefinitionARN:           getEnv("ECS_TASK_DEFINITION_ARN", ""),
 		ECSSubnets:                     getEnv("ECS_SUBNETS", ""),
@@ -148,8 +149,8 @@ func Load() (*Config, error) {
 		if cfg.SessionsTable == "" {
 			return nil, fmt.Errorf("SESSIONS_TABLE is required in access mode")
 		}
-		if cfg.BoundaryTargetsTable == "" {
-			return nil, fmt.Errorf("BOUNDARY_TARGETS_TABLE is required in access mode")
+		if cfg.TargetsSSMPrefix == "" {
+			return nil, fmt.Errorf("TARGETS_SSM_PREFIX is required in access mode")
 		}
 		if cfg.AuditTable == "" {
 			return nil, fmt.Errorf("AUDIT_TABLE is required in access mode")

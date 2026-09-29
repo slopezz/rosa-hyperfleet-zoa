@@ -64,7 +64,7 @@ func setAccessEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("HANDLER_MODE", "access")
 	t.Setenv("SESSIONS_TABLE", "zoa-boundary-sessions")
-	t.Setenv("BOUNDARY_TARGETS_TABLE", "zoa-boundary-targets")
+	t.Setenv("TARGETS_SSM_PREFIX", "/zoa/targets/us-east-1")
 	t.Setenv("AUDIT_TABLE", "zoa-audit")
 	t.Setenv("AWS_REGION", "us-east-1")
 }
@@ -91,8 +91,8 @@ func TestLoad_WhenAccessMode_ItShouldSucceedWithRequiredVars(t *testing.T) {
 	if cfg.SessionsTable != "zoa-boundary-sessions" {
 		t.Errorf("expected SessionsTable 'zoa-boundary-sessions', got %q", cfg.SessionsTable)
 	}
-	if cfg.BoundaryTargetsTable != "zoa-boundary-targets" {
-		t.Errorf("expected BoundaryTargetsTable 'zoa-boundary-targets', got %q", cfg.BoundaryTargetsTable)
+	if cfg.TargetsSSMPrefix != "/zoa/targets/us-east-1" {
+		t.Errorf("expected TargetsSSMPrefix '/zoa/targets/us-east-1', got %q", cfg.TargetsSSMPrefix)
 	}
 }
 
@@ -106,13 +106,13 @@ func TestLoad_WhenAccessModeMissingSessionsTable_ItShouldReturnError(t *testing.
 	}
 }
 
-func TestLoad_WhenAccessModeMissingBoundaryTargetsTable_ItShouldReturnError(t *testing.T) {
+func TestLoad_WhenAccessModeMissingTargetsSSMPrefix_ItShouldReturnError(t *testing.T) {
 	setAccessEnv(t)
-	t.Setenv("BOUNDARY_TARGETS_TABLE", "")
+	t.Setenv("TARGETS_SSM_PREFIX", "")
 
 	_, err := Load()
 	if err == nil {
-		t.Fatal("expected error when BOUNDARY_TARGETS_TABLE is empty in access mode")
+		t.Fatal("expected error when TARGETS_SSM_PREFIX is empty in access mode")
 	}
 }
 
