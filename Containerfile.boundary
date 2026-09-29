@@ -147,7 +147,8 @@ RUN ln --symbolic /usr/local/lib/claude-code/claude /usr/local/bin/claude
 RUN useradd --create-home --shell /bin/bash sre \
     && chown -R sre:sre /home/sre
 
-# Default prompt — ECS task entrypoint overrides with deployment/target context.
+# Default prompt — ECS task entrypoint overrides with deployment/target context
+# (e.g., [sre@zoa:us-east-1/mc01] ~ $).
 ENV HOME=/home/sre \
     PS1="[\u@zoa] \w \$ "
 
