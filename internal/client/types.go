@@ -207,3 +207,58 @@ func (e *LambdaRuntimeError) Error() string {
 func (e *LambdaRuntimeError) IsUnavailable() bool {
 	return e.ErrorType == "Runtime.ExitError"
 }
+
+// --- Access / Boundary types ---
+
+type Target struct {
+	TargetID       string `json:"target_id"`
+	DeploymentName string `json:"deployment_name"`
+	VpcId          string `json:"vpc_id,omitempty"`
+	TargetType     string `json:"target_type"`
+	Region         string `json:"region"`
+	Status         string `json:"status,omitempty"`
+	FunctionUrl    string `json:"function_url,omitempty"`
+}
+
+type TargetList struct {
+	Items []Target `json:"items"`
+	Count int      `json:"count"`
+}
+
+type Session struct {
+	SessionID   string `json:"session_id"`
+	Operator    string `json:"operator"`
+	Target      string `json:"target_cluster"`
+	Status      string `json:"status"`
+	Region      string `json:"region,omitempty"`
+	EcsCluster  string `json:"ecs_cluster,omitempty"`
+	TaskArn     string `json:"task_arn,omitempty"`
+	CreatedAt   string `json:"created_at,omitempty"`
+	Deadline    string `json:"deadline,omitempty"`
+	CompletedAt string `json:"terminated_at,omitempty"`
+}
+
+type SessionList struct {
+	Items []Session `json:"items"`
+	Count int       `json:"count"`
+}
+
+type SessionStartRequest struct {
+	DeploymentName string `json:"deployment_name"`
+	Target         string `json:"target"`
+}
+
+type SessionStartResponse struct {
+	SessionID string `json:"session_id"`
+	Status    string `json:"status"`
+	TaskArn   string `json:"task_arn,omitempty"`
+	Region    string `json:"region,omitempty"`
+}
+
+type SessionJoinResponse struct {
+	SessionID     string `json:"session_id"`
+	TaskArn       string `json:"task_arn"`
+	ClusterArn    string `json:"cluster_arn"`
+	ContainerName string `json:"container_name"`
+	Region        string `json:"region"`
+}

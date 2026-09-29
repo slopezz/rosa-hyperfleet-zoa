@@ -16,6 +16,7 @@ type mockDynamoDBAPI struct {
 	getItemFn    func(ctx context.Context, params *dynamodb.GetItemInput, optFns ...func(*dynamodb.Options)) (*dynamodb.GetItemOutput, error)
 	queryFn      func(ctx context.Context, params *dynamodb.QueryInput, optFns ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error)
 	updateItemFn func(ctx context.Context, params *dynamodb.UpdateItemInput, optFns ...func(*dynamodb.Options)) (*dynamodb.UpdateItemOutput, error)
+	scanFn       func(ctx context.Context, params *dynamodb.ScanInput, optFns ...func(*dynamodb.Options)) (*dynamodb.ScanOutput, error)
 }
 
 func (m *mockDynamoDBAPI) PutItem(ctx context.Context, params *dynamodb.PutItemInput, optFns ...func(*dynamodb.Options)) (*dynamodb.PutItemOutput, error) {
@@ -44,6 +45,13 @@ func (m *mockDynamoDBAPI) UpdateItem(ctx context.Context, params *dynamodb.Updat
 		return m.updateItemFn(ctx, params, optFns...)
 	}
 	return &dynamodb.UpdateItemOutput{}, nil
+}
+
+func (m *mockDynamoDBAPI) Scan(ctx context.Context, params *dynamodb.ScanInput, optFns ...func(*dynamodb.Options)) (*dynamodb.ScanOutput, error) {
+	if m.scanFn != nil {
+		return m.scanFn(ctx, params, optFns...)
+	}
+	return &dynamodb.ScanOutput{}, nil
 }
 
 // --- ExecutionStore tests using mocked DynamoDB ---

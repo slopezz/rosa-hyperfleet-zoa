@@ -30,32 +30,38 @@ type ExecutionEvent struct {
 
 // Lambda aggregates all Lambda dependencies and provides the unified event handler.
 type Lambda struct {
-	cfg        *config.Config
-	handler    *api.Handler
-	reconciler *scheduler.Reconciler
-	exec       *executor.Executor
-	execStore  store.ExecutionStore
-	logger     *slog.Logger
+	cfg           *config.Config
+	handler       *api.Handler
+	accessHandler *api.AccessHandler
+	reconciler    *scheduler.Reconciler
+	reaper        *scheduler.Reaper
+	exec          *executor.Executor
+	execStore     store.ExecutionStore
+	logger        *slog.Logger
 }
 
 // Deps holds the dependencies injected by main.go.
 type Deps struct {
-	Cfg        *config.Config
-	Handler    *api.Handler
-	Reconciler *scheduler.Reconciler
-	Executor   *executor.Executor
-	ExecStore  store.ExecutionStore
-	Logger     *slog.Logger
+	Cfg           *config.Config
+	Handler       *api.Handler
+	AccessHandler *api.AccessHandler
+	Reconciler    *scheduler.Reconciler
+	Reaper        *scheduler.Reaper
+	Executor      *executor.Executor
+	ExecStore     store.ExecutionStore
+	Logger        *slog.Logger
 }
 
 func New(d Deps) *Lambda {
 	return &Lambda{
-		cfg:        d.Cfg,
-		handler:    d.Handler,
-		reconciler: d.Reconciler,
-		exec:       d.Executor,
-		execStore:  d.ExecStore,
-		logger:     d.Logger,
+		cfg:           d.Cfg,
+		handler:       d.Handler,
+		accessHandler: d.AccessHandler,
+		reconciler:    d.Reconciler,
+		reaper:        d.Reaper,
+		exec:          d.Executor,
+		execStore:     d.ExecStore,
+		logger:        d.Logger,
 	}
 }
 
@@ -94,7 +100,13 @@ func (l *Lambda) HandleEvent(ctx context.Context, rawEvent json.RawMessage) (int
 }
 
 func (l *Lambda) handleHTTPEvent(ctx context.Context, rawEvent json.RawMessage) (*events.APIGatewayV2HTTPResponse, error) {
-	if l.handler == nil {
+	// Determine which HTTP handler to use based on mode.
+	var httpHandler http.Handler
+	if l.cfg != nil && l.cfg.IsAccessMode() && l.accessHandler != nil {
+		httpHandler = l.accessHandler
+	} else if l.handler != nil {
+		httpHandler = l.handler
+	} else {
 		return &events.APIGatewayV2HTTPResponse{
 			StatusCode: http.StatusServiceUnavailable,
 			Body:       `{"code":"mode_mismatch","reason":"HTTP events not handled in this mode"}`,
@@ -118,7 +130,7 @@ func (l *Lambda) handleHTTPEvent(ctx context.Context, rawEvent json.RawMessage) 
 	}
 
 	rw := &responseWriter{headers: make(http.Header)}
-	l.handler.ServeHTTP(rw, req)
+	httpHandler.ServeHTTP(rw, req)
 
 	return &events.APIGatewayV2HTTPResponse{
 		StatusCode: rw.statusCode,
@@ -163,6 +175,12 @@ func (l *Lambda) handleScheduledEvent(ctx context.Context, rawEvent json.RawMess
 		runErr = l.reconciler.Run(ctx)
 	case "gc", "garbage-collection":
 		runErr = l.reconciler.RunGC(ctx)
+	case "reaper":
+		if l.reaper != nil {
+			runErr = l.reaper.Run(ctx)
+		} else {
+			l.logger.Warn("reaper route received but reaper not initialized")
+		}
 	default:
 		return nil, fmt.Errorf("unknown worker route: %q", route)
 	}

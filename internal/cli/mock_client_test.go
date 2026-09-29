@@ -10,14 +10,20 @@ import (
 )
 
 type mockClient struct {
-	dispatchFn       func(ctx context.Context, action string, req *client.DispatchRequest) (*client.DispatchResponse, error)
-	getExecutionFn   func(ctx context.Context, id string, include string) (*client.Execution, error)
-	listExecutionsFn func(ctx context.Context, query url.Values) (*client.ExecutionList, error)
-	getActionFn      func(ctx context.Context, name string) (*client.Action, error)
-	listActionsFn    func(ctx context.Context) (*client.ActionList, error)
-	listAuditFn      func(ctx context.Context, query url.Values) (*client.AuditList, error)
-	serverVersionFn  func(ctx context.Context) (*client.ServerVersionInfo, error)
-	rawGetFn         func(ctx context.Context, path string) (*http.Response, error)
+	dispatchFn         func(ctx context.Context, action string, req *client.DispatchRequest) (*client.DispatchResponse, error)
+	getExecutionFn     func(ctx context.Context, id string, include string) (*client.Execution, error)
+	listExecutionsFn   func(ctx context.Context, query url.Values) (*client.ExecutionList, error)
+	getActionFn        func(ctx context.Context, name string) (*client.Action, error)
+	listActionsFn      func(ctx context.Context) (*client.ActionList, error)
+	listAuditFn        func(ctx context.Context, query url.Values) (*client.AuditList, error)
+	serverVersionFn    func(ctx context.Context) (*client.ServerVersionInfo, error)
+	rawGetFn           func(ctx context.Context, path string) (*http.Response, error)
+	listTargetsFn      func(ctx context.Context) (*client.TargetList, error)
+	listTargetsByDepFn func(ctx context.Context, deployment string) (*client.TargetList, error)
+	sessionStartFn     func(ctx context.Context, req *client.SessionStartRequest) (*client.SessionStartResponse, error)
+	sessionStopFn      func(ctx context.Context, sessionID string) error
+	sessionJoinFn      func(ctx context.Context, sessionID string) (*client.SessionJoinResponse, error)
+	listSessionsFn     func(ctx context.Context, query url.Values) (*client.SessionList, error)
 }
 
 func (m *mockClient) Dispatch(ctx context.Context, action string, req *client.DispatchRequest) (*client.DispatchResponse, error) {
@@ -74,6 +80,48 @@ func (m *mockClient) RawGet(ctx context.Context, path string) (*http.Response, e
 		return m.rawGetFn(ctx, path)
 	}
 	return nil, fmt.Errorf("RawGet not mocked")
+}
+
+func (m *mockClient) ListTargets(ctx context.Context) (*client.TargetList, error) {
+	if m.listTargetsFn != nil {
+		return m.listTargetsFn(ctx)
+	}
+	return nil, fmt.Errorf("ListTargets not mocked")
+}
+
+func (m *mockClient) ListTargetsByDeployment(ctx context.Context, deployment string) (*client.TargetList, error) {
+	if m.listTargetsByDepFn != nil {
+		return m.listTargetsByDepFn(ctx, deployment)
+	}
+	return nil, fmt.Errorf("ListTargetsByDeployment not mocked")
+}
+
+func (m *mockClient) SessionStart(ctx context.Context, req *client.SessionStartRequest) (*client.SessionStartResponse, error) {
+	if m.sessionStartFn != nil {
+		return m.sessionStartFn(ctx, req)
+	}
+	return nil, fmt.Errorf("SessionStart not mocked")
+}
+
+func (m *mockClient) SessionStop(ctx context.Context, sessionID string) error {
+	if m.sessionStopFn != nil {
+		return m.sessionStopFn(ctx, sessionID)
+	}
+	return fmt.Errorf("SessionStop not mocked")
+}
+
+func (m *mockClient) SessionJoin(ctx context.Context, sessionID string) (*client.SessionJoinResponse, error) {
+	if m.sessionJoinFn != nil {
+		return m.sessionJoinFn(ctx, sessionID)
+	}
+	return nil, fmt.Errorf("SessionJoin not mocked")
+}
+
+func (m *mockClient) ListSessions(ctx context.Context, query url.Values) (*client.SessionList, error) {
+	if m.listSessionsFn != nil {
+		return m.listSessionsFn(ctx, query)
+	}
+	return nil, fmt.Errorf("ListSessions not mocked")
 }
 
 func newMockGlobalOpts(mock *mockClient) *GlobalOptions {
