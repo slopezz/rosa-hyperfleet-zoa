@@ -6,8 +6,7 @@
 #
 # Stages:
 #   builder          — Go build (zoa CLI)
-#   tools            — kubectl + oc binaries (SHA256 verified)
-#   yq-builder       — yq static binary (SHA256 verified)
+#   tools            — kubectl binary (SHA256 verified)
 #   aws-cli-builder  — AWS CLI v2
 #   claude-builder   — Claude Code binary (SHASUMS256.txt verified)
 #   final            — production image (no curl/wget)
@@ -42,20 +41,17 @@ RUN git config --global --add safe.directory /workspace && \
 
 
 # Stage 2: tools
-# Download kubectl and oc client binaries.
+# Download kubectl binary with SHA256 verification.
+# No oc — this is an EKS container, kubectl is the native client.
 FROM ${BASE_IMAGE} AS tools
 
 ARG TARGETARCH=amd64
-
-# renovate: datasource=github-releases depName=openshift/oc-mirror
-ARG OC_VERSION="4.17.0"
 ARG KUBECTL_VERSION="v1.32.0"
 
-RUN microdnf install --assumeyes --nodocs tar gzip && microdnf clean all
+RUN microdnf install --assumeyes --nodocs curl && microdnf clean all
 
 WORKDIR /tools
 
-# kubectl with SHA256 checksum verification
 RUN curl --silent --location --fail \
         "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${TARGETARCH}/kubectl" \
         --output kubectl \
@@ -65,36 +61,8 @@ RUN curl --silent --location --fail \
     && echo "$(cat kubectl.sha256)  kubectl" | sha256sum --check --status \
     && chmod +x kubectl
 
-RUN curl --silent --location --fail \
-        "https://mirror.openshift.com/pub/openshift-v4/clients/ocp/${OC_VERSION}/openshift-client-linux.tar.gz" \
-        --output oc.tar.gz \
-    && tar --extract --gzip --file oc.tar.gz oc \
-    && chmod +x oc
 
-
-# Stage 3: yq
-# Download yq static binary.
-FROM ${BASE_IMAGE} AS yq-builder
-
-ARG TARGETARCH=amd64
-ARG YQ_VERSION="v4.44.6"
-
-RUN microdnf install --assumeyes --nodocs curl && microdnf clean all
-
-WORKDIR /yq-dl
-
-# yq with SHA256 checksum verification
-RUN curl --silent --location --fail \
-        "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_${TARGETARCH}" \
-        --output yq \
-    && curl --silent --location --fail \
-        "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/checksums" \
-        --output checksums \
-    && grep "yq_linux_${TARGETARCH}$" checksums | sha256sum --check --status \
-    && chmod +x yq
-
-
-# Stage 4: aws-cli
+# Stage 3: aws-cli
 # Download and install AWS CLI v2.
 FROM ${BASE_IMAGE} AS aws-cli-builder
 
@@ -110,7 +78,7 @@ RUN curl --silent --location --fail \
     && rm -rf aws awscli.zip
 
 
-# Stage 5: claude-builder
+# Stage 4: claude-builder
 # Claude Code standalone binary from GitHub releases.
 FROM ${BASE_IMAGE} AS claude-builder
 
@@ -136,7 +104,7 @@ RUN ARCH=$(echo "${TARGETARCH}" | sed 's/amd64/x64/; s/arm64/arm64/') && \
     && chmod +x /opt/claude/claude
 
 
-# Stage 6: final
+# Stage 5: final
 # Production image. Only this stage ships.
 # SECURITY: No curl, wget, or download tools — all binaries are COPYed from builder stages.
 FROM ${BASE_IMAGE} AS final
@@ -172,12 +140,8 @@ RUN microdnf install --assumeyes --nodocs \
 # ZOA CLI
 COPY --from=builder /workspace/zoa /usr/local/bin/zoa
 
-# kubectl and oc
+# kubectl (EKS native client — no oc needed for EKS)
 COPY --from=tools /tools/kubectl /usr/local/bin/kubectl
-COPY --from=tools /tools/oc /usr/local/bin/oc
-
-# yq (static binary — COPYed from builder, no curl in final image)
-COPY --from=yq-builder /yq-dl/yq /usr/local/bin/yq
 
 # AWS CLI v2 (COPYed from builder, no curl in final image)
 COPY --from=aws-cli-builder /opt/aws-cli /usr/local/aws-cli
