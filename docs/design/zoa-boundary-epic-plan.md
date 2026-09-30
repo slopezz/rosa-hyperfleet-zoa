@@ -203,15 +203,17 @@ stateDiagram-v2
 
 **TL;DR**: Today SREs call per-VPC Lambda Function URLs directly from their laptop — a temporary bootstrapping path that bypasses session auditing, network isolation, and the identity bridge needed for FedRAMP compliance. The tool meant to enforce zero operator access has no record of what the SRE does between TA executions, no time-boxing, and no way to attribute actions to a specific individual when multiple SREs share the same IAM role.
 
-This epic delivers the target ZOA access model: SREs authenticate via their AWS Central Account, autodiscover available deployments/targets via SSM Parameter Store, and create time-boxed ECS Fargate containers ("ZOA Boundary") placed inside target VPCs. All TA execution happens exclusively from within these containers. The ZOA Access Lambda (public API Gateway, no VPC attachment) handles session lifecycle and approval routing. Three-layer session recording (SSM terminal I/O + auditd structured commands + DynamoDB application audit) provides complete forensic evidence for compliance. The identity bridge resolves every TA execution back to the originating SRE, even through shared ECS task roles. Sessions are time-boxed (4h default) with automatic reaper enforcement.
+This epic delivers the target ZOA access model: SREs authenticate via their AWS Central Account, autodiscover available deployments/targets via SSM Parameter Store, and create time-boxed ECS Fargate containers ("ZOA Boundary") placed inside target VPCs. All TA execution happens exclusively from within these containers. The ZOA Access Lambda (public API Gateway, no VPC attachment) handles session lifecycle, vends per-task scoped credentials for ECS Exec isolation, and routes approval requests. Three-layer session recording (SSM terminal I/O + auditd structured commands + DynamoDB application audit) provides complete forensic evidence for compliance. The tamper-proof identity bridge resolves every TA execution back to the originating SRE via SigV4 task UUID → DynamoDB session lookup — no ABAC required. Both the resolved operator and the raw SigV4 signer ARN are stored for forensic completeness, and every operation is linked to its originating boundary session via session ID. Sessions are time-boxed (4h default) with automatic reaper enforcement.
 
 **What will be delivered:**
 - ZOA Access Lambda (Go, no VPC) + public API Gateway with custom domain per region
 - ZOA Boundary container image (`Containerfile.boundary`) with zoa CLI, aws CLI v2, kubectl, jq, Claude Code (Bedrock)
 - ZOA CLI commands for discovery (`zoa targets`) and session management (`zoa session start/stop/join/list/history`)
 - SSM Parameter Store autodiscovery in Central Account (deployments, APIGW URLs)
-- Identity bridge: ECS task ARN → SRE identity via DynamoDB
-- DynamoDB `boundary-sessions` table for session state tracking
+- Tamper-proof identity bridge: SigV4 task UUID → DynamoDB sessions → SRE username (no ABAC, scoped credentials model)
+- Session ID injection: every TA execution and audit entry linked to originating boundary session
+- DynamoDB `boundary-sessions` table for session state tracking (in `zoa/` module, consolidated storage)
+- SSM Parameter Store for target registration (Terraform-managed lifecycle, no DynamoDB)
 - Boundary session reaper (EventBridge-triggered on Worker Lambda, 4h timeout)
 - Terraform modules: `zoa-access` (Lambda + APIGW), `zoa-boundary` (ECS task definition, IAM, SG)
 - Konflux pipeline for ZOA Boundary container image (Enterprise Contract)
@@ -230,18 +232,20 @@ This epic delivers the target ZOA access model: SREs authenticate via their AWS 
 | 2 | SRE can run `zoa targets <deployment>` and see all targets (rc, mc01, mc02) within that deployment |
 | 3 | SRE can run `zoa session start <deployment> <target>` and get an interactive shell inside a boundary container in the target VPC |
 | 4 | SRE can execute TAs (`zoa run`) from inside the boundary container against the target cluster |
-| 5 | Every TA execution from a boundary container is attributed to the originating SRE (identity bridge: ECS task ARN → DynamoDB → SRE username) |
-| 6 | Sessions are time-boxed (4h default) and auto-terminated by the reaper |
-| 7 | SSM session logging captures full terminal I/O to CloudWatch Logs (KMS-encrypted) |
-| 8 | `zoa session list` shows all active sessions across SREs; `zoa session stop` and `zoa session join` enforce ownership |
-| 9 | `zoa audit` shows unified audit trail across TA executions and session lifecycle events |
-| 10 | All infrastructure is Terraform-managed (`zoa-access`, `zoa-boundary` modules) and GitOps-deployed |
-| 11 | Boundary container image is Konflux-built with Enterprise Contract |
-| 12 | Observability stack covers Access Lambda and boundary sessions (metrics, alerts, dashboards) |
-| 13 | E2E tests validate session lifecycle, identity bridge, reaper, and negative cases |
-| 14 | Architecture documentation, CLI reference, and SRE runbook are published |
-| 15 | Approve/reject routes exist on both Access and API Lambda (stub `501` — approval workflow is a separate epic) |
-| 16 | Container and infra are prepared for future break-glass (kubectl, aws CLI installed; EKS SG egress open; `breakglass_role_arns` variable reserved) |
+| 5 | Every TA execution from a boundary container is attributed to the originating SRE — tamper-proof identity bridge (SigV4 task UUID → DynamoDB → SRE username). Both resolved `operator` and raw `signerARN` stored in execution and audit records. |
+| 6 | Session ID injected into boundary container (`ZOA_SESSION_ID` env var) and propagated through all TA executions and audit entries — complete audit chain from session to every operation within it |
+| 7 | Sessions are time-boxed (4h default) and auto-terminated by the reaper |
+| 8 | SSM session logging captures full terminal I/O to CloudWatch Logs (KMS-encrypted) |
+| 9 | `zoa session list` shows the caller's own active sessions (default); `zoa session history` shows all operators' sessions with time filters. `zoa session stop` and `zoa session join` enforce ownership (server-side 403). |
+| 10 | `zoa audit` shows unified audit trail across TA executions and session lifecycle events |
+| 11 | All infrastructure is Terraform-managed (`zoa-access`, `zoa-boundary` modules) and GitOps-deployed |
+| 12 | Boundary container image is Konflux-built with Enterprise Contract |
+| 13 | Observability stack covers Access Lambda and boundary sessions (metrics, alerts, dashboards) |
+| 14 | E2E tests validate session lifecycle, identity bridge, reaper, and negative cases |
+| 15 | Architecture documentation, CLI reference, and SRE runbook are published |
+| 16 | Approve/reject routes exist on both Access and API Lambda (stub `501` — approval workflow is a separate epic) |
+| 17 | Container and infra are prepared for future break-glass (kubectl, aws CLI installed; EKS SG egress open; `breakglass_role_arns` variable reserved; break-glass architecture documented) |
+| 18 | ECS task role IAM is correctly scoped: NO DynamoDB, NO API Gateway invoke, NO ECS tag modification, NO IAM modification — only SSM messages, CloudWatch Logs, and Lambda Function URL invoke |
 
 ---
 
@@ -253,15 +257,17 @@ This epic delivers the target ZOA access model: SREs authenticate via their AWS 
 
 **Title**: ZOA Boundary Core — Access Lambda, boundary container, CLI, identity bridge, reaper
 
-**Overview**: Complete ZOA Boundary Go implementation in `rosa-hyperfleet-zoa`. Adds `HANDLER_MODE=access` as a third Lambda handler mode for session lifecycle and target discovery. Builds the boundary container image with ZOA CLI and SRE tooling. Implements `zoa targets` (autodiscovery), `zoa session` (lifecycle), and `zoa audit` (unified trail). Solves the identity bridge — resolving ECS task ARN back to originating SRE — and adds a reaper for session timeout enforcement. Single integrated deliverable — all components must be developed and tested together.
+**Overview**: Complete ZOA Boundary Go implementation in `rosa-hyperfleet-zoa`. Adds `HANDLER_MODE=access` as a third Lambda handler mode for session lifecycle and target discovery. Builds the boundary container image with ZOA CLI and SRE tooling. Implements `zoa targets` (autodiscovery), `zoa session` (lifecycle), and `zoa audit` (unified trail). Implements the tamper-proof identity bridge — resolving ECS task ARN back to originating SRE via SigV4 task UUID → DynamoDB session lookup (no ABAC). Adds session ID injection linking all operations to their originating boundary session. Adds a reaper for session timeout enforcement. Single integrated deliverable — all components must be developed and tested together.
 
 **Scope**:
 - Access Lambda handler mode (`HANDLER_MODE=access`) with session and target routes
-- Boundary container image (`Containerfile.boundary`) — UBI9, zoa CLI, aws CLI v2, kubectl, jq, Claude Code (Bedrock)
+- Boundary container image (`Containerfile.boundary`) — UBI9, zoa CLI, aws CLI v2, kubectl, jq, Claude Code (Bedrock). All binaries SHA256-verified. No curl/wget in final image.
 - CLI commands: `zoa targets`, `zoa session start/stop/join/list/history`, `zoa audit`
-- Identity bridge: ECS task ARN → DynamoDB → SRE username resolution
-- Session reaper on Worker Lambda (EventBridge, 5m interval)
-- DynamoDB types for `boundary-sessions`; SSM-backed target store
+- Tamper-proof identity bridge: SigV4 task UUID → DynamoDB sessions → SRE operator. Dual-field storage: resolved `operator` + raw `signerARN` in executions and audit tables.
+- Session ID injection: `ZOA_SESSION_ID` env var on ECS task → `X-Session-ID` header → `sessionId` field in executions and audit
+- `zoa session list` scoped to caller's own sessions (default); `zoa session history` for all operators
+- Session reaper on Worker Lambda (EventBridge, 5m interval, `status-deadline-index` GSI query)
+- SSM-backed target store (`GetParametersByPath`, Terraform-managed lifecycle)
 - Approval stub routes (`/approve/{id}`, `/reject/{id}`) on both Access and API Lambda
 
 **Acceptance Criteria**:
@@ -269,15 +275,17 @@ This epic delivers the target ZOA access model: SREs authenticate via their AWS 
 | # | Criterion |
 |---|---|
 | 1 | `HANDLER_MODE=access` is a third Lambda handler mode (alongside `api` and `worker`) with routes for session management, target listing, and approval stubs |
-| 2 | `Containerfile.boundary` builds a UBI9 image with zoa CLI, aws CLI v2, kubectl, jq, Claude Code — minimal attack surface |
-| 3 | `zoa targets` lists deployments from SSM; `zoa targets <deployment>` lists targets from ZOA Access Lambda |
-| 4 | `zoa session start/stop/join/list/history` manages boundary container lifecycle with SigV4 auth |
+| 2 | `Containerfile.boundary` builds a UBI9 image with zoa CLI, aws CLI v2, kubectl, jq, Claude Code — minimal attack surface, all binaries SHA256-verified, no curl/wget in final image |
+| 3 | `zoa targets` lists deployments from SSM; `zoa targets <deployment>` lists targets from ZOA Access Lambda (SSM-backed store) |
+| 4 | `zoa session start/stop/join/list/history` manages boundary container lifecycle with SigV4 auth. `list` defaults to caller's sessions; `history` shows all operators with time filters. |
 | 5 | `zoa audit` shows unified audit trail (TA executions + session lifecycle) with `--type` filter |
-| 6 | Identity bridge resolves ECS task ARN → SRE username via `boundary-sessions` DynamoDB lookup |
-| 7 | Reaper (Worker Lambda scheduled task) terminates sessions past 4h deadline |
-| 8 | `zoa approve` / `zoa reject` routes return `501 Not Implemented` on both Access and API Lambda |
-| 9 | All new code has unit tests; conformance test updated for new handler mode |
-| 10 | `make all` passes (verify → test → build) |
+| 6 | Identity bridge resolves ECS task ARN → SRE username via tamper-proof SigV4 task UUID → DynamoDB session lookup. Both `operator` and `signerARN` stored in execution and audit records. |
+| 7 | Session ID injected into ECS task env and propagated through all TA executions and audit entries via `X-Session-ID` header |
+| 8 | Reaper (Worker Lambda scheduled task) terminates sessions past 4h deadline using `status-deadline-index` GSI |
+| 9 | `zoa approve` / `zoa reject` routes return `501 Not Implemented` on both Access and API Lambda |
+| 10 | `zoa session stop` and `zoa session join` enforce ownership (server-side 403 if caller != session.operator) |
+| 11 | All new code has unit tests; conformance test updated for new handler mode |
+| 12 | `make all` passes (verify → test → build) |
 
 **Repos**: `rosa-hyperfleet-zoa`
 
