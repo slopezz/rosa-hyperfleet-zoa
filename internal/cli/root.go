@@ -45,6 +45,11 @@ Set ZOA_API_URL to your ZOA endpoint (Function URL, API Gateway, or CNAME).`,
 			if cmd.CalledAs() == "__complete" || cmd.CalledAs() == "__completeNoDesc" {
 				return nil
 			}
+			// `zoa targets` (no-arg) reads SSM directly — doesn't need ZOA_API_URL.
+			// Only `zoa targets <deployment>` and session commands need the API URL.
+			if name == "targets" && len(args) == 0 {
+				return nil
+			}
 			if opts.APIURL == "" {
 				return fmt.Errorf("ZOA_API_URL not set\n\n  export ZOA_API_URL=\"https://<id>.lambda-url.<region>.on.aws\"")
 			}

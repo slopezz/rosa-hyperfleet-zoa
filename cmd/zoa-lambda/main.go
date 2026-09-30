@@ -22,6 +22,7 @@ import (
 	"github.com/openshift-online/rosa-hyperfleet-zoa/internal/eksauth"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/actions"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/api"
+	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/awsecs"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/config"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/executor"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/handler"
@@ -66,6 +67,7 @@ func main() {
 	if cfg.IsAccessMode() {
 		dynamoClient := dynamodb.NewFromConfig(awsCfg)
 		ssmClient := ssm.NewFromConfig(awsCfg)
+		ecsClient := awsecs.New(awsCfg)
 		sessionStore := store.NewSessionStore(dynamoClient, cfg.SessionsTable, cfg.DynamoDBTTLDays)
 		targetStore := store.NewTargetStore(ssmClient, cfg.TargetsSSMPrefix)
 		auditStore := store.NewAuditStore(dynamoClient, cfg.AuditTable, cfg.DynamoDBTTLDays)
@@ -75,6 +77,7 @@ func main() {
 			SessionStore: sessionStore,
 			TargetStore:  targetStore,
 			AuditStore:   auditStore,
+			ECSClient:    ecsClient,
 			Logger:       logger,
 		})
 
@@ -178,9 +181,20 @@ func main() {
 		lambdaClient := awslambda.NewFromConfig(awsCfg)
 		reconciler := scheduler.NewReconciler(execStore, kubeClient, lambdaClient, exec, cfg, logger)
 
+		// Reaper: terminates expired boundary sessions. Only initialized when
+		// SESSIONS_TABLE is set (boundary is enabled for this deployment).
+		var reaper *scheduler.Reaper
+		if cfg.SessionsTable != "" {
+			sessionStore := store.NewSessionStore(dynamoClient, cfg.SessionsTable, cfg.DynamoDBTTLDays)
+			ecsClient := awsecs.New(awsCfg)
+			reaper = scheduler.NewReaper(sessionStore, awsecs.NewReaperAdapter(ecsClient), logger)
+			logger.Info("reaper enabled", "sessionsTable", cfg.SessionsTable)
+		}
+
 		h := handler.New(handler.Deps{
 			Cfg:        cfg,
 			Reconciler: reconciler,
+			Reaper:     reaper,
 			Executor:   exec,
 			ExecStore:  execStore,
 			Logger:     logger,
