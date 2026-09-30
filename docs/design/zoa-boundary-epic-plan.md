@@ -20,15 +20,15 @@ The direct laptop path was a bootstrapping shortcut. It has fundamental gaps:
 
 #### 1. End-to-end SRE workflow
 
-Shows the complete flow from SRE authentication through TA execution inside a boundary container. Two authentication domains are visible: Central Account (laptop to APIGW) and ECS task role (container to Function URL).
+Shows the complete flow from SRE authentication through TA execution inside a boundary container. Two authentication domains are visible: Central Account (laptop → invoker role → Access Lambda Function URL) and ECS task role (container to per-VPC Function URL).
 
 ```mermaid
 sequenceDiagram
     participant SRE as SRE Laptop
     participant JA as AWS Central Account
     participant PS as SSM Parameter Store
-    participant AGW as ZOA Access API GW
-    participant AL as ZOA Access Lambda
+    participant IR as RC Invoker Role
+    participant AL as ZOA Access Lambda (Function URL)
     participant DDB as DynamoDB
     participant ECS as ECS Fargate Task
     participant FU as Per-VPC Lambda Function URL
@@ -39,17 +39,16 @@ sequenceDiagram
 
     Note over SRE,PS: Deployment autodiscovery (direct SSM read, no Lambda)
     SRE->>PS: zoa targets → read /zoa/deployments
-    PS-->>SRE: {us-east-1: apigw_url, us-east-1-eph-f8d5483c: apigw_url, ...}
+    PS-->>SRE: {us-east-1: {access_url, invoker_role_arn}, ...}
 
     Note over SRE,AL: Target discovery (via ZOA Access)
-    SRE->>AGW: zoa targets us-east-1 (SigV4, Central Account role)
-    AGW->>AL: GET /targets
+    SRE->>IR: sts:AssumeRole (OU-trusted, no Central Account changes)
+    SRE->>AL: zoa targets us-east-1 (SigV4 with invoker role creds)
     AL->>DDB: read targets from SSM /zoa/targets/<deployment>/ (RC-local)
     AL-->>SRE: [rc, mc01, mc02]
 
     Note over SRE,ECS: Session creation (Access Lambda creates ECS task)
-    SRE->>AGW: zoa session start us-east-1 mc01
-    AGW->>AL: POST /sessions/start
+    SRE->>AL: zoa session start us-east-1 mc01 (SigV4 with invoker role)
     AL->>DDB: write boundary-sessions {taskId, operator, target, deadline}
     AL->>ECS: ecs:RunTask in mc01 VPC (inject ZOA_ENDPOINT, ZOA_TARGET)
     AL-->>SRE: {taskId, status: creating}
@@ -75,7 +74,7 @@ Shows why deployment pointers live in the Central Account (CLI needs them before
 ```mermaid
 graph TD
     subgraph centralAccount [Central Account — thin pointer layer, 1 per env]
-        paramEnvs["/zoa/deployments SSM Parameter<br/>{deployment_name: apigw_url}"]
+        paramEnvs["/zoa/deployments SSM Parameter<br/>{deployment_name: access_url, invoker_role_arn}"]
     end
 
     subgraph rcAccount [RC Account — full target registry]
@@ -93,7 +92,7 @@ graph TD
     end
 
     zoaCLI -->|"zoa targets<br/>(direct SSM read)"| paramEnvs
-    zoaCLI -->|"zoa targets &lt;deployment&gt;<br/>(APIGW → Lambda)"| accessLambda
+    zoaCLI -->|"zoa targets &lt;deployment&gt;<br/>(assume invoker role → Function URL)"| accessLambda
     accessLambda -->|"local read<br/>(same account, no cross-account)"| boundaryTargets
 
     rcPipeline -->|"cross-account ssm:PutParameter"| paramEnvs
@@ -203,20 +202,20 @@ stateDiagram-v2
 
 **TL;DR**: Today SREs call per-VPC Lambda Function URLs directly from their laptop — a temporary bootstrapping path that bypasses session auditing, network isolation, and the identity bridge needed for FedRAMP compliance. The tool meant to enforce zero operator access has no record of what the SRE does between TA executions, no time-boxing, and no way to attribute actions to a specific individual when multiple SREs share the same IAM role.
 
-This epic delivers the target ZOA access model: SREs authenticate via their AWS Central Account, autodiscover available deployments/targets via SSM Parameter Store, and create time-boxed ECS Fargate containers ("ZOA Boundary") placed inside target VPCs. All TA execution happens exclusively from within these containers. The ZOA Access Lambda (public API Gateway, no VPC attachment) handles session lifecycle, vends per-task scoped credentials for ECS Exec isolation, and routes approval requests. Three-layer session recording (SSM terminal I/O + auditd structured commands + DynamoDB application audit) provides complete forensic evidence for compliance. The tamper-proof identity bridge resolves every TA execution back to the originating SRE via SigV4 task UUID → DynamoDB session lookup — no ABAC required. Both the resolved operator and the raw SigV4 signer ARN are stored for forensic completeness, and every operation is linked to its originating boundary session via session ID. Sessions are time-boxed (4h default) with automatic reaper enforcement.
+This epic delivers the target ZOA access model: SREs authenticate via their AWS Central Account, autodiscover available deployments/targets via SSM Parameter Store, assume an OU-trusted invoker role in the RC account, and create time-boxed ECS Fargate containers ("ZOA Boundary") placed inside target VPCs. All TA execution happens exclusively from within these containers. The ZOA Access Lambda (Function URL with IAM auth, no VPC attachment) handles session lifecycle, vends per-task scoped credentials for ECS Exec isolation, and routes approval requests. Three-layer session recording (SSM terminal I/O + auditd structured commands + DynamoDB application audit) provides complete forensic evidence for compliance. The tamper-proof identity bridge resolves every TA execution back to the originating SRE via SigV4 task UUID → DynamoDB session lookup — no ABAC required. Both the resolved operator and the raw SigV4 signer ARN are stored for forensic completeness, and every operation is linked to its originating boundary session via session ID. Sessions are time-boxed (4h default) with automatic reaper enforcement.
 
 **What will be delivered:**
-- ZOA Access Lambda (Go, no VPC) + public API Gateway with custom domain per region
+- ZOA Access Lambda (Go, no VPC) with Function URL (IAM auth) + OU-trusted invoker role per region
 - ZOA Boundary container image (`Containerfile.boundary`) with zoa CLI, aws CLI v2, kubectl, jq, Claude Code (Bedrock)
 - ZOA CLI commands for discovery (`zoa targets`) and session management (`zoa session start/stop/join/list/history`)
-- SSM Parameter Store autodiscovery in Central Account (deployments, APIGW URLs)
+- SSM Parameter Store autodiscovery in Central Account (deployments, Function URLs, invoker role ARNs)
 - Tamper-proof identity bridge: SigV4 task UUID → `task-id-index` GSI → SRE username + session ID (no ABAC, scoped credentials model, no client-supplied headers)
 - DynamoDB `boundary-sessions` table for session state tracking (in `zoa/` module, consolidated storage, GSIs: `operator-index`, `status-deadline-index`, `date-bucket-index`, `task-id-index`)
 - SSM Parameter Store for target registration (Terraform-managed lifecycle, no DynamoDB)
 - ECS task tags (tamper-proof): `sre`, `sessionId`, `deployment`, `target` — second independent SRE attribution path
 - Bedrock integration: regional-only IAM (no cross-region inference), model invocation logging (metadata only, no payloads)
 - Boundary session reaper (EventBridge-triggered on Worker Lambda, 4h timeout)
-- Terraform modules: `zoa-access` (Lambda + APIGW), `zoa-boundary` (ECS task definition, IAM, SG)
+- Terraform modules: `zoa-access` (Lambda + Function URL + invoker role), `zoa-boundary` (ECS task definition, IAM, SG)
 - Konflux pipeline for ZOA Boundary container image (Enterprise Contract)
 - Per-region pipeline step to publish metadata to Central Account SSM Parameter Store
 - Full observability stack: EMF metrics, YACE scrape, alerting rules, recording rules, Grafana dashboard
@@ -246,7 +245,7 @@ This epic delivers the target ZOA access model: SREs authenticate via their AWS 
 | 15 | Architecture documentation, CLI reference, and SRE runbook are published |
 | 16 | Approve/reject routes exist on both Access and API Lambda (stub `501` — approval workflow is a separate epic) |
 | 17 | Container and infra are prepared for future break-glass (kubectl, aws CLI installed; EKS SG egress open; `breakglass_role_arns` variable reserved; break-glass architecture documented) |
-| 18 | ECS task role IAM is correctly scoped: NO DynamoDB, NO API Gateway invoke, NO ECS tag modification, NO IAM modification — only SSM messages, CloudWatch Logs, and Lambda Function URL invoke |
+| 18 | ECS task role IAM is correctly scoped: NO DynamoDB, NO Access Lambda invoke, NO ECS tag modification, NO IAM modification — only SSM messages, CloudWatch Logs, and per-VPC Lambda Function URL invoke |
 
 ---
 
@@ -298,7 +297,7 @@ The `zoa-lambda` container image serves all three Lambda roles. The `HANDLER_MOD
 
 | Mode | Routes | Caller | Deployment |
 |---|---|---|---|
-| `access` | `/sessions/start`, `/sessions`, `/sessions/stop/{id}`, `/targets`, `/approve/{id}`, `/reject/{id}` | Laptop (Central Account role via APIGW) | RC account, no VPC, 1 per region |
+| `access` | `/sessions/start`, `/sessions`, `/sessions/stop/{id}`, `/targets`, `/approve/{id}`, `/reject/{id}` | Laptop (invoker role via Function URL) | RC account, no VPC, 1 per region |
 | `api` | `/run`, `/runs`, `/actions`, `/audit`, `/version`, `/approve/{id}`, `/reject/{id}` | Boundary container (ECS task role via Function URL) | Per-VPC (RC + each MC) |
 | `worker` | EventBridge reconciler/GC/reaper events, self-invoke `execute` events | EventBridge + Lambda self-invoke | Per-VPC (RC + each MC) |
 
@@ -314,9 +313,9 @@ Access Lambda handles:
 
 Key design: Access Lambda does NOT create EKS access entries or execute TAs. Keeps IAM minimal.
 
-API Gateway provides: custom domain (CLI autodiscovery by convention), WAF integration (IP-based rules, geo-blocking), and is NOT in the TA execution path.
+**No API Gateway** — Access Lambda uses a Function URL with `AWS_IAM` auth type. This removes a service from the critical path (one fewer failure domain), supports response streaming natively, and eliminates the need for custom DNS since SSM autodiscovery provides the Function URL directly. Cross-account access is handled by an OU-trusted invoker role (same `aws:PrincipalOrgPaths` pattern used for MC cross-account trust — no Central Account role changes needed).
 
-Resource-based policy: ONLY Central Account roles (one per environment: dev, int, stage, prod).
+Resource-based policy on Function URL: allows the invoker role to call `lambda:InvokeFunctionUrl`.
 
 #### Boundary Container Image — `Containerfile.boundary`
 
@@ -445,12 +444,12 @@ Meta:
 
 **Discovery — `zoa targets`** (positional drill-down, not audit-logged):
 
-`zoa targets` serves two levels. With no args, it lists deployments (from SSM). With a `deployment_name` arg, it lists targets within that deployment (from ZOA Access APIGW → SSM `/zoa/targets/`):
+`zoa targets` serves two levels. With no args, it lists deployments (from SSM). With a `deployment_name` arg, it lists targets within that deployment (from Access Lambda Function URL → SSM `/zoa/targets/`):
 
 | Command | Purpose | Endpoint |
 |---|---|---|
 | `zoa targets` | List deployments (`deployment_name` values from SSM `/zoa/deployments`) | SSM (direct) |
-| `zoa targets <deployment>` | List targets in deployment (rc, mc01, mc02) | ZOA Access APIGW |
+| `zoa targets <deployment>` | List targets in deployment (rc, mc01, mc02) | Access Lambda Function URL (via invoker role) |
 
 Example output:
 
@@ -473,11 +472,11 @@ mc02      MC      us-east-1   ready
 
 | Command | Purpose | Endpoint | Audit logged |
 |---|---|---|---|
-| `zoa session start <deployment> <target>` | Create ECS task, wait RUNNING | ZOA Access APIGW | **Yes** |
-| `zoa session stop <id>` | Stop session (immediate `ecs:StopTask`) | ZOA Access APIGW | **Yes** |
-| `zoa session join <id>` | Reconnect via SSM | ZOA Access APIGW | **Yes** |
-| `zoa session list` | Active sessions (default `--status active`) | ZOA Access APIGW | No |
-| `zoa session history` | Past sessions (all statuses, like `zoa runs`) | ZOA Access APIGW | No |
+| `zoa session start <deployment> <target>` | Create ECS task, wait RUNNING | Access Lambda (invoker role) | **Yes** |
+| `zoa session stop <id>` | Stop session (immediate `ecs:StopTask`) | Access Lambda (invoker role) | **Yes** |
+| `zoa session join <id>` | Reconnect via SSM | Access Lambda (invoker role) | **Yes** |
+| `zoa session list` | Active sessions (default `--status active`) | Access Lambda (invoker role) | No |
+| `zoa session history` | Past sessions (all statuses, like `zoa runs`) | Access Lambda (invoker role) | No |
 
 Positional args for `start`: `<deployment>` = `deployment_name`, `<target>` = target ID (rc, mc01). Also available as flags for scripts: `zoa session start -d us-east-1 -t mc01`.
 
@@ -485,8 +484,8 @@ Positional args for `start`: `<deployment>` = `deployment_name`, `<target>` = ta
 
 | Command | Purpose | Endpoint | Audit logged |
 |---|---|---|---|
-| `zoa approve <id>` | Approve (stub for now — `501 Not Implemented`) | ZOA Access APIGW | **Yes** |
-| `zoa reject <id> --reason "..."` | Reject (stub for now) | ZOA Access APIGW | **Yes** |
+| `zoa approve <id>` | Approve (stub for now — `501 Not Implemented`) | Access Lambda (invoker role) | **Yes** |
+| `zoa reject <id> --reason "..."` | Reject (stub for now) | Access Lambda (invoker role) | **Yes** |
 
 **Unified audit** — `zoa audit` covers ALL event types (TA executions + session lifecycle + future break-glass). Filter by `--type ta|session|breakglass` to narrow scope. Same filter flags as `zoa runs` (`--since`, `--until`, `--operator`, `--status`, `--limit`, `-o json`).
 
@@ -494,7 +493,7 @@ Positional args for `start`: `<deployment>` = `deployment_name`, `<target>` = ta
 
 **Context auto-detection** — the CLI auto-detects where the SRE is:
 - `ZOA_API_URL` set → inside a session (ECS container) → TA commands work directly, discovery/session commands not needed
-- `ZOA_API_URL` not set → on laptop → discovery and session commands resolve APIGW URL from SSM using `ZOA_DEPLOYMENT` env var or positional arg
+- `ZOA_API_URL` not set → on laptop → discovery and session commands resolve Access Lambda Function URL + invoker role from SSM using `ZOA_DEPLOYMENT` env var or positional arg
 
 `ZOA_DEPLOYMENT` env var (settable via `export ZOA_DEPLOYMENT=us-east-1`) eliminates the need for positional args on repeated commands. Like `AWS_REGION` — set once, forget.
 
@@ -596,10 +595,10 @@ Go interfaces: `Session` struct, `SessionStore` interface with `Put`, `Get`, `Li
 
 **Title**: ZOA Boundary Infrastructure — Terraform modules, SSM autodiscovery, DynamoDB, IAM
 
-**Overview**: Implement the AWS infrastructure layer for the ZOA Boundary using Terraform modules, deploying the Access Lambda behind API Gateway, ECS Fargate task definitions for boundary containers, DynamoDB sessions table, SSM autodiscovery in the Central Account, and cross-account IAM wiring for MC sessions. Includes Bedrock integration (regional-only IAM, model invocation logging) and tamper-proof ECS task tags for SRE attribution. Worked in parallel with Story 1 — both needed to test anything end-to-end.
+**Overview**: Implement the AWS infrastructure layer for the ZOA Boundary using Terraform modules, deploying the Access Lambda with Function URL and OU-trusted invoker role, ECS Fargate task definitions for boundary containers, DynamoDB sessions table, SSM autodiscovery in the Central Account, and cross-account IAM wiring for MC sessions. Includes Bedrock integration (regional-only IAM, model invocation logging) and tamper-proof ECS task tags for SRE attribution. Worked in parallel with Story 1 — both needed to test anything end-to-end.
 
 **Scope**:
-- Terraform module `zoa-access`: Access Lambda + API Gateway (regional, public) + WAF + custom domain + Route53
+- Terraform module `zoa-access`: Access Lambda + Function URL (IAM auth) + OU-trusted invoker role + KMS-encrypted CloudWatch Logs
 - Terraform module `zoa-boundary`: ECS task definition (Fargate) + IAM roles + security group + CloudWatch Logs (KMS) + KMS key
 - DynamoDB table: `boundary-sessions` in `zoa/` module (GSIs: `operator-index`, `status-deadline-index`, `date-bucket-index`, `task-id-index`; TTL: 30d). Target registration via SSM Parameter Store (Terraform-managed lifecycle).
 - ECS task tags: Access Lambda sets tamper-proof tags (`sre`, `sessionId`, `deployment`, `target`) on every ECS task at creation — no `ecs:TagResource` on task role
@@ -614,29 +613,29 @@ Go interfaces: `Session` struct, `SessionStore` interface with `Put`, `Get`, `Li
 
 | # | Criterion |
 |---|---|
-| 1 | `terraform/modules/zoa-access/` deploys: API Gateway, Lambda (`HANDLER_MODE=access`), WAF, custom domain, Route53 record |
+| 1 | `terraform/modules/zoa-access/` deploys: Lambda (`HANDLER_MODE=access`) + Function URL (IAM auth) + OU-trusted invoker role + KMS-encrypted CloudWatch Logs |
 | 2 | `terraform/modules/zoa-boundary/` deploys: ECS task definition, IAM task role (Function URL + Bedrock + SSM + CW Logs), security group, CW Logs log group (KMS), KMS key |
 | 3 | `boundary-sessions` DynamoDB table created in `zoa/` module with GSIs (`operator-index`, `status-deadline-index`, `date-bucket-index`, `task-id-index`) and TTL; targets use SSM Parameter Store |
-| 4 | SSM `/zoa/deployments` parameter written to Central Account (or RC account for dev/ephemeral) by RC Terraform pipeline |
-| 5 | Cross-account IAM: Access Lambda can `ecs:RunTask` in MC accounts; MC boundary task role is permitted caller on MC Lambda Function URL |
+| 4 | SSM `/zoa/deployments` parameter written to Central Account (or RC account for dev/ephemeral) with Function URL + invoker role ARN |
+| 5 | Cross-account IAM: Access Lambda can `ecs:RunTask` in MC accounts; MC boundary task role is permitted caller on MC Lambda Function URL; invoker role trusted via `aws:PrincipalOrgPaths` (reuses `mc_ou_path`) |
 | 6 | Bedrock IAM scoped to deployment region only — `bedrock:InvokeModel` resource ARN includes `${var.region}`. `allowed_bedrock_models` Terraform var (default: Haiku only). No cross-region inference profiles. |
 | 7 | Bedrock model invocation logging enabled via `aws_bedrock_model_invocation_logging_configuration` — CloudWatch Logs only, no payload capture, no S3. Log group: `/aws/bedrock/model-invocations` (KMS-encrypted). |
 | 8 | ECS task tags set by Access Lambda at `RunTask`: `sre`, `sessionId`, `deployment`, `target`. Task role has NO `ecs:TagResource` permission (tamper-proof). |
 | 9 | Worker Lambda has `ecs:StopTask` + `ecs:DescribeTasks` IAM and reaper EventBridge schedule |
-| 10 | `terraform validate` and `terraform plan` pass; `make pre-push` passes |
-| 11 | Ephemeral environment deploys end-to-end (RC + MC) |
+| 10 | Invoker role trusts the environment OU via `aws:PrincipalOrgPaths` — no Central Account role changes needed |
+| 11 | `terraform validate` and `terraform plan` pass; `make pre-push` passes |
+| 12 | Ephemeral environment deploys end-to-end (RC + MC) |
 
 **Repos**: `rosa-hyperfleet`
 
 #### Plan Details
 
 **New module: `terraform/modules/zoa-access/`**
-- API Gateway (regional, REST/HTTP, public)
-- Custom domain + Route53 record (`zoa-access.{region}.hyperfleet.example.com`)
-- WAF WebACL (IP-based rules for Red Hat ranges, geo-blocking)
 - Lambda function (no VPC, same `zoa-lambda` image, `HANDLER_MODE=access`)
+- Function URL with `AWS_IAM` auth type (replaces API Gateway — one fewer service in path, supports response streaming, SSM handles discoverability)
+- OU-trusted invoker role (`zoa-access-invoker`): trust policy uses `aws:PrincipalOrgPaths` (reuses `mc_ou_path` — same OU for all accounts in the environment). Permissions: `lambda:InvokeFunctionUrl` on the Access Lambda only. Zero changes needed in the Central Account — SRE's rh-saml role can already `sts:AssumeRole` cross-account, and the invoker role trusts the OU.
 - IAM execution role: `ecs:RunTask` (RC + cross-account MC), DynamoDB read/write (`boundary-sessions`), SSM `GetParametersByPath` (`/zoa/targets/`), `sts:AssumeRole`, CloudWatch Logs
-- Lambda resource-based policy: ONLY Central Account roles
+- Lambda resource-based policy: allows invoker role to call Function URL
 
 **New module: `terraform/modules/zoa-boundary/`**
 - ECS task definition (Fargate, ZOA Boundary image from ECR)
@@ -694,7 +693,7 @@ SREs already access a **Central Account** (one per environment: dev, int, stage)
 
 | Data | Location | Writer | Reader |
 |---|---|---|---|
-| Deployment list + APIGW URLs | Central Account SSM (`/zoa/deployments`) | RC Terraform (cross-account) | CLI directly |
+| Deployment list + Function URLs + invoker role ARNs | Central Account SSM (`/zoa/deployments`) | RC Terraform (cross-account) | CLI directly |
 | Target registry (rc, mc01, VPCs, Function URLs, subnets, task defs) | RC account SSM (`/zoa/targets/<deployment>/<cluster>`) | Each cluster's Terraform (auto-removed on destroy) | ZOA Access Lambda (local, same account) |
 
 Central Account stays thin (just deployment pointers). All operational detail (VPCs, subnets, SGs, task role ARNs) stays in RC — the ZOA Access Lambda reads it locally without cross-account calls.
@@ -705,8 +704,10 @@ Central Account stays thin (just deployment pointers). All operational detail (V
 ```json
 {
   "us-east-1": {
-    "apigw_url": "https://zoa-access.us-east-1.int0.rosa.devshift.net",
+    "access_url": "https://abc123.lambda-url.us-east-1.on.aws/",
+    "invoker_role_arn": "arn:aws:iam::RC_ACCOUNT:role/us-east-1-zoa-access-invoker",
     "deployment_name": "us-east-1",
+    "region": "us-east-1",
     "enabled": true
   }
 }
@@ -717,13 +718,17 @@ For ephemeral (dev Central Account), multiple entries coexist:
 ```json
 {
   "us-east-1-eph-f8d5483c": {
-    "apigw_url": "https://zoa-access.us-east-1-eph-f8d5483c.dev0.rosa.devshift.net",
+    "access_url": "https://def456.lambda-url.us-east-1.on.aws/",
+    "invoker_role_arn": "arn:aws:iam::RC_ACCOUNT:role/us-east-1-eph-f8d5483c-zoa-access-invoker",
     "deployment_name": "us-east-1-eph-f8d5483c",
+    "region": "us-east-1",
     "enabled": true
   },
   "us-east-1-eph-ab12cd34": {
-    "apigw_url": "https://zoa-access.us-east-1-eph-ab12cd34.dev0.rosa.devshift.net",
+    "access_url": "https://ghi789.lambda-url.us-east-1.on.aws/",
+    "invoker_role_arn": "arn:aws:iam::RC_ACCOUNT:role/us-east-1-eph-ab12cd34-zoa-access-invoker",
     "deployment_name": "us-east-1-eph-ab12cd34",
+    "region": "us-east-1",
     "enabled": true
   }
 }
@@ -975,7 +980,7 @@ All SREs share one role — approval authorization is **not** encoded in IAM. Th
 
 The `/approve/{id}` and `/reject/{id}` routes are included in **both** the `access` and `api` handler modes from day one, even though the approval workflow is a separate epic. This ensures:
 
-- **No session required to approve**: An approver only needs `kinit` → `rh-aws-saml-login` → `zoa approve <id>` from their laptop. The request goes through ZOA Access APIGW. No ECS task creation, no SSM session — minimum friction.
+- **No session required to approve**: An approver only needs `kinit` → `rh-aws-saml-login` → `zoa approve <id>` from their laptop. The request goes through the Access Lambda Function URL (via invoker role). No ECS task creation, no SSM session — minimum friction.
 - **Approve from inside boundary too**: If an SRE is already inside a boundary container and a peer requests approval, they can approve from there via the per-VPC API Lambda. Same code, same DynamoDB write.
 - **Reconciler picks up approvals**: The per-VPC Worker Lambda reconciler detects `status=approved` on the next tick and dispatches the execution. The approval writer (Access or API Lambda) does NOT execute TAs — it only changes state in DynamoDB.
 
@@ -991,7 +996,7 @@ ZOA uses a **scoped credentials** model instead of ABAC (Attribute-Based Access 
 
 | Caller location | SigV4 identity | Resolution method | Tamper-proof? |
 |---|---|---|---|
-| **Laptop → Access Lambda** | Personal IAM role from kinit/rh-saml: `assumed-role/sre-role/slopezma` | Extract username from ARN session name | ✅ SRE's own credentials |
+| **Laptop → Access Lambda** | Invoker role in RC: `assumed-role/zoa-access-invoker/slopezma` (session name preserved from Central Account) | Extract username from ARN session name | ✅ OU-trusted role, session name from kinit |
 | **ECS → per-VPC Lambda** | Shared task role: `assumed-role/zoa-boundary-task/<ecs-task-uuid>` | Extract task UUID from ARN → sessions DynamoDB lookup → operator | ✅ Task UUID assigned by AWS, sessions table written by trusted Lambda |
 | **Laptop → approve/reject** | Personal IAM role | Extract username from ARN session name → LDAP for manager chain | ✅ Same as laptop path |
 
@@ -1004,7 +1009,7 @@ ZOA uses a **scoped credentials** model instead of ABAC (Attribute-Based Access 
 | Change env vars inside ECS to alter identity | ❌ | API Lambda ignores env vars — resolves identity entirely from SigV4 task UUID → DynamoDB |
 | Craft HTTP request with fake `X-Operator` header | ❌ | Header is overwritten by SigV4 identity at Lambda level; identity bridge resolves from ARN, not headers |
 | Set `X-Session-ID` header to another session | ❌ | No such header exists — session ID resolved server-side from `task-id-index` GSI lookup |
-| Call Access Lambda API Gateway from inside ECS | ❌ | Task role has no `execute-api:Invoke` permission |
+| Call Access Lambda Function URL from inside ECS | ❌ | Task role has no `lambda:InvokeFunctionUrl` on Access Lambda; Function URL resource policy restricts to invoker role |
 | Modify session record in DynamoDB | ❌ | Task role has no DynamoDB permissions |
 | Modify own ECS task tags | ❌ | Task role has no `ecs:TagResource` permission |
 | Assume Lambda's IAM role | ❌ | Lambda role trust: `Principal: lambda.amazonaws.com` only |
@@ -1024,7 +1029,6 @@ Task role MUST have:
 
 Task role MUST NOT have:
   ❌ dynamodb:* (no direct table access)
-  ❌ execute-api:Invoke (no Access Lambda API Gateway)
   ❌ ecs:TagResource (no tag modification)
   ❌ sts:AssumeRole (except future break-glass, gated by breakglass_role_arns)
   ❌ iam:* (no IAM modification)
@@ -1222,7 +1226,7 @@ This epic does **not** restrict SRE direct access to RC/MC accounts. Today SREs 
 
 **Why not restrict now:** Restricting direct access requires three controls to ship together — they are a single atomic change:
 1. **Lambda resource-based policy** — restrict Function URL callers to boundary task role + CI pipeline role only
-2. **Central Account permission restriction** — narrow SRE's app-interface role to SSM read + APIGW invoke only (no switch-role to RC/MC)
+2. **Central Account permission restriction** — narrow SRE's app-interface role to SSM read + invoker role assume only (no switch-role to RC/MC)
 3. **Break-glass escape hatch** — `zoa breakglass` as the safety valve for emergencies
 
 Without break-glass, restricting direct access leaves SREs with no path to handle emergencies that TAs can't cover. The break-glass epic will implement all three controls together.
@@ -1244,9 +1248,8 @@ A future hardening story could place a Private API Gateway with VPC Endpoint in 
 ## Open Questions / Dependencies
 
 1. **Central Account cross-account IAM**: The Central Account already exists per environment, but we need a "pipeline writer" IAM role that RC pipeline roles can assume for `ssm:PutParameter`. Validate with the platform team whether this role can be created via app-interface or needs manual provisioning.
-2. **Custom domain DNS**: Who owns the DNS zone for the APIGW custom domains? Route53 hosted zone delegation needed for API Gateway custom domains (e.g., `zoa-access.us-east-1.int0.rosa.devshift.net`).
-3. **Break-glass interaction**: The reaper and the boundary container design should account for future break-glass EKS access entries. Not implementing break-glass in this epic, but IAM and network design must not preclude it.
-4. **Bedrock model availability per region**: Not all Claude models are available in all AWS regions. Need to verify Haiku availability in each HyperFleet deployment region and adjust `allowed_bedrock_models` accordingly.
-5. **rh-aws-saml-login session name stability**: Does `rh-aws-saml-login` always use the Kerberos principal (e.g., `slopezma`) as the STS session name? If it uses something else (random string, timestamp), we need an alternative identity anchor for ownership checks across re-authentications. This is critical for the identity bridge design.
-6. **Ephemeral SSM parameter lifecycle**: In the dev Central Account, ephemeral deployment entries must be reliably cleaned up on teardown. If an ephemeral teardown fails or is abandoned, stale entries will accumulate. The reaper or a separate GC mechanism may need to detect and clean orphaned entries.
-7. **LDAP integration for future approvals**: Confirm that LDAP group membership (e.g., `zoa-approvers`) is the approved mechanism for approval authorization. Validate network path from Lambda to LDAP, or plan a caching strategy (S3 group dump, refreshed periodically).
+2. **Break-glass interaction**: The reaper and the boundary container design should account for future break-glass EKS access entries. Not implementing break-glass in this epic, but IAM and network design must not preclude it.
+3. **Bedrock model availability per region**: Not all Claude models are available in all AWS regions. Need to verify Haiku availability in each HyperFleet deployment region and adjust `allowed_bedrock_models` accordingly.
+4. **rh-aws-saml-login session name stability**: Does `rh-aws-saml-login` always use the Kerberos principal (e.g., `slopezma`) as the STS session name? If it uses something else (random string, timestamp), we need an alternative identity anchor for ownership checks across re-authentications. This is critical for the identity bridge design.
+5. **Ephemeral SSM parameter lifecycle**: In the dev Central Account, ephemeral deployment entries must be reliably cleaned up on teardown. If an ephemeral teardown fails or is abandoned, stale entries will accumulate. The reaper or a separate GC mechanism may need to detect and clean orphaned entries.
+6. **LDAP integration for future approvals**: Confirm that LDAP group membership (e.g., `zoa-approvers`) is the approved mechanism for approval authorization. Validate network path from Lambda to LDAP, or plan a caching strategy (S3 group dump, refreshed periodically).
