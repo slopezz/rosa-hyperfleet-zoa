@@ -40,6 +40,7 @@ Execution flow: CLI → SigV4-signed HTTPS → API Lambda Function URL → Dynam
 | `pkg/metrics/` | CloudWatch EMF metric emission |
 | `Containerfile` | Lambda container image (UBI-minimal + zoa-lambda) |
 | `Containerfile.runner` | Async runner image (UBI9 + zoa-runner + zoa CLI) |
+| `Containerfile.boundary` | ZOA Boundary ECS task image (UBI9 + zoa CLI + SRE tooling) |
 
 ## Build & Test Commands
 
@@ -50,11 +51,13 @@ make test             # Unit tests (go test -race -coverprofile)
 make lint             # golangci-lint
 make verify           # fmt-check + vet + lint (CI-safe, read-only)
 make fmt              # Format code
-make image-lambda        # Build zoa-lambda container image
-make image-runner        # Build zoa-runner container image
-make image-push-lambda   # Build + push zoa-lambda (latest + git commit tag)
-make image-push-runner   # Build + push zoa-runner (latest + git commit tag)
-make images-push         # Build + push both images (dev workflow)
+make image-lambda          # Build zoa-lambda container image
+make image-runner          # Build zoa-runner container image
+make image-boundary        # Build zoa-boundary container image (Containerfile.boundary)
+make image-push-lambda     # Build + push zoa-lambda (latest + git commit tag)
+make image-push-runner     # Build + push zoa-runner (latest + git commit tag)
+make image-push-boundary   # Build + push zoa-boundary (latest + git commit tag)
+make images-push           # Build + push lambda, runner, and boundary (dev workflow)
 ```
 
 ## Important Context

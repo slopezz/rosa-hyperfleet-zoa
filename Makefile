@@ -1,7 +1,8 @@
 .PHONY: all build dist print-version clean install test test-e2e test-e2e-smoke \
        test-e2e-zoa test-e2e-zoa-smoke test-e2e-monitoring \
        fmt fmt-check vet lint verify tidy verify-mod \
-       image-lambda image-runner image-push-lambda image-push-runner images-push \
+       image-lambda image-runner image-boundary \
+       image-push-lambda image-push-runner image-push-boundary images-push \
        help
 
 BINARY_NAME = zoa
@@ -13,9 +14,10 @@ CLI_PLATFORMS ?= linux/amd64 linux/arm64 darwin/amd64 darwin/arm64
 HASH_CMD      := $(shell command -v sha256sum >/dev/null 2>&1 && echo sha256sum || echo "shasum -a 256")
 
 # Container images
-IMAGE_REPO        ?= quay.io/rrp-dev-ci/zoa-lambda
-RUNNER_IMAGE_REPO ?= quay.io/rrp-dev-ci/zoa-runner
-IMAGE_TAG         ?= latest
+IMAGE_REPO          ?= quay.io/rrp-dev-ci/zoa-lambda
+RUNNER_IMAGE_REPO   ?= quay.io/rrp-dev-ci/zoa-runner
+BOUNDARY_IMAGE_REPO ?= quay.io/rrp-dev-ci/zoa-boundary
+IMAGE_TAG           ?= latest
 GIT_COMMIT        = $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 
 CONTAINER_RUNTIME ?= $(shell command -v podman 2>/dev/null || echo docker)
@@ -184,6 +186,12 @@ image-runner:
 		-t $(RUNNER_IMAGE_REPO):$(IMAGE_TAG) \
 		-f Containerfile.runner .
 
+image-boundary:
+	$(CONTAINER_RUNTIME) build \
+		--platform linux/amd64 \
+		-t $(BOUNDARY_IMAGE_REPO):$(IMAGE_TAG) \
+		-f Containerfile.boundary .
+
 image-push-lambda: image-lambda
 	$(CONTAINER_RUNTIME) push $(IMAGE_REPO):$(IMAGE_TAG)
 	$(CONTAINER_RUNTIME) tag $(IMAGE_REPO):$(IMAGE_TAG) $(IMAGE_REPO):$(GIT_COMMIT)
@@ -194,10 +202,15 @@ image-push-runner: image-runner
 	$(CONTAINER_RUNTIME) tag $(RUNNER_IMAGE_REPO):$(IMAGE_TAG) $(RUNNER_IMAGE_REPO):$(GIT_COMMIT)
 	$(CONTAINER_RUNTIME) push $(RUNNER_IMAGE_REPO):$(GIT_COMMIT)
 
-# Meta target — build + push both images in one command (dev workflow).
+image-push-boundary: image-boundary
+	$(CONTAINER_RUNTIME) push $(BOUNDARY_IMAGE_REPO):$(IMAGE_TAG)
+	$(CONTAINER_RUNTIME) tag $(BOUNDARY_IMAGE_REPO):$(IMAGE_TAG) $(BOUNDARY_IMAGE_REPO):$(GIT_COMMIT)
+	$(CONTAINER_RUNTIME) push $(BOUNDARY_IMAGE_REPO):$(GIT_COMMIT)
+
+# Meta target — build + push all container images in one command (dev workflow).
 # Each image-push-* target depends on the corresponding image-* build target,
 # so this single command builds and pushes everything.
-images-push: image-push-lambda image-push-runner
+images-push: image-push-lambda image-push-runner image-push-boundary
 
 # =============================================================================
 # Help
@@ -223,8 +236,10 @@ help:
 	@echo "  fmt                Format code"
 	@echo ""
 	@echo "Images:"
-	@echo "  image-lambda       Build zoa-lambda image"
-	@echo "  image-runner       Build zoa-runner image"
-	@echo "  image-push-lambda  Build + push zoa-lambda (:latest + :commit)"
-	@echo "  image-push-runner  Build + push zoa-runner (:latest + :commit)"
-	@echo "  images-push        Build + push both images (single command for dev workflow)"
+	@echo "  image-lambda         Build zoa-lambda image"
+	@echo "  image-runner         Build zoa-runner image"
+	@echo "  image-boundary       Build zoa-boundary image (Containerfile.boundary)"
+	@echo "  image-push-lambda    Build + push zoa-lambda (:latest + :commit)"
+	@echo "  image-push-runner    Build + push zoa-runner (:latest + :commit)"
+	@echo "  image-push-boundary  Build + push zoa-boundary (:latest + :commit)"
+	@echo "  images-push          Build + push lambda, runner, and boundary (dev workflow)"
