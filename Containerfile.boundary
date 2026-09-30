@@ -144,6 +144,13 @@ COPY --from=aws-cli-builder /opt/aws-bin /usr/local/bin
 COPY --from=claude-builder /opt/claude /usr/local/lib/claude-code
 RUN ln --symbolic /usr/local/lib/claude-code/claude /usr/local/bin/claude
 
+# Generate shell completions for all CLIs that support it
+RUN zoa completion bash > /etc/bash_completion.d/zoa \
+    && kubectl completion bash > /etc/bash_completion.d/kubectl \
+    && /usr/local/aws-cli/v2/current/bin/aws_completer > /dev/null 2>&1 \
+    && echo 'complete -C /usr/local/aws-cli/v2/current/bin/aws_completer aws' \
+        > /etc/bash_completion.d/aws
+
 RUN useradd --create-home --shell /bin/bash sre \
     && chown -R sre:sre /home/sre
 
