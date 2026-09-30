@@ -21,17 +21,20 @@ type ECSAPI interface {
 
 // Reaper enforces session deadlines by terminating expired boundary sessions.
 type Reaper struct {
-	sessionStore store.SessionStore
-	ecs          ECSAPI
-	logger       *slog.Logger
+	sessionStore  store.SessionStore
+	ecs           ECSAPI
+	logger        *slog.Logger
+	targetCluster string // per-VPC: only sessions for this cluster (TARGET_CLUSTER)
 }
 
-// NewReaper creates a new session reaper.
-func NewReaper(sessionStore store.SessionStore, ecs ECSAPI, logger *slog.Logger) *Reaper {
+// NewReaper creates a new session reaper. targetCluster scopes StopTask to this
+// VPC's boundary sessions (empty disables filtering — tests only).
+func NewReaper(sessionStore store.SessionStore, ecs ECSAPI, logger *slog.Logger, targetCluster string) *Reaper {
 	return &Reaper{
-		sessionStore: sessionStore,
-		ecs:          ecs,
-		logger:       logger,
+		sessionStore:  sessionStore,
+		ecs:           ecs,
+		logger:        logger,
+		targetCluster: targetCluster,
 	}
 }
 
@@ -44,12 +47,22 @@ func (r *Reaper) Run(ctx context.Context) error {
 		return fmt.Errorf("reaper: failed to list expired sessions: %w", err)
 	}
 
+	if r.targetCluster != "" {
+		filtered := expired[:0]
+		for _, session := range expired {
+			if session.TargetCluster == r.targetCluster {
+				filtered = append(filtered, session)
+			}
+		}
+		expired = filtered
+	}
+
 	if len(expired) == 0 {
 		r.logger.Info("reaper: no expired sessions found")
 		return nil
 	}
 
-	r.logger.Info("reaper: found expired sessions", "count", len(expired))
+	r.logger.Info("reaper: found expired sessions", "count", len(expired), "target_cluster", r.targetCluster)
 
 	var errs []error
 	for _, session := range expired {

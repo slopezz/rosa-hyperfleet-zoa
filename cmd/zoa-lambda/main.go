@@ -187,7 +187,7 @@ func main() {
 		if cfg.SessionsTable != "" {
 			sessionStore := store.NewSessionStore(dynamoClient, cfg.SessionsTable, cfg.DynamoDBTTLDays)
 			ecsClient := awsecs.New(awsCfg)
-			reaper = scheduler.NewReaper(sessionStore, awsecs.NewReaperAdapter(ecsClient), logger)
+			reaper = scheduler.NewReaper(sessionStore, awsecs.NewReaperAdapter(ecsClient), logger, cfg.TargetCluster)
 			logger.Info("reaper enabled", "sessionsTable", cfg.SessionsTable)
 		}
 

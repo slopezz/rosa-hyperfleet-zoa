@@ -726,7 +726,7 @@ arn:aws:bedrock:${region}:*:inference-profile/${region}.anthropic.claude-3-5-hai
 - `aws_ssm_parameter.zoa_target`: each cluster self-registers with full target metadata (target_id, deployment_name, target_type, vpc_id, subnet_ids, security_group_id, ecs_cluster_arn, task_definition_arn, function_url, account_id, region, status) — auto-removed on `terraform destroy`
 - Lambda resource-based policy: add ZOA Boundary task role as permitted caller
 - Worker Lambda IAM: `ecs:StopTask` + `ecs:DescribeTasks` (reaper)
-- Reaper EventBridge schedule (always enabled for RC, gated only by `deployment_target == "rc"`)
+- Reaper EventBridge schedule on each Worker (RC + MC when `sessions_table_name` is set; same module as reconciler/GC)
 - Boundary module outputs (security_group_id, ecs_cluster_arn, task_definition_arn) wired through to SSM target parameters
 
 **Modified: `terraform/modules/zoa/`**

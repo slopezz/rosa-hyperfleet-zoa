@@ -65,7 +65,7 @@ func (m *mockECSReaper) StopTask(_ context.Context, _, taskArn, _ string) error 
 
 func testReaper(ss store.SessionStore, ecs ECSAPI) *Reaper {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	return NewReaper(ss, ecs, logger)
+	return NewReaper(ss, ecs, logger, "")
 }
 
 func TestReaper_Run_WhenNoExpiredSessions_ItShouldReturnNil(t *testing.T) {
@@ -138,6 +138,37 @@ func TestReaper_Run_WhenStopTaskFails_ItShouldContinueAndReturnError(t *testing.
 	err := r.Run(context.Background())
 	if err == nil {
 		t.Fatal("expected error, got nil")
+	}
+}
+
+func TestReaper_Run_WhenTargetClusterSet_ItShouldSkipOtherClusters(t *testing.T) {
+	ss := &mockSessionStoreReaper{
+		expired: []*store.Session{
+			{
+				SessionID:     "s-mc",
+				TargetCluster: "mc01",
+				Status:        store.SessionStatusActive,
+				EcsCluster:    "cluster",
+				TaskArn:       "task-mc",
+			},
+			{
+				SessionID:     "s-rc",
+				TargetCluster: "eph-test-rc",
+				Status:        store.SessionStatusActive,
+				EcsCluster:    "cluster",
+				TaskArn:       "task-rc",
+			},
+		},
+	}
+	ecs := &mockECSReaper{}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	r := NewReaper(ss, ecs, logger, "eph-test-rc")
+
+	if err := r.Run(context.Background()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(ecs.stopped) != 1 || ecs.stopped[0] != "task-rc" {
+		t.Errorf("expected only rc task stopped, got %v", ecs.stopped)
 	}
 }
 
