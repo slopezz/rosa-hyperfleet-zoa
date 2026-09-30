@@ -38,7 +38,7 @@ sequenceDiagram
     SRE->>JA: kinit + rh-aws-saml-login → Central Account IAM role
 
     Note over SRE,PS: Deployment autodiscovery (direct SSM read, no Lambda)
-    SRE->>PS: zoa targets → read /zoa/deployments
+    SRE->>PS: zoa deployments → read /zoa/deployments
     PS-->>SRE: {us-east-1: {access_url, invoker_role_arn}, ...}
 
     Note over SRE,AL: Target discovery (via ZOA Access)
@@ -91,7 +91,7 @@ graph TD
         mcPipeline["MC Pipeline"]
     end
 
-    zoaCLI -->|"zoa targets<br/>(direct SSM read)"| paramEnvs
+    zoaCLI -->|"zoa deployments<br/>(direct SSM read)"| paramEnvs
     zoaCLI -->|"zoa targets &lt;deployment&gt;<br/>(assume invoker role → Function URL)"| accessLambda
     accessLambda -->|"local read<br/>(same account, no cross-account)"| boundaryTargets
 
@@ -207,7 +207,7 @@ This epic delivers the target ZOA access model: SREs authenticate via their AWS 
 **What will be delivered:**
 - ZOA Access Lambda (Go, no VPC) with Function URL (IAM auth) + OU-trusted invoker role per region
 - ZOA Boundary container image (`Containerfile.boundary`) with zoa CLI, aws CLI v2, kubectl, jq, Claude Code (Bedrock)
-- ZOA CLI commands for discovery (`zoa targets`) and session management (`zoa session start/stop/join/list/history`)
+- ZOA CLI commands for discovery (`zoa deployments`, `zoa targets <deployment>`) and session management (`zoa session start/stop/join/list/history`) with compound session IDs
 - SSM Parameter Store autodiscovery in Central Account (deployments, Function URLs, invoker role ARNs)
 - Tamper-proof identity bridge: SigV4 task UUID → `task-id-index` GSI → SRE username + session ID (no ABAC, scoped credentials model, no client-supplied headers)
 - DynamoDB `boundary-sessions` table for session state tracking (in `zoa/` module, consolidated storage, GSIs: `operator-index`, `status-deadline-index`, `date-bucket-index`, `task-id-index`)
@@ -228,15 +228,15 @@ This epic delivers the target ZOA access model: SREs authenticate via their AWS 
 
 | # | Criterion |
 |---|---|
-| 1 | SRE can run `zoa targets` from laptop and see all available deployments (from SSM `/zoa/deployments`) |
+| 1 | SRE can run `zoa deployments` from laptop and see all available deployments (from SSM `/zoa/deployments`) |
 | 2 | SRE can run `zoa targets <deployment>` and see all targets (rc, mc01, mc02) within that deployment |
-| 3 | SRE can run `zoa session start <deployment> <target>` and get an interactive shell inside a boundary container in the target VPC |
+| 3 | SRE can run `zoa session start <deployment> <target>` and get an interactive shell inside a boundary container in the target VPC. Session ID returned as compound `deployment/session-id`. |
 | 4 | SRE can execute TAs (`zoa run`) from inside the boundary container against the target cluster |
 | 5 | Every TA execution from a boundary container is attributed to the originating SRE — tamper-proof identity bridge (SigV4 task UUID → DynamoDB → SRE username). Both resolved `operator` and raw `signerARN` stored in execution and audit records. |
 | 6 | Session ID resolved server-side from the identity bridge (task ARN → sessions table → session ID) and stored in all TA execution and audit entries — complete audit chain from session to every operation, no client-supplied headers trusted |
 | 7 | Sessions are time-boxed (4h default) and auto-terminated by the reaper |
 | 8 | SSM session logging captures full terminal I/O to CloudWatch Logs (KMS-encrypted) |
-| 9 | `zoa session list` shows all SREs' sessions for situational awareness (default: `--status active`). `zoa session stop` and `zoa session join` enforce ownership (server-side 403). |
+| 9 | `zoa session list <deployment>` shows all SREs' sessions for situational awareness (default: `--status active`). `zoa session stop <deployment/id>` and `zoa session join <deployment/id>` enforce ownership (server-side 403). |
 | 10 | `zoa audit` shows unified audit trail across TA executions and session lifecycle events |
 | 11 | All infrastructure is Terraform-managed (`zoa-access`, `zoa-boundary` modules) and GitOps-deployed |
 | 12 | Boundary container image is Konflux-built with Enterprise Contract |
@@ -262,7 +262,7 @@ This epic delivers the target ZOA access model: SREs authenticate via their AWS 
 **Scope**:
 - Access Lambda handler mode (`HANDLER_MODE=access`) with session and target routes
 - Boundary container image (`Containerfile.boundary`) — UBI9, zoa CLI, aws CLI v2, kubectl, jq, Claude Code (Bedrock). All binaries SHA256-verified. No curl/wget in final image.
-- CLI commands: `zoa targets`, `zoa session start/stop/join/list/history`, `zoa audit`
+- CLI commands: `zoa deployments`, `zoa targets <deployment>`, `zoa session start/stop/join/list/history` (compound session IDs), `zoa audit`
 - Tamper-proof identity bridge: SigV4 task UUID → `task-id-index` GSI on sessions table → SRE operator + session ID. Dual-field storage: resolved `operator` + raw `signerARN` in executions and audit tables.
 - Session ID resolved server-side: identity bridge lookup returns both operator and session ID from DynamoDB via `task-id-index` GSI (no env vars, no client-supplied headers — nothing the SRE can tamper with)
 - `zoa session list` shows all SREs' sessions for situational awareness (default: `--status active`); filterable by `--operator`
@@ -276,8 +276,8 @@ This epic delivers the target ZOA access model: SREs authenticate via their AWS 
 |---|---|
 | 1 | `HANDLER_MODE=access` is a third Lambda handler mode (alongside `api` and `worker`) with routes for session management, target listing, and approval stubs |
 | 2 | `Containerfile.boundary` builds a UBI9 image with zoa CLI, aws CLI v2, kubectl, jq, Claude Code — minimal attack surface, all binaries SHA256-verified, no curl/wget in final image |
-| 3 | `zoa targets` lists deployments from SSM; `zoa targets <deployment>` lists targets from ZOA Access Lambda (SSM-backed store) |
-| 4 | `zoa session start/stop/join/list/history` manages boundary container lifecycle with SigV4 auth. `list` shows all SREs' sessions (default: active). `stop` and `join` enforce ownership. |
+| 3 | `zoa deployments` lists deployments from SSM; `zoa targets <deployment>` lists targets from ZOA Access Lambda (SSM-backed store) |
+| 4 | `zoa session start/stop/join/list/history` manages boundary container lifecycle with SigV4 auth. Compound session IDs (`deployment/session-id`) for self-routing. `list` shows all SREs' sessions (default: active). `stop` and `join` enforce ownership. |
 | 5 | `zoa audit` shows unified audit trail (TA executions + session lifecycle) with `--type` filter |
 | 6 | Identity bridge resolves ECS task ARN → SRE username via tamper-proof SigV4 task UUID → DynamoDB session lookup. Both `operator` and `signerARN` stored in execution and audit records. |
 | 7 | Session ID derived server-side from identity bridge (task ARN → `task-id-index` GSI → session record) — no client-supplied env vars or headers trusted for session linkage |
@@ -422,7 +422,8 @@ Trusted Actions (inside session — ZOA_API_URL auto-set):
   describe     Show TA details
 
 Discovery (from laptop — reads SSM / ZOA Access):
-  targets      List deployments, or targets within a deployment
+  deployments  List available ZOA deployments
+  targets      List targets within a deployment
 
 Sessions (from laptop — manages boundary containers):
   session      Manage sessions (start, stop, join, list, history)
@@ -442,29 +443,31 @@ Meta:
   completion   Generate shell completions
 ```
 
-**Discovery — `zoa targets`** (positional drill-down, not audit-logged):
+**Discovery — `zoa deployments` + `zoa targets`** (not audit-logged):
 
-`zoa targets` serves two levels. With no args, it lists deployments (from SSM). With a `deployment_name` arg, it lists targets within that deployment (from Access Lambda Function URL → SSM `/zoa/targets/`):
+Discovery is split into two commands matching the two-layer architecture: deployments (SSM direct, Central Account) and targets (Access Lambda, invoker role):
 
 | Command | Purpose | Endpoint |
 |---|---|---|
-| `zoa targets` | List deployments (`deployment_name` values from SSM `/zoa/deployments`) | SSM (direct) |
+| `zoa deployments` | List ZOA installations (deployment_name, region, Access URL) | SSM (direct read, Central Account) |
 | `zoa targets <deployment>` | List targets in deployment (rc, mc01, mc02) | Access Lambda Function URL (via invoker role) |
 
 Example output:
 
 ```
-$ zoa targets
-DEPLOYMENT               REGION      STATUS
-us-east-1                us-east-1   active
-us-east-1-eph-f8d5483c   us-east-1   active
+$ zoa deployments
+DEPLOYMENT                REGION      ACCESS URL                                           INVOKER ROLE
+us-east-1                 us-east-1   https://abc123.lambda-url.us-east-1.on.aws/          arn:aws:iam::599476212575:role/us-east-1-zoa-access-invoker
+us-east-1-eph-f8d5483c    us-east-1   https://def456.lambda-url.us-east-1.on.aws/          arn:aws:iam::599476212575:role/us-east-1-eph-f8d5483c-zoa-access-invoker
 
 $ zoa targets us-east-1
-TARGET    TYPE    REGION      STATUS
-rc        RC      us-east-1   ready
-mc01      MC      us-east-1   ready
-mc02      MC      us-east-1   ready
+TARGET    TYPE    REGION      VPC              STATUS
+rc        RC      us-east-1   vpc-0abc123...   ready
+mc01      MC      us-east-1   vpc-0def456...   ready
+mc02      MC      us-east-1   vpc-0ghi789...   ready
 ```
+
+**Why two commands**: "deployment" and "target" are different concepts. A deployment is a regional ZOA installation (SSM entry, invoker role, Access Lambda). A target is an EKS cluster within that deployment. Overloading a single command with two meanings creates confusion — especially when multiple deployments share the same region (ephemeral, future canary).
 
 `deployment_name` (the positional arg) maps directly to the internal config variable `deployment_name` — equals `aws_region` for normal deployments (e.g., `us-east-1`), `aws_region-eph_prefix` for ephemeral (e.g., `us-east-1-eph-f8d5483c`). The REGION column shows the actual AWS region, which matters when deployment_name ≠ region.
 
@@ -473,12 +476,46 @@ mc02      MC      us-east-1   ready
 | Command | Purpose | Endpoint | Audit logged |
 |---|---|---|---|
 | `zoa session start <deployment> <target>` | Create ECS task, wait RUNNING | Access Lambda (invoker role) | **Yes** |
-| `zoa session stop <id>` | Stop session (immediate `ecs:StopTask`) | Access Lambda (invoker role) | **Yes** |
-| `zoa session join <id>` | Reconnect via SSM | Access Lambda (invoker role) | **Yes** |
-| `zoa session list` | Active sessions (default `--status active`) | Access Lambda (invoker role) | No |
-| `zoa session history` | Past sessions (all statuses, like `zoa runs`) | Access Lambda (invoker role) | No |
+| `zoa session stop <deployment/session-id>` | Stop session (immediate `ecs:StopTask`) | Access Lambda (invoker role) | **Yes** |
+| `zoa session join <deployment/session-id>` | Reconnect via SSM | Access Lambda (invoker role) | **Yes** |
+| `zoa session list <deployment>` | Active sessions (default `--status active`) | Access Lambda (invoker role) | No |
+| `zoa session history <deployment>` | Past sessions (all statuses, like `zoa runs`) | Access Lambda (invoker role) | No |
+
+**Compound session IDs**: Session IDs include the deployment prefix (`deployment/session-id`, e.g. `us-east-1/sess-abc123`). This embeds the routing key directly in the ID so `stop` and `join` auto-resolve which Access Lambda to talk to — no separate `--deployment` flag needed. The compound ID is displayed by `session start`, `session list`, and `session history`.
 
 Positional args for `start`: `<deployment>` = `deployment_name`, `<target>` = target ID (rc, mc01). Also available as flags for scripts: `zoa session start -d us-east-1 -t mc01`.
+
+Example workflow:
+
+```bash
+# Discover what's available
+$ zoa deployments
+DEPLOYMENT                REGION
+us-east-1                 us-east-1
+us-east-1-eph-f8d5483c    us-east-1
+
+# See targets in a deployment
+$ zoa targets us-east-1
+TARGET    TYPE    REGION      STATUS
+rc        RC      us-east-1   ready
+mc01      MC      us-east-1   ready
+
+# Start a session (compound ID returned)
+$ zoa session start us-east-1 mc01
+Session started: us-east-1/sess-abc123
+Status: active
+
+# List my sessions (compound IDs in output)
+$ zoa session list us-east-1
+SESSION ID                     TARGET  STATUS   CREATED   DEADLINE
+us-east-1/sess-abc123          mc01    active   2m ago    3h58m
+
+# Join (compound ID has the routing — no deployment flag needed)
+$ zoa session join us-east-1/sess-abc123
+
+# Stop (same — compound ID is self-routing)
+$ zoa session stop us-east-1/sess-abc123
+```
 
 **Approval commands** (top-level — approver should NOT need to create a session just to approve):
 
@@ -493,22 +530,25 @@ Positional args for `start`: `<deployment>` = `deployment_name`, `<target>` = ta
 
 **Context auto-detection** — the CLI auto-detects where the SRE is:
 - `ZOA_API_URL` set → inside a session (ECS container) → TA commands work directly, discovery/session commands not needed
-- `ZOA_API_URL` not set → on laptop → discovery and session commands resolve Access Lambda Function URL + invoker role from SSM using `ZOA_DEPLOYMENT` env var or positional arg
+- `ZOA_API_URL` not set → on laptop → discovery and session commands resolve Access Lambda Function URL + invoker role from SSM using positional args
 
-`ZOA_DEPLOYMENT` env var (settable via `export ZOA_DEPLOYMENT=us-east-1`) eliminates the need for positional args on repeated commands. Like `AWS_REGION` — set once, forget.
+The deployment context is always provided per-command (positional arg or compound ID), not as global state. This avoids hidden configuration that could route commands to the wrong deployment.
 
 `zoa approve` and `zoa reject` are top-level commands (not under `zoa session`) because approval should be frictionless — approver just needs `kinit` → `rh-aws-saml-login` → `zoa approve ID`. Routes exist on both Access and API Lambda but return `501 Not Implemented` until the approval workflow epic ships.
 
 **CLI naming rationale:**
-- **`targets`** (not `environments`): "environment" already means dev/int/stage/prod in the project vocabulary. The SRE selects their environment by authenticating (AWS profile / Central Account). `targets` answers "what can I operate on?" — works at both levels (deployments and EKS clusters).
+- **`deployments`** (not `environments`): "environment" already means dev/int/stage/prod in the project vocabulary. The SRE selects their environment by authenticating (AWS profile / Central Account). `deployments` matches the SSM path (`/zoa/deployments`), the Terraform variable (`deployment_name`), and the concept — a single ZOA installation. Multiple deployments can coexist in the same region (ephemeral, future canary).
+- **`targets`** (separate from `deployments`): Targets are EKS clusters within a deployment. Overloading one command for both concepts creates confusion. `zoa deployments` answers "where can I go?", `zoa targets <dep>` answers "what's in this deployment?".
 - **`session`** (not `boundary`): "Boundary" is internal project jargon. SREs understand "session" universally (SSH, SSM, tmux). Also avoids tab-completion collision with `breakglass` (both start with `b`).
 - **`session history`** (not `session sessions`): Avoids the awkward noun repetition that `boundary sessions` would have.
-- **Positional args** for `session start`: `zoa session start us-east-1 mc01` reads like English and saves 16 characters vs `--deployment us-east-1 --target mc01`.
+- **Compound session IDs** (`deployment/session-id`): Follows the Google resource-name pattern (`projects/X/instances/Y`). Embeds routing info so `stop` and `join` are self-contained — no `--deployment` flag needed on every command. The CLI parses the deployment prefix and auto-resolves the correct Access Lambda.
+- **Positional args** for `session start`: `zoa session start us-east-1 mc01` reads like English and saves 16 characters vs `--deployment us-east-1 --target mc01`. Flags (`-d`, `-t`) available for scripts.
 - **TA commands stay top-level**: `zoa run` is 80%+ of CLI usage (inside sessions). No breaking change. Grouped visually in `--help` but flat in command path.
 
 **Design decisions:**
 - `zoa session start --connect` and `zoa session join` both wrap `aws ecs execute-command` under the hood, which requires the **`session-manager-plugin`** binary installed on the SRE's laptop (standard SRE tooling, already required for HyperFleet bastion access)
-- `zoa session start` flags: `--connect` (auto-join after RUNNING), `--no-wait`, `--timeout` (default 4h)
+- `zoa session start` flags: `--connect` (auto-join after RUNNING), `--no-wait`, `--timeout` (default 4h), `-d`/`-t` (flag alternatives to positional args for scripts)
+- **Compound session IDs**: `deployment/session-id` format (e.g. `us-east-1/sess-abc123`). The CLI constructs the compound ID from the deployment name and the raw session ID returned by the Access Lambda. On `stop`/`join`, the CLI parses the compound ID to extract the deployment (for routing) and the raw ID (for the API call). This follows the Google resource-name pattern and eliminates the need for `--deployment` flags on every command.
 
 **Prerequisite**: `session-manager-plugin` must be installed on the SRE's laptop. It handles the WebSocket session protocol for `ecs execute-command`. Install: `brew install --cask session-manager-plugin` (macOS) or RPM (Linux). The CLI should detect its absence and print a clear error message with install instructions.
 
@@ -516,11 +556,11 @@ Positional args for `start`: `<deployment>` = `deployment_name`, `<target>` = ta
 
 | Command | Visibility | Ownership enforcement |
 |---|---|---|
-| `zoa session list` | **All SREs' sessions** (active and inactive) | None — any SRE can see all sessions for situational awareness (who is connected where) |
-| `zoa session stop` | Own sessions only | Server-side: Access Lambda validates `operator == caller` |
-| `zoa session join` | Own sessions only | Server-side: Access Lambda validates `operator == caller` |
+| `zoa session list <deployment>` | **All SREs' sessions** (active and inactive) | None — any SRE can see all sessions for situational awareness (who is connected where) |
+| `zoa session stop <deployment/id>` | Own sessions only | Server-side: Access Lambda validates `operator == caller` |
+| `zoa session join <deployment/id>` | Own sessions only | Server-side: Access Lambda validates `operator == caller` |
 
-`zoa session list` supports filters similar to `zoa runs`: `--status active|terminated|all`, `--target`, `--operator` (filter by SRE username), `--since`, `--before`. Default: `--status active` (show who is currently connected).
+`zoa session list` supports filters similar to `zoa runs`: `--status active|terminated|all`, `--target`, `--operator` (filter by SRE username). Default: `--status active` (show who is currently connected). `zoa session history <deployment>` adds `--since`, `--until`, `--before` for audit-style queries.
 
 **SRE identity across re-authentication:**
 
@@ -907,7 +947,7 @@ For ephemeral (dev Central Account), multiple entries coexist:
 | 1 | Session lifecycle e2e: start → stop → list → verify terminated |
 | 2 | Identity bridge e2e: TA execution from boundary container is attributed to correct SRE (username matches) |
 | 3 | Reaper e2e: session past deadline is auto-terminated |
-| 4 | Autodiscovery e2e: CLI discovers deployments and targets from SSM / Access Lambda |
+| 4 | Autodiscovery e2e: `zoa deployments` discovers deployments from SSM, `zoa targets <dep>` discovers targets from Access Lambda |
 | 5 | Cross-account e2e: MC session works (Access Lambda creates ECS task in MC VPC) |
 | 6 | Negative tests: unauthorized caller rejected, non-creator cannot join/stop |
 | 7 | Wired into CI via `openshift/release` Prow job configuration |
@@ -943,7 +983,7 @@ Wire into CI: `openshift/release` Prow job configuration for boundary e2e (may n
 | 1 | `docs/design/zoa-architecture.md` (rosa-hyperfleet) updated: boundary sections in main body; `PLANNED` labels removed |
 | 2 | `README.md` (rosa-hyperfleet-zoa) updated: architecture diagram shows boundary as deployed; `TEMPORARY` path removed |
 | 3 | New `docs/boundary.md` (rosa-hyperfleet-zoa): user guide for session start/stop/join, autodiscovery, container tooling |
-| 4 | `docs/cli-reference.md` (rosa-hyperfleet-zoa) updated: `zoa targets` and `zoa session` command family documented |
+| 4 | `docs/cli-reference.md` (rosa-hyperfleet-zoa) updated: `zoa deployments`, `zoa targets`, and `zoa session` command families documented |
 | 5 | New `docs/sop/boundary-troubleshooting.md` (rosa-hyperfleet): SOP for stuck sessions, reaper failures, Central Account access |
 | 6 | All markdown passes `prettier` formatting |
 

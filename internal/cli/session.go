@@ -31,13 +31,31 @@ func newSessionCommand(opts *GlobalOptions) *cobra.Command {
 }
 
 func newSessionStartCommand(opts *GlobalOptions) *cobra.Command {
-	var deployment, target string
+	var flagDeployment, flagTarget string
 
 	cmd := &cobra.Command{
-		Use:   "start",
+		Use:   "start [deployment] [target]",
 		Short: "Start a boundary session",
+		Long: `Start a boundary session for audited SRE access to a target cluster.
+
+Positional args: <deployment> <target>. Also available as flags for scripts.
+The CLI auto-resolves the Access Lambda URL and invoker role from SSM.`,
+		Example: `  # Positional (interactive use)
+  zoa session start us-east-1 mc01
+
+  # Flags (scripts and automation)
+  zoa session start -d us-east-1 -t mc01`,
+		Args: cobra.MaximumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if deployment != "" {
+			deployment, target := resolveDeploymentTarget(args, flagDeployment, flagTarget)
+			if deployment == "" {
+				return fmt.Errorf("deployment is required: zoa session start <deployment> <target>")
+			}
+			if target == "" {
+				return fmt.Errorf("target is required: zoa session start <deployment> <target>")
+			}
+
+			if opts.APIURL == "" {
 				opts.Deployment = deployment
 			}
 
@@ -54,13 +72,28 @@ func newSessionStartCommand(opts *GlobalOptions) *cobra.Command {
 				return fmt.Errorf("starting session: %w", err)
 			}
 
+			compoundID := FormatSessionID(deployment, resp.SessionID)
+
 			if opts.OutputFormat == output.FormatJSON {
+				result := map[string]interface{}{
+					"session_id": compoundID,
+					"raw_id":     resp.SessionID,
+					"deployment": deployment,
+					"target":     target,
+					"status":     resp.Status,
+				}
+				if resp.TaskArn != "" {
+					result["task_arn"] = resp.TaskArn
+				}
+				if resp.Region != "" {
+					result["region"] = resp.Region
+				}
 				enc := json.NewEncoder(os.Stdout)
 				enc.SetIndent("", "  ")
-				return enc.Encode(resp)
+				return enc.Encode(result)
 			}
 
-			fmt.Printf("Session started: %s\n", resp.SessionID)
+			fmt.Printf("Session started: %s\n", compoundID)
 			fmt.Printf("Status: %s\n", resp.Status)
 			if resp.TaskArn != "" {
 				fmt.Printf("Task:   %s\n", resp.TaskArn)
@@ -72,22 +105,28 @@ func newSessionStartCommand(opts *GlobalOptions) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&deployment, "deployment", "", "Deployment name (e.g. us-east-1)")
-	cmd.Flags().StringVar(&target, "target", "", "Target ID (e.g. mc01)")
-	_ = cmd.MarkFlagRequired("target")
+	cmd.Flags().StringVarP(&flagDeployment, "deployment", "d", "", "Deployment name (e.g. us-east-1)")
+	cmd.Flags().StringVarP(&flagTarget, "target", "t", "", "Target ID (e.g. mc01)")
 
 	return cmd
 }
 
 func newSessionStopCommand(opts *GlobalOptions) *cobra.Command {
-	var deployment string
-
 	cmd := &cobra.Command{
-		Use:   "stop <session-id>",
+		Use:   "stop <deployment/session-id>",
 		Short: "Stop a boundary session",
-		Args:  cobra.ExactArgs(1),
+		Long: `Stop a boundary session by its compound ID (deployment/session-id).
+
+The compound ID is returned by 'zoa session start' and 'zoa session list'.`,
+		Example: `  zoa session stop us-east-1/sess-abc123`,
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if deployment != "" {
+			deployment, rawID, err := ParseSessionID(args[0])
+			if err != nil {
+				return err
+			}
+
+			if opts.APIURL == "" {
 				opts.Deployment = deployment
 			}
 
@@ -96,7 +135,7 @@ func newSessionStopCommand(opts *GlobalOptions) *cobra.Command {
 				return fmt.Errorf("creating client: %w", err)
 			}
 
-			if err := c.SessionStop(cmd.Context(), args[0]); err != nil {
+			if err := c.SessionStop(cmd.Context(), rawID); err != nil {
 				return fmt.Errorf("stopping session: %w", err)
 			}
 
@@ -105,20 +144,25 @@ func newSessionStopCommand(opts *GlobalOptions) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&deployment, "deployment", "", "Deployment name (e.g. us-east-1)")
-
 	return cmd
 }
 
 func newSessionJoinCommand(opts *GlobalOptions) *cobra.Command {
-	var deployment string
-
 	cmd := &cobra.Command{
-		Use:   "join <session-id>",
+		Use:   "join <deployment/session-id>",
 		Short: "Join a boundary session via ECS Exec",
-		Args:  cobra.ExactArgs(1),
+		Long: `Join a boundary session by its compound ID (deployment/session-id).
+
+The compound ID is returned by 'zoa session start' and 'zoa session list'.`,
+		Example: `  zoa session join us-east-1/sess-abc123`,
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if deployment != "" {
+			deployment, rawID, err := ParseSessionID(args[0])
+			if err != nil {
+				return err
+			}
+
+			if opts.APIURL == "" {
 				opts.Deployment = deployment
 			}
 
@@ -127,7 +171,7 @@ func newSessionJoinCommand(opts *GlobalOptions) *cobra.Command {
 				return fmt.Errorf("creating client: %w", err)
 			}
 
-			resp, err := c.SessionJoin(cmd.Context(), args[0])
+			resp, err := c.SessionJoin(cmd.Context(), rawID)
 			if err != nil {
 				return fmt.Errorf("joining session: %w", err)
 			}
@@ -150,32 +194,32 @@ func newSessionJoinCommand(opts *GlobalOptions) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&deployment, "deployment", "", "Deployment name (e.g. us-east-1)")
-
 	return cmd
 }
 
 func newSessionListCommand(opts *GlobalOptions) *cobra.Command {
-	var deployment, status, target string
+	var status, target string
 
 	cmd := &cobra.Command{
-		Use:   "list",
-		Short: "List your boundary sessions",
-		Long: `List your own boundary sessions. Defaults to active sessions.
-Use 'zoa session history' to see all operators' sessions (audit view).`,
-		Example: `  # My active sessions
-  zoa session list --deployment us-east-1
+		Use:   "list <deployment>",
+		Short: "List boundary sessions",
+		Long: `List boundary sessions for a deployment. Defaults to active sessions.
+Use 'zoa session history' to see past sessions with extended filters.`,
+		Example: `  # Active sessions
+  zoa session list us-east-1
 
-  # My sessions (all statuses)
-  zoa session list --deployment us-east-1 --status all
+  # All statuses
+  zoa session list us-east-1 --status all
 
-  # My sessions on a specific target
-  zoa session list --deployment us-east-1 --target mc01
+  # Filter by target
+  zoa session list us-east-1 --target mc01
 
   # JSON output
-  zoa session list --deployment us-east-1 -o json`,
+  zoa session list us-east-1 -o json`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if deployment != "" {
+			deployment := args[0]
+			if opts.APIURL == "" {
 				opts.Deployment = deployment
 			}
 
@@ -213,14 +257,14 @@ Use 'zoa session history' to see all operators' sessions (audit view).`,
 			fmt.Fprintln(tw, "SESSION ID\tTARGET\tSTATUS\tCREATED\tDEADLINE")
 			for _, s := range list.Items {
 				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
-					s.SessionID, s.Target, s.Status,
+					FormatSessionID(deployment, s.SessionID),
+					s.Target, s.Status,
 					output.Dash(s.CreatedAt), output.Dash(s.Deadline))
 			}
 			return tw.Flush()
 		},
 	}
 
-	cmd.Flags().StringVar(&deployment, "deployment", "", "Deployment name (e.g. us-east-1)")
 	cmd.Flags().StringVar(&status, "status", "", "Filter by status (active, terminated, failed, all)")
 	cmd.Flags().StringVar(&target, "target", "", "Filter by target cluster")
 
@@ -228,26 +272,28 @@ Use 'zoa session history' to see all operators' sessions (audit view).`,
 }
 
 func newSessionHistoryCommand(opts *GlobalOptions) *cobra.Command {
-	var deployment, since, until, operator, target, status string
+	var since, until, operator, target, status string
 
 	cmd := &cobra.Command{
-		Use:   "history",
+		Use:   "history <deployment>",
 		Short: "View session history across all operators",
 		Long: `Show session history across all operators (audit view).
-Defaults to last 24 hours. Same model as 'zoa audit'.`,
+Defaults to last 24 hours.`,
 		Example: `  # All sessions in the last 24 hours
-  zoa session history --deployment us-east-1
+  zoa session history us-east-1
 
   # Last 7 days
-  zoa session history --deployment us-east-1 --since 7d
+  zoa session history us-east-1 --since 7d
 
   # Filter by operator
-  zoa session history --deployment us-east-1 --operator slopezma --since 7d
+  zoa session history us-east-1 --operator slopezma --since 7d
 
   # JSON output
-  zoa session history --deployment us-east-1 -o json`,
+  zoa session history us-east-1 -o json`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if deployment != "" {
+			deployment := args[0]
+			if opts.APIURL == "" {
 				opts.Deployment = deployment
 			}
 
@@ -293,14 +339,14 @@ Defaults to last 24 hours. Same model as 'zoa audit'.`,
 			fmt.Fprintln(tw, "SESSION ID\tOPERATOR\tTARGET\tSTATUS\tCREATED\tDEADLINE")
 			for _, s := range list.Items {
 				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",
-					s.SessionID, s.Operator, s.Target, s.Status,
+					FormatSessionID(deployment, s.SessionID),
+					s.Operator, s.Target, s.Status,
 					output.Dash(s.CreatedAt), output.Dash(s.Deadline))
 			}
 			return tw.Flush()
 		},
 	}
 
-	cmd.Flags().StringVar(&deployment, "deployment", "", "Deployment name (e.g. us-east-1)")
 	cmd.Flags().StringVar(&since, "since", "24h", "Show sessions since (e.g. 1h, 7d, 2026-01-01)")
 	cmd.Flags().StringVar(&until, "until", "", "Show sessions until (e.g. 1h, 2026-01-01)")
 	cmd.Flags().StringVar(&operator, "operator", "", "Filter by operator")
@@ -308,4 +354,17 @@ Defaults to last 24 hours. Same model as 'zoa audit'.`,
 	cmd.Flags().StringVar(&status, "status", "", "Filter by status")
 
 	return cmd
+}
+
+// resolveDeploymentTarget resolves deployment and target from positional args
+// or flag fallbacks. Positional args take precedence over flags.
+func resolveDeploymentTarget(args []string, flagDeployment, flagTarget string) (deployment, target string) {
+	switch len(args) {
+	case 2:
+		return args[0], args[1]
+	case 1:
+		return args[0], flagTarget
+	default:
+		return flagDeployment, flagTarget
+	}
 }
