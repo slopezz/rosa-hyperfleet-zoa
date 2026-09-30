@@ -43,10 +43,10 @@ func (c *Client) RunTask(ctx context.Context, input *api.RunTaskInput) (*api.Run
 	}
 
 	out, err := c.ecs.RunTask(ctx, &ecs.RunTaskInput{
-		Cluster:        aws.String(input.Cluster),
-		TaskDefinition: aws.String(input.TaskDefinition),
-		LaunchType:     ecstypes.LaunchTypeFargate,
-		Count:          aws.Int32(1),
+		Cluster:              aws.String(input.Cluster),
+		TaskDefinition:       aws.String(input.TaskDefinition),
+		LaunchType:           ecstypes.LaunchTypeFargate,
+		Count:                aws.Int32(1),
 		EnableExecuteCommand: true,
 		NetworkConfiguration: &ecstypes.NetworkConfiguration{
 			AwsvpcConfiguration: &ecstypes.AwsVpcConfiguration{

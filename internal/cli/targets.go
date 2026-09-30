@@ -41,7 +41,7 @@ Use 'zoa deployments' to discover available deployment names.`,
 				return fmt.Errorf("creating client: %w", err)
 			}
 
-			list, err := c.ListTargetsByDeployment(cmd.Context(), deployment)
+			list, err := c.ListTargets(cmd.Context())
 			if err != nil {
 				return fmt.Errorf("listing targets: %w", err)
 			}
