@@ -15,16 +15,18 @@ import (
 )
 
 // ssmDeploymentsPath is the SSM Parameter Store path that contains
-// deployment pointers (deployment_name → APIGW URL). Written by each
-// RC pipeline, read directly by the CLI from the SRE's active credentials
-// (Central Account or RC for dev/ephemeral).
+// deployment pointers (deployment_name → Access Function URL + invoker role).
+// Written by RC Terraform into the Central Account, read directly by the CLI
+// from the SRE's active credentials (Central Account).
 const ssmDeploymentsPath = "/zoa/deployments"
 
 // ssmDeployment represents a single deployment entry in SSM.
 type ssmDeployment struct {
 	DeploymentName string `json:"deployment_name"`
-	APIGWURL       string `json:"apigw_url"`
-	Enabled        bool   `json:"enabled"`
+	AccessURL      string `json:"access_url"`
+	InvokerRoleARN string `json:"invoker_role_arn"`
+	Region         string `json:"region"`
+	AccountID      string `json:"account_id"`
 }
 
 func newTargetsCommand(opts *GlobalOptions) *cobra.Command {
@@ -34,11 +36,11 @@ func newTargetsCommand(opts *GlobalOptions) *cobra.Command {
 		Long: `List available ZOA deployments and targets.
 
 Without arguments, lists all available deployments by reading SSM Parameter
-Store directly (uses your active AWS credentials — no ZOA_API_URL needed).
+Store directly (uses your active AWS credentials — Central Account).
 
 With a deployment argument, lists targets within that deployment by querying
-the ZOA Access Lambda API Gateway (requires ZOA_API_URL or auto-resolves
-from the deployment's APIGW URL).`,
+the ZOA Access Lambda Function URL (requires ZOA_API_URL or auto-resolves
+from the deployment's access_url).`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// With deployment arg: list targets within that deployment via Access Lambda.
@@ -98,10 +100,13 @@ from the deployment's APIGW URL).`,
 			}
 
 			tw := output.NewTable(os.Stdout)
-			fmt.Fprintln(tw, "DEPLOYMENT\tAPGIW URL\tENABLED")
+			fmt.Fprintln(tw, "DEPLOYMENT\tREGION\tACCESS URL\tINVOKER ROLE")
 			for _, d := range deployments {
-				fmt.Fprintf(tw, "%s\t%s\t%v\n",
-					d.DeploymentName, d.APIGWURL, d.Enabled)
+				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n",
+					d.DeploymentName,
+					output.Dash(d.Region),
+					output.Dash(d.AccessURL),
+					output.Dash(d.InvokerRoleARN))
 			}
 			return tw.Flush()
 		},
