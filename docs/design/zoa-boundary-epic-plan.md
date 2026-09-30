@@ -236,7 +236,7 @@ This epic delivers the target ZOA access model: SREs authenticate via their AWS 
 | 6 | Session ID resolved server-side from the identity bridge (task ARN → sessions table → session ID) and stored in all TA execution and audit entries — complete audit chain from session to every operation, no client-supplied headers trusted |
 | 7 | Sessions are time-boxed (4h default) and auto-terminated by the reaper |
 | 8 | SSM session logging captures full terminal I/O to CloudWatch Logs (KMS-encrypted) |
-| 9 | `zoa session list` shows the caller's own active sessions (default); `zoa session history` shows all operators' sessions with time filters. `zoa session stop` and `zoa session join` enforce ownership (server-side 403). |
+| 9 | `zoa session list` shows all SREs' sessions for situational awareness (default: `--status active`). `zoa session stop` and `zoa session join` enforce ownership (server-side 403). |
 | 10 | `zoa audit` shows unified audit trail across TA executions and session lifecycle events |
 | 11 | All infrastructure is Terraform-managed (`zoa-access`, `zoa-boundary` modules) and GitOps-deployed |
 | 12 | Boundary container image is Konflux-built with Enterprise Contract |
@@ -265,7 +265,7 @@ This epic delivers the target ZOA access model: SREs authenticate via their AWS 
 - CLI commands: `zoa targets`, `zoa session start/stop/join/list/history`, `zoa audit`
 - Tamper-proof identity bridge: SigV4 task UUID → `task-id-index` GSI on sessions table → SRE operator + session ID. Dual-field storage: resolved `operator` + raw `signerARN` in executions and audit tables.
 - Session ID resolved server-side: identity bridge lookup returns both operator and session ID from DynamoDB via `task-id-index` GSI (no env vars, no client-supplied headers — nothing the SRE can tamper with)
-- `zoa session list` scoped to caller's own sessions (default); `zoa session history` for all operators
+- `zoa session list` shows all SREs' sessions for situational awareness (default: `--status active`); filterable by `--operator`
 - Session reaper on Worker Lambda (EventBridge, 5m interval, `status-deadline-index` GSI query)
 - SSM-backed target store (`GetParametersByPath`, Terraform-managed lifecycle)
 - Approval stub routes (`/approve/{id}`, `/reject/{id}`) on both Access and API Lambda
@@ -277,7 +277,7 @@ This epic delivers the target ZOA access model: SREs authenticate via their AWS 
 | 1 | `HANDLER_MODE=access` is a third Lambda handler mode (alongside `api` and `worker`) with routes for session management, target listing, and approval stubs |
 | 2 | `Containerfile.boundary` builds a UBI9 image with zoa CLI, aws CLI v2, kubectl, jq, Claude Code — minimal attack surface, all binaries SHA256-verified, no curl/wget in final image |
 | 3 | `zoa targets` lists deployments from SSM; `zoa targets <deployment>` lists targets from ZOA Access Lambda (SSM-backed store) |
-| 4 | `zoa session start/stop/join/list/history` manages boundary container lifecycle with SigV4 auth. `list` defaults to caller's sessions; `history` shows all operators with time filters. |
+| 4 | `zoa session start/stop/join/list/history` manages boundary container lifecycle with SigV4 auth. `list` shows all SREs' sessions (default: active). `stop` and `join` enforce ownership. |
 | 5 | `zoa audit` shows unified audit trail (TA executions + session lifecycle) with `--type` filter |
 | 6 | Identity bridge resolves ECS task ARN → SRE username via tamper-proof SigV4 task UUID → DynamoDB session lookup. Both `operator` and `signerARN` stored in execution and audit records. |
 | 7 | Session ID derived server-side from identity bridge (task ARN → `task-id-index` GSI → session record) — no client-supplied env vars or headers trusted for session linkage |
@@ -607,6 +607,9 @@ Go interfaces: `Session` struct, `SessionStore` interface with `Put`, `Get`, `Li
 - Bedrock IAM: regional-only, scoped to `allowed_bedrock_models` Terraform var (default: Haiku). No cross-region inference permitted.
 - Bedrock model invocation logging: `aws_bedrock_model_invocation_logging_configuration` to CloudWatch Logs (metadata only — token counts, model ID, identity ARN. No payload capture, no S3).
 - Worker Lambda IAM: `ecs:StopTask` + `ecs:DescribeTasks` + reaper EventBridge schedule
+- Modified `zoa-lambda` module: SSM target self-registration, `SESSIONS_TABLE` env var, boundary module output wiring
+- Modified `zoa/` module: `boundary-sessions` table always created, `data_access_ssm` policy on `data-access` role for MC cross-account SSM writes
+- Boundary infrastructure always deployed (no feature flag) — data plane unconditional, compute gated by image tag only
 - All timeouts and tunables exposed as Terraform variables
 
 **Acceptance Criteria**:
@@ -676,14 +679,24 @@ arn:aws:bedrock:${region}:*:inference-profile/${region}.anthropic.claude-3-5-hai
 - Log group: `/aws/bedrock/model-invocations` (KMS-encrypted)
 - IAM role for Bedrock to write to CloudWatch Logs
 
+**Boundary infrastructure is always deployed** — no `enable_zoa_boundary` or `enable_boundary` feature flag. The data plane (DynamoDB `boundary-sessions` table, `data_access_ssm` IAM policy, reaper schedule) is always created as part of the `zoa/` module. Compute (ECS tasks, Access Lambda) is gated only by whether the image tag is set (same pattern as `zoa_lambda` gating — empty image tag skips deployment, but data layer is always ready).
+
 **Modified: `terraform/modules/zoa-lambda/`**
+- `SESSIONS_TABLE` env var conditionally merged into Lambda environment (enables session identity bridge resolution when set)
+- `aws_ssm_parameter.zoa_target`: each cluster self-registers with full target metadata (target_id, deployment_name, target_type, vpc_id, subnet_ids, security_group_id, ecs_cluster_arn, task_definition_arn, function_url, account_id, region, status) — auto-removed on `terraform destroy`
 - Lambda resource-based policy: add ZOA Boundary task role as permitted caller
 - Worker Lambda IAM: `ecs:StopTask` + `ecs:DescribeTasks` (reaper)
-- Reaper EventBridge schedule
+- Reaper EventBridge schedule (always enabled for RC, gated only by `deployment_target == "rc"`)
+- Boundary module outputs (security_group_id, ecs_cluster_arn, task_definition_arn) wired through to SSM target parameters
+
+**Modified: `terraform/modules/zoa/`**
+- `boundary-sessions` DynamoDB table always created (no count/conditional)
+- `data_access_ssm` IAM policy on `data-access` role: `ssm:PutParameter`, `ssm:DeleteParameter`, `ssm:GetParameter`, `ssm:AddTagsToResource` on `/zoa/targets/*` — enables MC pipelines to write target metadata to RC account's SSM via cross-account role assumption
 
 **Cross-account wiring:**
 - ZOA Access Lambda `sts:AssumeRole` into MC account for `ecs:RunTask`
 - MC boundary task role added to MC per-VPC Lambda resource policy
+- MC pipelines write target metadata to RC SSM via `data-access` role (extended with SSM permissions)
 
 #### SSM Parameter Store Autodiscovery (Central Account)
 
