@@ -210,10 +210,11 @@ This epic delivers the target ZOA access model: SREs authenticate via their AWS 
 - ZOA Boundary container image (`Containerfile.boundary`) with zoa CLI, aws CLI v2, kubectl, jq, Claude Code (Bedrock)
 - ZOA CLI commands for discovery (`zoa targets`) and session management (`zoa session start/stop/join/list/history`)
 - SSM Parameter Store autodiscovery in Central Account (deployments, APIGW URLs)
-- Tamper-proof identity bridge: SigV4 task UUID → DynamoDB sessions → SRE username (no ABAC, scoped credentials model)
-- Session ID injection: every TA execution and audit entry linked to originating boundary session
-- DynamoDB `boundary-sessions` table for session state tracking (in `zoa/` module, consolidated storage)
+- Tamper-proof identity bridge: SigV4 task UUID → `task-id-index` GSI → SRE username + session ID (no ABAC, scoped credentials model, no client-supplied headers)
+- DynamoDB `boundary-sessions` table for session state tracking (in `zoa/` module, consolidated storage, GSIs: `operator-index`, `status-deadline-index`, `date-bucket-index`, `task-id-index`)
 - SSM Parameter Store for target registration (Terraform-managed lifecycle, no DynamoDB)
+- ECS task tags (tamper-proof): `sre`, `sessionId`, `deployment`, `target` — second independent SRE attribution path
+- Bedrock integration: regional-only IAM (no cross-region inference), model invocation logging (metadata only, no payloads)
 - Boundary session reaper (EventBridge-triggered on Worker Lambda, 4h timeout)
 - Terraform modules: `zoa-access` (Lambda + APIGW), `zoa-boundary` (ECS task definition, IAM, SG)
 - Konflux pipeline for ZOA Boundary container image (Enterprise Contract)
@@ -263,8 +264,8 @@ This epic delivers the target ZOA access model: SREs authenticate via their AWS 
 - Access Lambda handler mode (`HANDLER_MODE=access`) with session and target routes
 - Boundary container image (`Containerfile.boundary`) — UBI9, zoa CLI, aws CLI v2, kubectl, jq, Claude Code (Bedrock). All binaries SHA256-verified. No curl/wget in final image.
 - CLI commands: `zoa targets`, `zoa session start/stop/join/list/history`, `zoa audit`
-- Tamper-proof identity bridge: SigV4 task UUID → DynamoDB sessions → SRE operator. Dual-field storage: resolved `operator` + raw `signerARN` in executions and audit tables.
-- Session ID resolved server-side: identity bridge lookup returns both operator and session ID from DynamoDB (no `ZOA_SESSION_ID` env var, no `X-Session-ID` header — nothing the SRE can tamper with)
+- Tamper-proof identity bridge: SigV4 task UUID → `task-id-index` GSI on sessions table → SRE operator + session ID. Dual-field storage: resolved `operator` + raw `signerARN` in executions and audit tables.
+- Session ID resolved server-side: identity bridge lookup returns both operator and session ID from DynamoDB via `task-id-index` GSI (no env vars, no client-supplied headers — nothing the SRE can tamper with)
 - `zoa session list` scoped to caller's own sessions (default); `zoa session history` for all operators
 - Session reaper on Worker Lambda (EventBridge, 5m interval, `status-deadline-index` GSI query)
 - SSM-backed target store (`GetParametersByPath`, Terraform-managed lifecycle)
@@ -595,15 +596,17 @@ Go interfaces: `Session` struct, `SessionStore` interface with `Put`, `Get`, `Li
 
 **Title**: ZOA Boundary Infrastructure — Terraform modules, SSM autodiscovery, DynamoDB, IAM
 
-**Overview**: Implement the AWS infrastructure layer for the ZOA Boundary using Terraform modules, deploying the Access Lambda behind API Gateway, ECS Fargate task definitions for boundary containers, DynamoDB session/target tables, SSM autodiscovery in the Central Account, and cross-account IAM wiring for MC sessions. Worked in parallel with Story 1 — both needed to test anything end-to-end.
+**Overview**: Implement the AWS infrastructure layer for the ZOA Boundary using Terraform modules, deploying the Access Lambda behind API Gateway, ECS Fargate task definitions for boundary containers, DynamoDB sessions table, SSM autodiscovery in the Central Account, and cross-account IAM wiring for MC sessions. Includes Bedrock integration (regional-only IAM, model invocation logging) and tamper-proof ECS task tags for SRE attribution. Worked in parallel with Story 1 — both needed to test anything end-to-end.
 
 **Scope**:
 - Terraform module `zoa-access`: Access Lambda + API Gateway (regional, public) + WAF + custom domain + Route53
 - Terraform module `zoa-boundary`: ECS task definition (Fargate) + IAM roles + security group + CloudWatch Logs (KMS) + KMS key
-- DynamoDB table: `boundary-sessions` in `zoa/` module (GSI: operator-index, status-deadline-index, date-bucket-index, TTL: 30d). Target registration via SSM Parameter Store (Terraform-managed lifecycle).
+- DynamoDB table: `boundary-sessions` in `zoa/` module (GSIs: `operator-index`, `status-deadline-index`, `date-bucket-index`, `task-id-index`; TTL: 30d). Target registration via SSM Parameter Store (Terraform-managed lifecycle).
+- ECS task tags: Access Lambda sets tamper-proof tags (`sre`, `sessionId`, `deployment`, `target`) on every ECS task at creation — no `ecs:TagResource` on task role
 - SSM Parameter Store `/zoa/deployments` in Central Account (or RC account for dev/ephemeral)
 - Cross-account IAM: Access Lambda `sts:AssumeRole` into MC for `ecs:RunTask`; MC boundary task role on MC Lambda resource policy
-- Bedrock IAM scoped to `allowed_bedrock_models` Terraform var (default: Haiku only, regional)
+- Bedrock IAM: regional-only, scoped to `allowed_bedrock_models` Terraform var (default: Haiku). No cross-region inference permitted.
+- Bedrock model invocation logging: `aws_bedrock_model_invocation_logging_configuration` to CloudWatch Logs (metadata only — token counts, model ID, identity ARN. No payload capture, no S3).
 - Worker Lambda IAM: `ecs:StopTask` + `ecs:DescribeTasks` + reaper EventBridge schedule
 - All timeouts and tunables exposed as Terraform variables
 
@@ -613,13 +616,15 @@ Go interfaces: `Session` struct, `SessionStore` interface with `Put`, `Get`, `Li
 |---|---|
 | 1 | `terraform/modules/zoa-access/` deploys: API Gateway, Lambda (`HANDLER_MODE=access`), WAF, custom domain, Route53 record |
 | 2 | `terraform/modules/zoa-boundary/` deploys: ECS task definition, IAM task role (Function URL + Bedrock + SSM + CW Logs), security group, CW Logs log group (KMS), KMS key |
-| 3 | `boundary-sessions` DynamoDB table created in `zoa/` module with GSIs and TTL; targets use SSM Parameter Store |
+| 3 | `boundary-sessions` DynamoDB table created in `zoa/` module with GSIs (`operator-index`, `status-deadline-index`, `date-bucket-index`, `task-id-index`) and TTL; targets use SSM Parameter Store |
 | 4 | SSM `/zoa/deployments` parameter written to Central Account (or RC account for dev/ephemeral) by RC Terraform pipeline |
 | 5 | Cross-account IAM: Access Lambda can `ecs:RunTask` in MC accounts; MC boundary task role is permitted caller on MC Lambda Function URL |
-| 6 | Bedrock IAM scoped to `allowed_bedrock_models` Terraform var (default: Haiku only, regional) |
-| 7 | Worker Lambda has `ecs:StopTask` + `ecs:DescribeTasks` IAM and reaper EventBridge schedule |
-| 8 | `terraform validate` and `terraform plan` pass; `make pre-push` passes |
-| 9 | Ephemeral environment deploys end-to-end (RC + MC) |
+| 6 | Bedrock IAM scoped to deployment region only — `bedrock:InvokeModel` resource ARN includes `${var.region}`. `allowed_bedrock_models` Terraform var (default: Haiku only). No cross-region inference profiles. |
+| 7 | Bedrock model invocation logging enabled via `aws_bedrock_model_invocation_logging_configuration` — CloudWatch Logs only, no payload capture, no S3. Log group: `/aws/bedrock/model-invocations` (KMS-encrypted). |
+| 8 | ECS task tags set by Access Lambda at `RunTask`: `sre`, `sessionId`, `deployment`, `target`. Task role has NO `ecs:TagResource` permission (tamper-proof). |
+| 9 | Worker Lambda has `ecs:StopTask` + `ecs:DescribeTasks` IAM and reaper EventBridge schedule |
+| 10 | `terraform validate` and `terraform plan` pass; `make pre-push` passes |
+| 11 | Ephemeral environment deploys end-to-end (RC + MC) |
 
 **Repos**: `rosa-hyperfleet`
 
@@ -660,9 +665,17 @@ arn:aws:bedrock:${region}::foundation-model/anthropic.claude-3-5-haiku-*
 arn:aws:bedrock:${region}:*:inference-profile/${region}.anthropic.claude-3-5-haiku-*
 ```
 
-**New DynamoDB tables in `terraform/modules/zoa/`:**
-- `boundary-sessions` — PK: `sessionId`, GSI: `operator-index`, TTL: 30 days
-- `boundary-targets` — PK: `targetId`, attributes: `vpcId`, `subnetIds`, `securityGroupId`, etc.
+**DynamoDB table in `terraform/modules/zoa/`:**
+- `boundary-sessions` — PK: `sessionId`, GSIs: `operator-index` (PK: operator, SK: createdAt), `status-deadline-index` (PK: status, SK: deadline), `date-bucket-index` (PK: dateBucket, SK: createdAt), `task-id-index` (PK: taskId). TTL: 30 days.
+- No DynamoDB for targets — target registration uses SSM Parameter Store (Terraform-managed lifecycle: write on apply, remove on destroy)
+
+**Bedrock model invocation logging (account-level):**
+- `aws_bedrock_model_invocation_logging_configuration` — CloudWatch Logs destination only
+- Captures metadata per invocation: `identity.arn`, `modelId`, token counts, `requestId`
+- Payload capture disabled: `text_data_delivery_enabled = false`, `image_data_delivery_enabled = false`
+- No S3 destination — SSM session recording already captures the terminal conversation
+- Log group: `/aws/bedrock/model-invocations` (KMS-encrypted)
+- IAM role for Bedrock to write to CloudWatch Logs
 
 **Modified: `terraform/modules/zoa-lambda/`**
 - Lambda resource-based policy: add ZOA Boundary task role as permitted caller
@@ -1007,6 +1020,7 @@ Task role MUST have:
   ✅ ssmmessages:* (ECS Exec)
   ✅ logs:PutLogEvents (CloudWatch)
   ✅ Lambda Function URL invoke (ZOA API — per-VPC)
+  ✅ bedrock:InvokeModel (scoped to region + allowed models)
 
 Task role MUST NOT have:
   ❌ dynamodb:* (no direct table access)
@@ -1015,6 +1029,92 @@ Task role MUST NOT have:
   ❌ sts:AssumeRole (except future break-glass, gated by breakglass_role_arns)
   ❌ iam:* (no IAM modification)
 ```
+
+**ECS task tags — tamper-proof SRE identification at AWS level:**
+
+The Access Lambda sets AWS-level tags on every ECS task at creation. These tags are tamper-proof (the task role has no `ecs:TagResource` permission) and provide a second independent path for SRE identification without touching DynamoDB:
+
+| Tag | Value | Example |
+|-----|-------|---------|
+| `sre` | Operator username | `slopezma` |
+| `sessionId` | Boundary session ID | `sess-abc123` |
+| `deployment` | Deployment name | `us-east-1` |
+| `target` | Target cluster | `mc01` |
+
+Use case: `aws ecs describe-tasks --tasks <task-id>` → tags → SRE. This is critical for Bedrock billing investigation (see below).
+
+### Bedrock Observability — Regional Models, Invocation Logging, and Billing Attribution
+
+Claude Code in boundary containers uses Amazon Bedrock via the ECS task role. Three design decisions govern this integration:
+
+**1. Regional model sovereignty (data residency)**
+
+Each region uses its own Bedrock endpoint and models. The IAM policy scopes `bedrock:InvokeModel` to the deployment region only — no cross-region inference profiles permitted. This keeps data in-region by design:
+
+```
+Resource = [
+  "arn:aws:bedrock:${region}::foundation-model/anthropic.claude-*"
+]
+```
+
+If a model is unavailable in a specific region, the Terraform variable `allowed_bedrock_models` can override to a geographic inference profile (e.g., `us.anthropic.claude-*`) for that region only. This is a per-region config decision, not a runtime fallback.
+
+**2. Bedrock model invocation logging (metadata only)**
+
+Bedrock invocation logging is an account-level setting that captures metadata for every API call. We enable it to CloudWatch Logs **without** payload capture (no prompt/response content, no S3):
+
+| Field captured | Purpose |
+|----------------|---------|
+| `identity.arn` | IAM principal — contains ECS task ID as RoleSessionName |
+| `modelId` | Which model was used |
+| `input.inputTokenCount` | Input tokens consumed |
+| `output.outputTokenCount` | Output tokens consumed |
+| `requestId` | Unique request identifier |
+
+Payload capture (S3) is explicitly disabled — SSM session recording already captures the human-readable conversation displayed in the terminal. Bedrock invocation logging adds only the **cost-relevant metadata** that SSM cannot capture.
+
+**Three types of CloudWatch logs (not to be confused):**
+
+| Log type | What it captures | Log group | Per-task? |
+|----------|-----------------|-----------|-----------|
+| **Container stdout/stderr** | Entrypoint messages, process output | `/ecs/zoa-boundary` | Shared group, per-task stream |
+| **SSM session recording** | Interactive terminal I/O (keystrokes + screen) | `/ecs/zoa-boundary/ssm-sessions` | Shared group, per-session stream |
+| **Bedrock invocation** | Token counts, model ID, IAM identity per API call | `/aws/bedrock/model-invocations` | Shared (account-level) |
+
+**3. Billing attribution — "investigate when needed"**
+
+Bedrock bills through the AWS account, separate from individual SRE AI budgets. We do NOT need alerts or enforcement now — we need the ability to investigate if usage grows unexpectedly.
+
+**Investigation chain (tamper-proof, ~1 command):**
+
+```
+Bedrock invocation log:
+  identity.arn = "assumed-role/zoa-boundary-task-role/abc123def456"
+                                                      └── task ID
+
+$ aws ecs describe-tasks --tasks abc123def456 --cluster zoa-boundary
+  tags: [{ key: "sre", value: "slopezma" }]   ← tamper-proof
+```
+
+Or via DynamoDB: task ID → `task-id-index` GSI on sessions table → `operator: "slopezma"`.
+
+Two independent paths, both tamper-proof. The SRE cannot change the task ID (AWS-assigned) or the ECS task tags (no `ecs:TagResource`).
+
+**CloudWatch Insights query for aggregate per-task usage:**
+
+```sql
+fields identity.arn as principal,
+       input.inputTokenCount as inTokens,
+       output.outputTokenCount as outTokens
+| parse principal "*/zoa-boundary-task-role/*" as @prefix, @taskId
+| stats sum(inTokens) as totalInput,
+        sum(outTokens) as totalOutput,
+        count() as calls
+        by @taskId
+| sort totalOutput desc
+```
+
+**Why STS session tags are not possible on ECS**: ECS task role credentials are assumed internally by the ECS agent. AWS does not support injecting custom `RoleSessionName` or STS session tags into this `AssumeRole` call ([open feature request](https://github.com/aws/containers-roadmap/issues/2426)). The tamper-proof ECS task tags + sessions table correlation provides equivalent investigative capability without this AWS limitation being a blocker.
 
 ### Break-Glass Architecture — Detailed Design for Future Epic
 

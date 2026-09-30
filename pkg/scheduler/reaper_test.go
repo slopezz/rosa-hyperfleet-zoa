@@ -21,6 +21,9 @@ func (m *mockSessionStoreReaper) Put(_ context.Context, _ *store.Session) error 
 func (m *mockSessionStoreReaper) Get(_ context.Context, _ string) (*store.Session, error) {
 	return nil, nil
 }
+func (m *mockSessionStoreReaper) GetByTaskID(_ context.Context, _ string) (*store.Session, error) {
+	return nil, nil
+}
 func (m *mockSessionStoreReaper) List(_ context.Context, _ *store.SessionFilter) ([]*store.Session, error) {
 	return nil, nil
 }
