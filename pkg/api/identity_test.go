@@ -73,6 +73,7 @@ func TestExtractSREIdentity_WhenInvalidARN_ItShouldReturnError(t *testing.T) {
 
 type mockSessionStore struct {
 	getFn          func(ctx context.Context, id string) (*store.Session, error)
+	getByTaskIDFn  func(ctx context.Context, taskID string) (*store.Session, error)
 	putFn          func(ctx context.Context, s *store.Session) error
 	listFn         func(ctx context.Context, filter *store.SessionFilter) ([]*store.Session, error)
 	updateStatusFn func(ctx context.Context, id string, from, to store.SessionStatus, updates map[string]interface{}) error
@@ -90,6 +91,13 @@ func (m *mockSessionStore) Put(ctx context.Context, s *store.Session) error {
 func (m *mockSessionStore) Get(ctx context.Context, id string) (*store.Session, error) {
 	if m.getFn != nil {
 		return m.getFn(ctx, id)
+	}
+	return nil, nil
+}
+
+func (m *mockSessionStore) GetByTaskID(ctx context.Context, taskID string) (*store.Session, error) {
+	if m.getByTaskIDFn != nil {
+		return m.getByTaskIDFn(ctx, taskID)
 	}
 	return nil, nil
 }
@@ -126,8 +134,8 @@ func (m *mockSessionStore) ListExpired(ctx context.Context) ([]*store.Session, e
 	return nil, nil
 }
 
-func TestResolveIdentity_WhenDirectSREARN_ItShouldReturnUsername(t *testing.T) {
-	username, err := ResolveIdentity(
+func TestResolveIdentity_WhenDirectSREARN_ItShouldReturnUsernameAndEmptySession(t *testing.T) {
+	result, err := ResolveIdentity(
 		context.Background(),
 		"arn:aws:sts::123456:assumed-role/sre-role/slopezma",
 		nil,
@@ -136,25 +144,29 @@ func TestResolveIdentity_WhenDirectSREARN_ItShouldReturnUsername(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if username != "slopezma" {
-		t.Errorf("expected 'slopezma', got %q", username)
+	if result.Operator != "slopezma" {
+		t.Errorf("expected operator 'slopezma', got %q", result.Operator)
+	}
+	if result.SessionID != "" {
+		t.Errorf("expected empty session ID for direct caller, got %q", result.SessionID)
 	}
 }
 
-func TestResolveIdentity_WhenBoundaryTaskRole_ItShouldLookupSession(t *testing.T) {
+func TestResolveIdentity_WhenBoundaryTaskRole_ItShouldLookupSessionByTaskID(t *testing.T) {
 	mockStore := &mockSessionStore{
-		getFn: func(_ context.Context, id string) (*store.Session, error) {
-			if id != "task-abc123" {
-				return nil, fmt.Errorf("unexpected task ID: %s", id)
+		getByTaskIDFn: func(_ context.Context, taskID string) (*store.Session, error) {
+			if taskID != "task-abc123" {
+				return nil, fmt.Errorf("unexpected task ID: %s", taskID)
 			}
 			return &store.Session{
-				SessionID: "task-abc123",
+				SessionID: "sess-xyz",
+				TaskID:    "task-abc123",
 				Operator:  "slopezma",
 			}, nil
 		},
 	}
 
-	username, err := ResolveIdentity(
+	result, err := ResolveIdentity(
 		context.Background(),
 		"arn:aws:sts::123456:assumed-role/zoa-boundary-task-role/task-abc123",
 		mockStore,
@@ -163,14 +175,17 @@ func TestResolveIdentity_WhenBoundaryTaskRole_ItShouldLookupSession(t *testing.T
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if username != "slopezma" {
-		t.Errorf("expected 'slopezma', got %q", username)
+	if result.Operator != "slopezma" {
+		t.Errorf("expected operator 'slopezma', got %q", result.Operator)
+	}
+	if result.SessionID != "sess-xyz" {
+		t.Errorf("expected session ID 'sess-xyz', got %q", result.SessionID)
 	}
 }
 
 func TestResolveIdentity_WhenBoundaryTaskRoleNoSession_ItShouldReturnError(t *testing.T) {
 	mockStore := &mockSessionStore{
-		getFn: func(_ context.Context, _ string) (*store.Session, error) {
+		getByTaskIDFn: func(_ context.Context, _ string) (*store.Session, error) {
 			return nil, nil
 		},
 	}
@@ -207,12 +222,15 @@ func TestResolveIdentity_WhenEmptyARN_ItShouldReturnError(t *testing.T) {
 
 func TestResolveIdentity_WhenCustomBoundaryRolePrefix_ItShouldMatch(t *testing.T) {
 	mockStore := &mockSessionStore{
-		getFn: func(_ context.Context, _ string) (*store.Session, error) {
-			return &store.Session{Operator: "testuser"}, nil
+		getByTaskIDFn: func(_ context.Context, _ string) (*store.Session, error) {
+			return &store.Session{
+				SessionID: "sess-custom",
+				Operator:  "testuser",
+			}, nil
 		},
 	}
 
-	username, err := ResolveIdentity(
+	result, err := ResolveIdentity(
 		context.Background(),
 		"arn:aws:sts::123456:assumed-role/custom-boundary-role/task-xyz",
 		mockStore,
@@ -221,7 +239,10 @@ func TestResolveIdentity_WhenCustomBoundaryRolePrefix_ItShouldMatch(t *testing.T
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if username != "testuser" {
-		t.Errorf("expected 'testuser', got %q", username)
+	if result.Operator != "testuser" {
+		t.Errorf("expected operator 'testuser', got %q", result.Operator)
+	}
+	if result.SessionID != "sess-custom" {
+		t.Errorf("expected session ID 'sess-custom', got %q", result.SessionID)
 	}
 }

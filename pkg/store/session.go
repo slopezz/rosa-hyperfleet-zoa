@@ -30,6 +30,7 @@ type Session struct {
 	TargetCluster     string        `json:"target_cluster" dynamodbav:"targetCluster"`
 	Region            string        `json:"region" dynamodbav:"region"`
 	TaskArn           string        `json:"task_arn,omitempty" dynamodbav:"taskArn,omitempty"`
+	TaskID            string        `json:"task_id,omitempty" dynamodbav:"taskId,omitempty"`
 	EcsCluster        string        `json:"ecs_cluster,omitempty" dynamodbav:"ecsCluster,omitempty"`
 	Status            SessionStatus `json:"status" dynamodbav:"status"`
 	CreatedAt         string        `json:"created_at" dynamodbav:"createdAt"`
@@ -57,6 +58,12 @@ type SessionFilter struct {
 type SessionStore interface {
 	Put(ctx context.Context, session *Session) error
 	Get(ctx context.Context, sessionID string) (*Session, error)
+
+	// GetByTaskID looks up a session by ECS task ID via the task-id-index GSI.
+	// Used by the identity bridge to resolve SRE identity from a SigV4 caller
+	// ARN (task role's RoleSessionName = task ID). Returns nil if not found.
+	GetByTaskID(ctx context.Context, taskID string) (*Session, error)
+
 	List(ctx context.Context, filter *SessionFilter) ([]*Session, error)
 
 	// ListAll returns sessions across all operators via date-bucket-index.
@@ -120,6 +127,38 @@ func (s *DynamoDBSessionStore) Get(ctx context.Context, sessionID string) (*Sess
 
 	var session Session
 	if err := attributevalue.UnmarshalMap(out.Item, &session); err != nil {
+		return nil, fmt.Errorf("unmarshaling session: %w", err)
+	}
+	return &session, nil
+}
+
+// GetByTaskID looks up a session by ECS task ID via the task-id-index GSI.
+// The task ID is the short ID (last segment of the task ARN), written to the
+// taskId attribute when the session transitions to active.
+func (s *DynamoDBSessionStore) GetByTaskID(ctx context.Context, taskID string) (*Session, error) {
+	keyCond := expression.Key("taskId").Equal(expression.Value(taskID))
+	expr, err := expression.NewBuilder().WithKeyCondition(keyCond).Build()
+	if err != nil {
+		return nil, fmt.Errorf("building task-id query expression: %w", err)
+	}
+
+	out, err := s.client.Query(ctx, &dynamodb.QueryInput{
+		TableName:                 &s.tableName,
+		IndexName:                 aws.String("task-id-index"),
+		KeyConditionExpression:    expr.KeyCondition(),
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+		Limit:                     aws.Int32(1),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("querying session by task ID: %w", err)
+	}
+	if len(out.Items) == 0 {
+		return nil, nil
+	}
+
+	var session Session
+	if err := attributevalue.UnmarshalMap(out.Items[0], &session); err != nil {
 		return nil, fmt.Errorf("unmarshaling session: %w", err)
 	}
 	return &session, nil

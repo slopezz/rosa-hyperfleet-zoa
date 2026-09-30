@@ -211,9 +211,11 @@ func (h *AccessHandler) handleSessionStart(w http.ResponseWriter, r *http.Reques
 		_ = h.sessionStore.UpdateStatus(ctx, sessionID, store.SessionStatusCreating, store.SessionStatusActive,
 			map[string]interface{}{
 				"taskArn":    taskOutput.TaskArn,
+				"taskId":     taskOutput.TaskID,
 				"ecsCluster": ecsCluster,
 			})
 		session.TaskArn = taskOutput.TaskArn
+		session.TaskID = taskOutput.TaskID
 		session.Status = store.SessionStatusActive
 	}
 
