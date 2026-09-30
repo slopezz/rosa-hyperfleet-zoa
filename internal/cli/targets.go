@@ -44,7 +44,13 @@ from the deployment's access_url).`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// With deployment arg: list targets within that deployment via Access Lambda.
+			// If ZOA_API_URL is not set, auto-resolve from SSM by setting the deployment
+			// context so getClient assumes the invoker role transparently.
 			if len(args) == 1 {
+				if opts.APIURL == "" && opts.Deployment == "" {
+					opts.Deployment = args[0]
+				}
+
 				c, err := getClient(opts)
 				if err != nil {
 					return fmt.Errorf("creating client: %w", err)
