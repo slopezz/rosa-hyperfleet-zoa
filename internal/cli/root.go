@@ -10,6 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/spf13/cobra"
 
+	"github.com/openshift-online/rosa-hyperfleet-zoa/internal/accessclient"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/internal/client"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/internal/output"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/internal/version"
@@ -19,6 +20,11 @@ type GlobalOptions struct {
 	APIURL       string
 	Region       string
 	OutputFormat output.Format
+
+	// Deployment is set by individual commands (targets positional arg,
+	// session --deployment flag) to enable auto-resolution of the Access
+	// URL and invoker role from SSM. Not a user-facing global flag.
+	Deployment string
 
 	// ClientFactory overrides client creation for testing.
 	// When nil, the real AWS-authenticated client is used.
@@ -45,9 +51,16 @@ Set ZOA_API_URL to your ZOA endpoint (Function URL, API Gateway, or CNAME).`,
 			if cmd.CalledAs() == "__complete" || cmd.CalledAs() == "__completeNoDesc" {
 				return nil
 			}
-			// `zoa targets` (no-arg) reads SSM directly — doesn't need ZOA_API_URL.
-			// Only `zoa targets <deployment>` and session commands need the API URL.
-			if name == "targets" && len(args) == 0 {
+			// Commands that read SSM directly or set opts.Deployment themselves
+			// don't need ZOA_API_URL — they go through newDeploymentClient.
+			// targets (any args): handled inside its own RunE.
+			if name == "targets" {
+				return nil
+			}
+			// Session subcommands set opts.Deployment from their local --deployment flag;
+			// PersistentPreRunE runs before the subcommand's own PreRunE and flag binding,
+			// so we can't check opts.Deployment yet. Let getClient decide at call time.
+			if cmd.Parent() != nil && cmd.Parent().Name() == "session" {
 				return nil
 			}
 			if opts.APIURL == "" {
@@ -88,9 +101,20 @@ func getClient(opts *GlobalOptions) (APIClient, error) {
 	if opts.ClientFactory != nil {
 		return opts.ClientFactory(opts)
 	}
-	return newRealClient(opts)
+	// When ZOA_API_URL is set, use it directly with the caller's credentials.
+	if opts.APIURL != "" {
+		return newRealClient(opts)
+	}
+	// Otherwise, auto-resolve from the deployment SSM entry: read the Access URL
+	// and invoker role, assume the role transparently, and create the client.
+	if opts.Deployment != "" {
+		return newDeploymentClient(opts)
+	}
+	return nil, fmt.Errorf("ZOA_API_URL not set and no --deployment provided")
 }
 
+// newRealClient creates a client using the caller's existing credentials
+// and the explicit API URL.
 func newRealClient(opts *GlobalOptions) (*client.Client, error) {
 	ctx := context.Background()
 	cfg, err := awsconfig.LoadDefaultConfig(ctx)
@@ -108,6 +132,29 @@ func newRealClient(opts *GlobalOptions) (*client.Client, error) {
 		AccountID: *identity.Account,
 		Operator:  *identity.Arn,
 		Region:    opts.Region,
+	})
+}
+
+// newDeploymentClient auto-resolves the Access URL and invoker role from SSM,
+// assumes the invoker role transparently (preserving the SRE's identity as the
+// session name), and creates a client pointing at the Access Lambda.
+func newDeploymentClient(opts *GlobalOptions) (*client.Client, error) {
+	ctx := context.Background()
+
+	info, err := accessclient.Resolve(ctx, opts.Deployment)
+	if err != nil {
+		return nil, fmt.Errorf("resolving deployment %q: %w", opts.Deployment, err)
+	}
+
+	region := opts.Region
+	if region == "" {
+		region = info.Region
+	}
+
+	return client.New(info.AccessURL, info.Credentials, client.Options{
+		AccountID: info.AccountID,
+		Operator:  info.SessionName,
+		Region:    region,
 	})
 }
 

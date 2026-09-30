@@ -37,6 +37,10 @@ func newSessionStartCommand(opts *GlobalOptions) *cobra.Command {
 		Use:   "start",
 		Short: "Start a boundary session",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if deployment != "" {
+				opts.Deployment = deployment
+			}
+
 			c, err := getClient(opts)
 			if err != nil {
 				return fmt.Errorf("creating client: %w", err)
@@ -76,11 +80,17 @@ func newSessionStartCommand(opts *GlobalOptions) *cobra.Command {
 }
 
 func newSessionStopCommand(opts *GlobalOptions) *cobra.Command {
+	var deployment string
+
 	cmd := &cobra.Command{
 		Use:   "stop <session-id>",
 		Short: "Stop a boundary session",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if deployment != "" {
+				opts.Deployment = deployment
+			}
+
 			c, err := getClient(opts)
 			if err != nil {
 				return fmt.Errorf("creating client: %w", err)
@@ -95,15 +105,23 @@ func newSessionStopCommand(opts *GlobalOptions) *cobra.Command {
 		},
 	}
 
+	cmd.Flags().StringVar(&deployment, "deployment", "", "Deployment name (e.g. us-east-1)")
+
 	return cmd
 }
 
 func newSessionJoinCommand(opts *GlobalOptions) *cobra.Command {
+	var deployment string
+
 	cmd := &cobra.Command{
 		Use:   "join <session-id>",
 		Short: "Join a boundary session via ECS Exec",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if deployment != "" {
+				opts.Deployment = deployment
+			}
+
 			c, err := getClient(opts)
 			if err != nil {
 				return fmt.Errorf("creating client: %w", err)
@@ -132,11 +150,13 @@ func newSessionJoinCommand(opts *GlobalOptions) *cobra.Command {
 		},
 	}
 
+	cmd.Flags().StringVar(&deployment, "deployment", "", "Deployment name (e.g. us-east-1)")
+
 	return cmd
 }
 
 func newSessionListCommand(opts *GlobalOptions) *cobra.Command {
-	var status, target string
+	var deployment, status, target string
 
 	cmd := &cobra.Command{
 		Use:   "list",
@@ -144,17 +164,21 @@ func newSessionListCommand(opts *GlobalOptions) *cobra.Command {
 		Long: `List your own boundary sessions. Defaults to active sessions.
 Use 'zoa session history' to see all operators' sessions (audit view).`,
 		Example: `  # My active sessions
-  zoa session list
+  zoa session list --deployment us-east-1
 
   # My sessions (all statuses)
-  zoa session list --status all
+  zoa session list --deployment us-east-1 --status all
 
   # My sessions on a specific target
-  zoa session list --target mc01
+  zoa session list --deployment us-east-1 --target mc01
 
   # JSON output
-  zoa session list -o json`,
+  zoa session list --deployment us-east-1 -o json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if deployment != "" {
+				opts.Deployment = deployment
+			}
+
 			c, err := getClient(opts)
 			if err != nil {
 				return fmt.Errorf("creating client: %w", err)
@@ -196,6 +220,7 @@ Use 'zoa session history' to see all operators' sessions (audit view).`,
 		},
 	}
 
+	cmd.Flags().StringVar(&deployment, "deployment", "", "Deployment name (e.g. us-east-1)")
 	cmd.Flags().StringVar(&status, "status", "", "Filter by status (active, terminated, failed, all)")
 	cmd.Flags().StringVar(&target, "target", "", "Filter by target cluster")
 
@@ -203,7 +228,7 @@ Use 'zoa session history' to see all operators' sessions (audit view).`,
 }
 
 func newSessionHistoryCommand(opts *GlobalOptions) *cobra.Command {
-	var since, until, operator, target, status string
+	var deployment, since, until, operator, target, status string
 
 	cmd := &cobra.Command{
 		Use:   "history",
@@ -211,17 +236,21 @@ func newSessionHistoryCommand(opts *GlobalOptions) *cobra.Command {
 		Long: `Show session history across all operators (audit view).
 Defaults to last 24 hours. Same model as 'zoa audit'.`,
 		Example: `  # All sessions in the last 24 hours
-  zoa session history
+  zoa session history --deployment us-east-1
 
   # Last 7 days
-  zoa session history --since 7d
+  zoa session history --deployment us-east-1 --since 7d
 
   # Filter by operator
-  zoa session history --operator slopezma --since 7d
+  zoa session history --deployment us-east-1 --operator slopezma --since 7d
 
   # JSON output
-  zoa session history -o json`,
+  zoa session history --deployment us-east-1 -o json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if deployment != "" {
+				opts.Deployment = deployment
+			}
+
 			c, err := getClient(opts)
 			if err != nil {
 				return fmt.Errorf("creating client: %w", err)
@@ -271,6 +300,7 @@ Defaults to last 24 hours. Same model as 'zoa audit'.`,
 		},
 	}
 
+	cmd.Flags().StringVar(&deployment, "deployment", "", "Deployment name (e.g. us-east-1)")
 	cmd.Flags().StringVar(&since, "since", "24h", "Show sessions since (e.g. 1h, 7d, 2026-01-01)")
 	cmd.Flags().StringVar(&until, "until", "", "Show sessions until (e.g. 1h, 2026-01-01)")
 	cmd.Flags().StringVar(&operator, "operator", "", "Filter by operator")
