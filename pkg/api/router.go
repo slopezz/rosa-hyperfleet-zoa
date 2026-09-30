@@ -64,23 +64,29 @@ func WithSessionStore(s store.SessionStore) HandlerOption {
 	return func(h *Handler) { h.sessionStore = s }
 }
 
-// resolveIdentity extracts the SRE operator and raw signer ARN from a request.
-// If the caller is a boundary ECS task, identity is resolved via the sessions
-// table (tamper-proof: task UUID from SigV4 → DynamoDB). Otherwise, identity
-// is extracted directly from the SigV4 ARN (personal IAM role from laptop).
+// resolveIdentity extracts the SRE operator, raw signer ARN, and session ID
+// from a request. All three values are derived server-side from the SigV4
+// caller identity — no client-supplied headers are trusted for identity or
+// session linkage.
+//
+// For boundary callers: task ID from SigV4 ARN → sessions table → operator +
+// session ID (tamper-proof: SRE cannot change their task ID or session mapping).
+//
+// For laptop callers: operator extracted directly from SigV4 ARN, session ID
+// is empty (no boundary session).
 func (h *Handler) resolveIdentity(r *http.Request) (operator, signerARN, sessionID string) {
 	signerARN = r.Header.Get("X-Operator")
-	sessionID = r.Header.Get("X-Session-ID")
 
 	if h.sessionStore != nil && signerARN != "" {
-		resolved, err := ResolveIdentity(r.Context(), signerARN, h.sessionStore, "")
+		result, err := ResolveIdentity(r.Context(), signerARN, h.sessionStore, "")
 		if err != nil {
 			h.logger.Warn("identity bridge lookup failed, using ARN extraction",
 				"signerARN", signerARN, "error", err)
 			username, _, _ := ExtractSREIdentity(signerARN)
 			operator = username
 		} else {
-			operator = resolved
+			operator = result.Operator
+			sessionID = result.SessionID
 		}
 	} else {
 		username, _, _ := ExtractSREIdentity(signerARN)

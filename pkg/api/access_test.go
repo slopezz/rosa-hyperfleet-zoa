@@ -39,6 +39,15 @@ func (m *mockSessionStoreAccess) Get(_ context.Context, id string) (*store.Sessi
 	return nil, nil
 }
 
+func (m *mockSessionStoreAccess) GetByTaskID(_ context.Context, taskID string) (*store.Session, error) {
+	for _, s := range m.sessions {
+		if s.TaskID == taskID {
+			return s, nil
+		}
+	}
+	return nil, nil
+}
+
 func (m *mockSessionStoreAccess) List(_ context.Context, _ *store.SessionFilter) ([]*store.Session, error) {
 	return m.sessions, nil
 }
