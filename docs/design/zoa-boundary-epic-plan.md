@@ -44,7 +44,7 @@ sequenceDiagram
     Note over SRE,AL: Target discovery (via ZOA Access)
     SRE->>AGW: zoa targets us-east-1 (SigV4, Central Account role)
     AGW->>AL: GET /targets
-    AL->>DDB: read boundary-targets table (RC-local)
+    AL->>DDB: read targets from SSM /zoa/targets/<deployment>/ (RC-local)
     AL-->>SRE: [rc, mc01, mc02]
 
     Note over SRE,ECS: Session creation (Access Lambda creates ECS task)
@@ -79,7 +79,7 @@ graph TD
     end
 
     subgraph rcAccount [RC Account — full target registry]
-        boundaryTargets["boundary-targets DynamoDB<br/>{targetId, vpcId, subnetIds,<br/>securityGroupId, functionUrl,<br/>taskDefinitionArn, accountId}"]
+        boundaryTargets["SSM /zoa/targets/<deployment>/<cluster><br/>{target_type, vpc_id, subnet_ids,<br/>security_group_id, function_url,<br/>account_id}"]
         accessLambda["ZOA Access Lambda"]
     end
 
@@ -207,7 +207,7 @@ This epic delivers the target ZOA access model: SREs authenticate via their AWS 
 
 **What will be delivered:**
 - ZOA Access Lambda (Go, no VPC) + public API Gateway with custom domain per region
-- ZOA Boundary container image (`Containerfile.boundary`) with zoa CLI, aws CLI v2, kubectl, oc, jq, yq, Claude Code (Bedrock)
+- ZOA Boundary container image (`Containerfile.boundary`) with zoa CLI, aws CLI v2, kubectl, jq, Claude Code (Bedrock)
 - ZOA CLI commands for discovery (`zoa targets`) and session management (`zoa session start/stop/join/list/history`)
 - SSM Parameter Store autodiscovery in Central Account (deployments, APIGW URLs)
 - Identity bridge: ECS task ARN → SRE identity via DynamoDB
@@ -257,11 +257,11 @@ This epic delivers the target ZOA access model: SREs authenticate via their AWS 
 
 **Scope**:
 - Access Lambda handler mode (`HANDLER_MODE=access`) with session and target routes
-- Boundary container image (`Containerfile.boundary`) — UBI9, zoa CLI, aws CLI v2, kubectl, oc, jq, yq, Claude Code (Bedrock)
+- Boundary container image (`Containerfile.boundary`) — UBI9, zoa CLI, aws CLI v2, kubectl, jq, Claude Code (Bedrock)
 - CLI commands: `zoa targets`, `zoa session start/stop/join/list/history`, `zoa audit`
 - Identity bridge: ECS task ARN → DynamoDB → SRE username resolution
 - Session reaper on Worker Lambda (EventBridge, 5m interval)
-- DynamoDB types for `boundary-sessions` and `boundary-targets`
+- DynamoDB types for `boundary-sessions`; SSM-backed target store
 - Approval stub routes (`/approve/{id}`, `/reject/{id}`) on both Access and API Lambda
 
 **Acceptance Criteria**:
@@ -269,7 +269,7 @@ This epic delivers the target ZOA access model: SREs authenticate via their AWS 
 | # | Criterion |
 |---|---|
 | 1 | `HANDLER_MODE=access` is a third Lambda handler mode (alongside `api` and `worker`) with routes for session management, target listing, and approval stubs |
-| 2 | `Containerfile.boundary` builds a UBI9 image with zoa CLI, aws CLI v2, kubectl, oc, jq, yq, Claude Code — minimal attack surface |
+| 2 | `Containerfile.boundary` builds a UBI9 image with zoa CLI, aws CLI v2, kubectl, jq, Claude Code — minimal attack surface |
 | 3 | `zoa targets` lists deployments from SSM; `zoa targets <deployment>` lists targets from ZOA Access Lambda |
 | 4 | `zoa session start/stop/join/list/history` manages boundary container lifecycle with SigV4 auth |
 | 5 | `zoa audit` shows unified audit trail (TA executions + session lifecycle) with `--type` filter |
@@ -297,8 +297,8 @@ The `zoa-lambda` container image serves all three Lambda roles. The `HANDLER_MOD
 
 Access Lambda handles:
 - **Session lifecycle**: `POST /sessions/start`, `GET /sessions`, `POST /sessions/stop/{id}`
-- **Target listing**: `GET /targets` (reads `boundary-targets` DynamoDB table, RC-local)
-- **Placement routing**: resolve target cluster → VPC → Function URL from `boundary-targets` DynamoDB table
+- **Target listing**: `GET /targets` (reads SSM `/zoa/targets/<deployment>/` parameters, RC-local)
+- **Placement routing**: resolve target cluster → VPC → Function URL from SSM target parameters
 - **Cross-account session creation**: `sts:AssumeRole` into MC account to `ecs:RunTask` there
 - **Identity recording**: map SigV4 caller (Central Account role) to SRE identity, write to `boundary-sessions` DynamoDB table
 - **Future: Approval/rejection**: write `approved`/`rejected` status to DynamoDB (per-VPC reconciler handles activation)
@@ -313,21 +313,24 @@ Resource-based policy: ONLY Central Account roles (one per environment: dev, int
 
 Purpose-built container for HyperFleet ZOA. Built from within the `rosa-hyperfleet-zoa` repo alongside the Lambda and runner images — same build pipeline, same base image (UBI9), same release cycle. This ensures the boundary container always ships a zoa CLI binary that matches the Lambda it talks to, avoiding version skew between CLI and API. The tooling set is tailored to HyperFleet's serverless architecture (Lambda Function URLs, SigV4 auth, EKS-only targets) rather than the OCM/Backplane ecosystem.
 
-**Pre-installed tooling (minimum attack surface — every binary is auditable):**
+**Pre-installed tooling (minimum attack surface — every binary is auditable, all SHA256-verified):**
 - `zoa` CLI (built from same repo, version-matched to Lambda)
 - AWS CLI v2
-- `kubectl`
-- `oc` (OpenShift CLI — must-gather, adm inspect)
-- `yq` (YAML processing)
-- `jq`, `tar`, `gzip`, `unzip`, `zip`
-- `vim`, `less`
+- `kubectl` (EKS native — no `oc` needed for EKS clusters)
+- `jq` (JSON processing)
+- `tar`, `gzip` (archive extraction)
+- `vim-minimal` (basic editing)
 - `procps-ng` (ps — process debugging)
 - `bind-utils` (dig/nslookup — VPC DNS troubleshooting)
-- Claude Code (Amazon Bedrock integration)
+- `openssl` (certificate debugging)
+- Claude Code (Amazon Bedrock integration, SHA256-verified from GitHub Releases)
+- `bash-completion` (tab completion for kubectl, aws, zoa)
 - `auditd` preferred for structured command audit (see session recording section below)
 
 **Deliberately excluded** (minimal attack surface — additional tools can be added via Containerfile PR if needed):
-- `curl`, `wget` — prevents downloading arbitrary binaries into the container
+- `curl`, `wget` — prevents downloading arbitrary binaries into the container. All binaries are COPYed from builder stages.
+- `oc` — this is an EKS container, kubectl is the native client. Must-gather runs as a TA (K8s Job with `hypershift dump cluster`), not via `oc adm must-gather`.
+- `yq` — `jq` covers JSON needs; ZOA CLI has `-o json` output. Break-glass is the exception, not the rule; if needed, it's a one-line Containerfile change.
 - `helm`, `k9s`, `stern` — `kubectl` covers the same ground; add if SREs request
 - `git` — nothing to clone inside a boundary session
 - `terraform`, `skopeo`, `python3` — pipeline/build tools, not SRE operations
@@ -384,11 +387,12 @@ CloudWatch agent streams these to a separate log group for structured queries. K
 
 Base image: UBI9 (consistent with zoa-lambda and zoa-runner).
 
-**Break-glass readiness** (no EKS access today, but prepared for future):
-- `~/.kube/` and `~/.aws/` directories are writable but start empty (no hardcoded kubeconfig)
-- Reserved env var `ZOA_BREAKGLASS_ROLE_ARN` (empty by default — break-glass epic will inject it)
+**Break-glass readiness** (no EKS access today, but prepared for future — see [Break-Glass Architecture](#break-glass-architecture--detailed-design-for-future-epic) for full details):
+- `~/.kube/` and `~/.aws/` directories are writable (created by `useradd`). Start empty — populated by `zoa breakglass connect`.
+- Reserved env var `ZOA_BREAKGLASS_ROLE_ARN` (empty by default — break-glass epic injects per-scope role ARN via RunTask overrides)
 - EKS API reachable from container (same VPC, SG allows 443 to EKS) — but no EKS Access Entry exists for the task role
-- `kubectl` and `aws eks get-token` are installed — they just need credentials to work
+- `kubectl` and `aws eks get-token` installed — zero-credential kubeconfig pattern (exec plugin generates 15-min tokens from ECS task role, auto-refreshed)
+- PS1 prompt shows `[sre@zoa:us-east-1/mc01]` — extensible to show break-glass scope
 
 #### CLI Commands
 
@@ -432,7 +436,7 @@ Meta:
 
 **Discovery — `zoa targets`** (positional drill-down, not audit-logged):
 
-`zoa targets` serves two levels. With no args, it lists deployments (from SSM). With a `deployment_name` arg, it lists targets within that deployment (from ZOA Access APIGW → `boundary-targets` DynamoDB):
+`zoa targets` serves two levels. With no args, it lists deployments (from SSM). With a `deployment_name` arg, it lists targets within that deployment (from ZOA Access APIGW → SSM `/zoa/targets/`):
 
 | Command | Purpose | Endpoint |
 |---|---|---|
@@ -588,7 +592,7 @@ Go interfaces: `Session` struct, `SessionStore` interface with `Put`, `Get`, `Li
 **Scope**:
 - Terraform module `zoa-access`: Access Lambda + API Gateway (regional, public) + WAF + custom domain + Route53
 - Terraform module `zoa-boundary`: ECS task definition (Fargate) + IAM roles + security group + CloudWatch Logs (KMS) + KMS key
-- DynamoDB tables: `boundary-sessions` (GSI: operator-index, TTL: 30d) and `boundary-targets`
+- DynamoDB table: `boundary-sessions` in `zoa/` module (GSI: operator-index, status-deadline-index, date-bucket-index, TTL: 30d). Target registration via SSM Parameter Store (Terraform-managed lifecycle).
 - SSM Parameter Store `/zoa/deployments` in Central Account (or RC account for dev/ephemeral)
 - Cross-account IAM: Access Lambda `sts:AssumeRole` into MC for `ecs:RunTask`; MC boundary task role on MC Lambda resource policy
 - Bedrock IAM scoped to `allowed_bedrock_models` Terraform var (default: Haiku only, regional)
@@ -601,7 +605,7 @@ Go interfaces: `Session` struct, `SessionStore` interface with `Put`, `Get`, `Li
 |---|---|
 | 1 | `terraform/modules/zoa-access/` deploys: API Gateway, Lambda (`HANDLER_MODE=access`), WAF, custom domain, Route53 record |
 | 2 | `terraform/modules/zoa-boundary/` deploys: ECS task definition, IAM task role (Function URL + Bedrock + SSM + CW Logs), security group, CW Logs log group (KMS), KMS key |
-| 3 | `boundary-sessions` and `boundary-targets` DynamoDB tables created with GSIs and TTL |
+| 3 | `boundary-sessions` DynamoDB table created in `zoa/` module with GSIs and TTL; targets use SSM Parameter Store |
 | 4 | SSM `/zoa/deployments` parameter written to Central Account (or RC account for dev/ephemeral) by RC Terraform pipeline |
 | 5 | Cross-account IAM: Access Lambda can `ecs:RunTask` in MC accounts; MC boundary task role is permitted caller on MC Lambda Function URL |
 | 6 | Bedrock IAM scoped to `allowed_bedrock_models` Terraform var (default: Haiku only, regional) |
@@ -618,7 +622,7 @@ Go interfaces: `Session` struct, `SessionStore` interface with `Put`, `Get`, `Li
 - Custom domain + Route53 record (`zoa-access.{region}.hyperfleet.example.com`)
 - WAF WebACL (IP-based rules for Red Hat ranges, geo-blocking)
 - Lambda function (no VPC, same `zoa-lambda` image, `HANDLER_MODE=access`)
-- IAM execution role: `ecs:RunTask` (RC + cross-account MC), DynamoDB read/write (`boundary-sessions`, `boundary-targets`), `sts:AssumeRole`, CloudWatch Logs
+- IAM execution role: `ecs:RunTask` (RC + cross-account MC), DynamoDB read/write (`boundary-sessions`), SSM `GetParametersByPath` (`/zoa/targets/`), `sts:AssumeRole`, CloudWatch Logs
 - Lambda resource-based policy: ONLY Central Account roles
 
 **New module: `terraform/modules/zoa-boundary/`**
@@ -670,7 +674,7 @@ SREs already access a **Central Account** (one per environment: dev, int, stage)
 | Data | Location | Writer | Reader |
 |---|---|---|---|
 | Deployment list + APIGW URLs | Central Account SSM (`/zoa/deployments`) | RC Terraform (cross-account) | CLI directly |
-| Target registry (rc, mc01, VPCs, Function URLs, subnets, task defs) | RC account DynamoDB (`boundary-targets` table) | RC + MC Terraform pipelines (local) | ZOA Access Lambda (local, same account) |
+| Target registry (rc, mc01, VPCs, Function URLs, subnets, task defs) | RC account SSM (`/zoa/targets/<deployment>/<cluster>`) | Each cluster's Terraform (auto-removed on destroy) | ZOA Access Lambda (local, same account) |
 
 Central Account stays thin (just deployment pointers). All operational detail (VPCs, subnets, SGs, task role ARNs) stays in RC — the ZOA Access Lambda reads it locally without cross-account calls.
 
@@ -708,17 +712,18 @@ For ephemeral (dev Central Account), multiple entries coexist:
 - Written by each RC Terraform pipeline via cross-account `sts:AssumeRole`
 - On environment teardown, Terraform removes the entry (critical for ephemeral lifecycle)
 
-**Target registry (RC account, DynamoDB `boundary-targets` table):**
-- PK: `targetId` (e.g., `rc`, `mc01`)
-- Attributes: `vpcId`, `subnetIds`, `securityGroupId`, `ecsClusterArn`, `taskDefinitionArn`, `functionUrl`, `accountId`, `status` (enabled/disabled)
-- Written by RC and MC Terraform pipelines as part of ZOA module outputs
-- Read by ZOA Access Lambda when creating sessions or listing targets
+**Target registry (RC account, SSM Parameter Store):**
+- Path: `/zoa/targets/<deployment_name>/<cluster_name>` (e.g., `/zoa/targets/us-east-1/mc01`)
+- Value: JSON — `{"target_type": "mc", "vpc_id": "vpc-abc", "subnet_ids": "subnet-a,subnet-b", "function_url": "https://...", "account_id": "123456", "region": "us-east-1"}`
+- Written by each cluster's Terraform (`zoa-lambda` module) — auto-removed on `terraform destroy` (no orphans, no GC)
+- Read by ZOA Access Lambda via `GetParametersByPath` (local, same account, ambient creds)
+
+**Why SSM instead of DynamoDB for targets**: Targets are static, Terraform-managed data that changes only when clusters are added/removed. SSM is simpler — Terraform manages the full lifecycle (write on apply, remove on destroy). DynamoDB is reserved for operational data with query patterns (executions, audit, sessions).
 
 **Pipeline integration:**
-- RC Terraform: writes `/zoa/deployments` entry to Central Account SSM (cross-account `ssm:PutParameter`)
-- RC Terraform: writes RC target entry to `boundary-targets` DynamoDB (local)
-- MC Terraform: writes MC target entries to `boundary-targets` DynamoDB (cross-account via `zoa-data-access` role, same mechanism MCs already use for executions table)
-- Ephemeral teardown: removes entry from Central Account SSM (cross-account `ssm:PutParameter` — idempotent)
+- RC Terraform: writes `/zoa/deployments` entry to Central Account SSM (cross-account via `provider = aws.central`)
+- Each cluster's Terraform: writes its own target entry to RC-account SSM (local `ssm:PutParameter`)
+- Ephemeral teardown: `terraform destroy` auto-removes both deployment and target entries
 
 **Cross-account IAM wiring (Central Account):**
 - Central Account needs a "pipeline writer" IAM role that RC pipeline roles can assume
@@ -955,37 +960,152 @@ The `/approve/{id}` and `/reject/{id}` routes are included in **both** the `acce
 
 For this epic, the routes return a stub response (e.g., `501 Not Implemented — approval workflow not yet enabled`). The approval workflow epic will implement the full logic: validation (approver != requester), notification (SNS → Slack), policy evaluation (OPA/Rego), and the reconciler dispatch path.
 
-### Break-Glass Readiness — Container and Infra Preparation
+### Tamper-Proof Identity Model — No ABAC Required
 
-Break-glass is a separate epic, but the boundary container and Terraform must be designed now to support it without redesign. The core requirement: when break-glass is approved, the SRE should just type `kubectl` or `aws` — no manual credential setup, no `sts assume-role`, no kubeconfig editing.
+ZOA uses a **scoped credentials** model instead of ABAC (Attribute-Based Access Control). The Access Lambda is the single trust boundary that validates identity, enforces authorization, and vends per-operation scoped credentials. No shared IAM roles are exposed to SREs.
 
-**How break-glass could work (conceptual, exact mechanism TBD in break-glass epic):**
+**Why not ABAC**: ABAC requires a shared IAM role with tag-based conditions (e.g., `ecs:ResourceTag/operator == aws:PrincipalTag/operator`). This adds OIDC → STS → session tag plumbing, requires a Keycloak mapper, and creates a shared role that must be protected. Scoped credentials are simpler and strictly more secure — the credential itself encodes the authorization, eliminating an entire class of misconfiguration.
 
-For **kube break-glass** (kube-read / kube-write / kube-admin):
-1. SRE requests: `zoa breakglass request --scope kube-write`
-2. Approver approves from laptop: `zoa approve <id>`
-3. Per-VPC Lambda reconciler creates an EKS Access Entry for a break-glass IAM role, mapped to a pre-deployed ClusterRoleBinding (e.g., `breakglass-write` ClusterRole)
-4. SRE activates: `zoa breakglass connect <id>` — CLI or Lambda generates a kubeconfig (EKS endpoint + CA from config, token via `aws eks get-token` using the break-glass role) and writes it to `~/.kube/config`
-5. SRE types `kubectl get pods` — it just works
+**Identity resolution by caller context:**
 
-For **AWS break-glass** (aws-read / aws-write / aws-admin):
-1. Same request/approve flow
-2. Per-VPC Lambda reconciler does `sts:AssumeRole` to the break-glass IAM role, stores credentials in DynamoDB (encrypted, short-lived)
-3. `zoa breakglass connect <id>` fetches credentials and exports `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` into the shell
-4. SRE types `aws ec2 describe-instances` — it just works
+| Caller location | SigV4 identity | Resolution method | Tamper-proof? |
+|---|---|---|---|
+| **Laptop → Access Lambda** | Personal IAM role from kinit/rh-saml: `assumed-role/sre-role/slopezma` | Extract username from ARN session name | ✅ SRE's own credentials |
+| **ECS → per-VPC Lambda** | Shared task role: `assumed-role/zoa-boundary-task/<ecs-task-uuid>` | Extract task UUID from ARN → sessions DynamoDB lookup → operator | ✅ Task UUID assigned by AWS, sessions table written by trusted Lambda |
+| **Laptop → approve/reject** | Personal IAM role | Extract username from ARN session name → LDAP for manager chain | ✅ Same as laptop path |
 
-**What this epic must prepare:**
+**ECS Exec isolation (no ABAC needed)**: When an SRE calls `zoa session join`, the Access Lambda validates ownership (session.operator must match the SigV4 caller), then vends per-task scoped STS credentials with an inline policy restricting `ecs:ExecuteCommand` to that specific task ARN. The SRE literally cannot exec into another SRE's task because the credential only works for one task. The Lambda sets `RoleSessionName` to the SRE's username, so CloudTrail shows `assumed-role/zoa-exec-scoped/slopezma`.
 
-| Layer | What to prepare now | Why |
+**Adversarial analysis — attacks an SRE could attempt:**
+
+| Attack | Result | Why it fails |
 |---|---|---|
-| **Containerfile** | Install `kubectl`, `aws` CLI (already planned). Ensure the `sre` user's `~/.kube/` and `~/.aws/` directories are writable. No hardcoded kubeconfig — these dirs start empty and are populated dynamically by `zoa breakglass connect`. | SRE must be able to use kubectl/aws CLI after break-glass activation without container restart |
-| **ECS task role (IAM)** | Structure the role policy so that `sts:AssumeRole` to break-glass roles can be added later as a Terraform variable (e.g., `breakglass_role_arns = []` — empty by default, populated when break-glass epic ships). Do NOT hardcode the break-glass roles now. | Adding break-glass should be `terraform apply` with a new variable, not an IAM redesign |
-| **Security group** | Egress to EKS API (443) already in the plan — this is the network path for `kubectl` from the boundary container. Ensure this rule exists from day one, even though it's only used by break-glass. | Without this SG rule, kubectl from the container cannot reach the private EKS API |
-| **EKS access** | Do NOT create an EKS Access Entry for the boundary task role now. Today, boundary containers should have NO EKS access — they only talk to Lambda. Break-glass epic will dynamically create/revoke Access Entries per session. | Zero standing EKS access — the whole point of ZOA |
-| **DynamoDB** | The `boundary-sessions` table schema should have optional fields for break-glass state: `breakglassScope`, `breakglassStatus`, `breakglassExpiresAt`. These can be NULL/empty until break-glass ships. | Avoids DynamoDB table migration when break-glass is added |
-| **Container env vars** | Reserve `ZOA_BREAKGLASS_ROLE_ARN` env var (empty by default). Break-glass epic will inject a per-scope role ARN when activating access. | CLI knows where to find the role for `aws eks get-token` / `sts assume-role` |
+| Change `ZOA_OPERATOR` env var inside ECS | ❌ | API Lambda ignores env vars/headers — resolves identity from SigV4 task UUID |
+| Craft HTTP request with fake `X-Operator` header | ❌ | Same — Lambda uses SigV4 identity, not headers |
+| Call Access Lambda API Gateway from inside ECS | ❌ | Task role has no `execute-api:Invoke` permission |
+| Modify session record in DynamoDB | ❌ | Task role has no DynamoDB permissions |
+| Modify own ECS task tags | ❌ | Task role has no `ecs:TagResource` permission |
+| Assume Lambda's IAM role | ❌ | Lambda role trust: `Principal: lambda.amazonaws.com` only |
+| Exec into another SRE's task | ❌ | Scoped credentials restrict to one task ARN |
+| Container breakout → ECS metadata endpoint | Limited | Fargate microVM isolation; task role scoped to SSM + CW + Function URL only |
 
-**Key principle**: The boundary container starts with **zero EKS access and zero AWS privilege beyond Lambda Function URL + Bedrock**. Break-glass dynamically injects access (EKS Access Entry + IAM role), and the `zoa breakglass connect` command configures the SRE's shell. When break-glass expires, the reconciler revokes the Access Entry and the credentials expire naturally (STS TTL).
+**Session ID and SignerARN — dual-field forensics**: Every execution and audit entry stores both the resolved `operator` (human-readable, stable across re-auth) and the raw `signerARN` (full SigV4 caller ARN for forensic reconstruction). The `sessionID` field links all operations back to the originating boundary session.
+
+**IAM scoping rules (enforced in Terraform):**
+
+```
+Task role MUST have:
+  ✅ ssmmessages:* (ECS Exec)
+  ✅ logs:PutLogEvents (CloudWatch)
+  ✅ Lambda Function URL invoke (ZOA API — per-VPC)
+
+Task role MUST NOT have:
+  ❌ dynamodb:* (no direct table access)
+  ❌ execute-api:Invoke (no Access Lambda API Gateway)
+  ❌ ecs:TagResource (no tag modification)
+  ❌ sts:AssumeRole (except future break-glass, gated by breakglass_role_arns)
+  ❌ iam:* (no IAM modification)
+```
+
+### Break-Glass Architecture — Detailed Design for Future Epic
+
+Break-glass is a separate epic, but the boundary container and Terraform are designed now to support it without redesign. The core requirement: when break-glass is approved, the SRE types `kubectl` or `aws` and it just works — zero manual credential setup.
+
+#### Kubectl break-glass (kube-read / kube-write / kube-admin)
+
+**End-to-end flow:**
+
+```mermaid
+sequenceDiagram
+    participant SRE as SRE (inside boundary)
+    participant CLI as ZOA CLI
+    participant FU as Per-VPC Lambda
+    participant EKS as Target EKS
+    participant K8s as K8s RBAC
+
+    SRE->>CLI: zoa breakglass request --scope kube-write
+    CLI->>FU: POST /breakglass/request (SigV4 with task role)
+    FU->>FU: Identity bridge: task UUID → slopezma
+    FU->>FU: Store request in DynamoDB (pending_approval)
+    FU-->>CLI: {requestId, status: pending_approval}
+
+    Note over SRE: Approver on laptop...
+    Note over FU: Approver: zoa approve <requestId>
+
+    FU->>FU: Reconciler picks up approved request
+    FU->>EKS: Create EKS Access Entry for break-glass role
+    FU->>K8s: Create RBAC: ClusterRoleBinding (breakglass-write)
+    FU->>K8s: Create RBAC: impersonation permission for sre:slopezma only
+    FU->>FU: Update DynamoDB: status=active, expiresAt=now+4h
+
+    SRE->>CLI: zoa breakglass connect <requestId>
+    CLI->>FU: GET /breakglass/<requestId>
+    FU-->>CLI: {eksEndpoint, eksCA, clusterName, impersonateAs: sre:slopezma}
+    CLI->>CLI: Write ~/.kube/config with EKS exec plugin + impersonation
+
+    SRE->>EKS: kubectl get pods (transparent)
+    Note over EKS: Token: aws eks get-token (15-min presigned URL, auto-regenerated)<br/>Identity in K8s audit: sre:slopezma (via impersonation)<br/>No stored credentials — ECS task role auto-refreshed
+```
+
+**Credential lifecycle:**
+
+| Credential | Duration | Refresh mechanism |
+|---|---|---|
+| ECS task role (metadata endpoint) | ∞ (auto-refreshed by ECS agent) | Transparent — valid for entire task lifetime |
+| `aws eks get-token` per-request token | 15 minutes | Regenerated by kubectl exec plugin on every API call |
+| EKS Access Entry | Until break-glass expires (4h default) | Reconciler revokes on expiry |
+| K8s RBAC bindings | Until break-glass expires | Reconciler deletes on expiry |
+
+**K8s audit log attribution**: The kubeconfig uses `--as=sre:<username>` for K8s impersonation. The RBAC only allows impersonating the specific SRE (`resourceNames: ["sre:slopezma"]`). K8s audit log shows: `user.username: "sre:slopezma"`, `impersonatedUser: true`. Cannot be spoofed — the SRE could edit the kubeconfig but K8s RBAC rejects impersonation of other users.
+
+**Zero stored credentials**: The kubeconfig is a pointer file — it tells kubectl to run `aws eks get-token` on every API call. The token is a 15-minute presigned STS URL derived from the ECS task role (which is auto-refreshed by the ECS agent). No secrets on disk, no expiry within the session window.
+
+#### AWS break-glass (aws-read / aws-write / aws-admin)
+
+**End-to-end flow:**
+
+```mermaid
+sequenceDiagram
+    participant SRE as SRE (inside boundary)
+    participant CLI as ZOA CLI
+    participant FU as Per-VPC Lambda
+
+    SRE->>CLI: zoa breakglass request --scope aws-read
+    CLI->>FU: POST /breakglass/request
+    FU-->>CLI: {requestId, status: pending_approval}
+
+    Note over FU: Approver approves...
+    FU->>FU: Reconciler: activate break-glass
+
+    SRE->>CLI: zoa breakglass connect <requestId>
+    CLI->>FU: GET /breakglass/<requestId>
+    FU->>FU: AssumeRole to break-glass role with RoleSessionName=slopezma
+    FU-->>CLI: {roleArn, expiresAt}
+    CLI->>CLI: Write ~/.aws/config with [profile breakglass] using credential_source=EcsContainer + role_arn
+
+    SRE->>SRE: aws ec2 describe-instances --profile breakglass (transparent)
+    Note over SRE: CloudTrail: assumed-role/zoa-breakglass-read/slopezma
+```
+
+**Credential chain**: The break-glass AWS profile uses `credential_source = EcsContainer` (reads task role from metadata endpoint) + `role_arn = <break-glass-role>` + `role_session_name = <sre-username>`. AWS SDK handles the chain transparently. The `~/.aws/config` file contains no secrets — just role ARNs and the credential source pointer.
+
+**CloudTrail attribution**: `RoleSessionName` is set to the SRE's username by the Lambda (not by the SRE). CloudTrail shows `assumed-role/zoa-breakglass-read/slopezma` — direct SRE identification without any lookup.
+
+**Break-glass role duration**: Set `max_session_duration = 14400` (4h) on the break-glass IAM role in Terraform. The assumed credentials last the full session, with the reaper enforcing the hard deadline by stopping the ECS task.
+
+#### What this epic prepares for break-glass
+
+| Layer | Prepared now | Break-glass epic adds |
+|---|---|---|
+| **Containerfile** | kubectl and aws CLI installed. `~/.kube/` and `~/.aws/` writable (created by `useradd`). | Nothing — container is ready |
+| **ECS task role** | `breakglass_role_arns = []` variable. No `sts:AssumeRole` today. | Populate variable with per-scope role ARNs |
+| **Security group** | Egress to EKS API (443) — network path exists | Nothing — SG is ready |
+| **EKS access** | No EKS Access Entry for task role (zero standing access) | Dynamic Access Entry creation/revocation per break-glass request |
+| **DynamoDB sessions** | Optional break-glass fields: `breakglassScope`, `breakglassStatus`, `breakglassExpiresAt` (NULL today) | Populate on break-glass activation |
+| **Container env** | `ZOA_BREAKGLASS_ROLE_ARN` reserved (empty) | Lambda injects per-scope role ARN via RunTask overrides |
+| **PS1 prompt** | Shows `[sre@zoa:us-east-1/mc01]` | Could extend to show break-glass scope: `[sre@zoa:us-east-1/mc01 🔓kube-write]` |
+
+**Key principle**: Zero standing EKS/AWS access. Break-glass dynamically injects access, the `zoa breakglass connect` command configures the SRE's shell, and the reconciler revokes everything on expiry. All break-glass operations are attributed to the SRE in CloudTrail (via `RoleSessionName`) and K8s audit (via impersonation).
 
 ### Future: Direct Access Restriction (Break-Glass Epic Prerequisite)
 
