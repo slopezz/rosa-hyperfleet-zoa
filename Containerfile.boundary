@@ -47,8 +47,7 @@ FROM ${BASE_IMAGE} AS tools
 ARG TARGETARCH=amd64
 ARG KUBECTL_VERSION="v1.32.0"
 
-RUN microdnf install --assumeyes --nodocs curl && microdnf clean all
-
+# ubi-minimal includes curl-minimal; do not install full curl (package conflict).
 WORKDIR /tools
 
 RUN curl --silent --location --fail \
@@ -66,7 +65,7 @@ RUN curl --silent --location --fail \
 # --------------------------------------------------------------------------
 FROM ${BASE_IMAGE} AS aws-cli-builder
 
-RUN microdnf install --assumeyes --nodocs curl unzip && microdnf clean all
+RUN microdnf install --assumeyes --nodocs unzip && microdnf clean all
 
 WORKDIR /aws-dl
 
@@ -86,7 +85,7 @@ FROM ${BASE_IMAGE} AS claude-builder
 ARG TARGETARCH=amd64
 ENV CLAUDE_CODE_VERSION="2.1.199"
 
-RUN microdnf install --assumeyes --nodocs tar gzip curl && microdnf clean all
+RUN microdnf install --assumeyes --nodocs tar gzip && microdnf clean all
 
 WORKDIR /claude-dl
 
@@ -147,8 +146,7 @@ RUN ln --symbolic /usr/local/lib/claude-code/claude /usr/local/bin/claude
 # Generate shell completions for all CLIs that support it
 RUN zoa completion bash > /etc/bash_completion.d/zoa \
     && kubectl completion bash > /etc/bash_completion.d/kubectl \
-    && /usr/local/aws-cli/v2/current/bin/aws_completer > /dev/null 2>&1 \
-    && echo 'complete -C /usr/local/aws-cli/v2/current/bin/aws_completer aws' \
+    && echo 'complete -C /usr/local/bin/aws_completer aws' \
         > /etc/bash_completion.d/aws
 
 RUN useradd --create-home --shell /bin/bash sre \
