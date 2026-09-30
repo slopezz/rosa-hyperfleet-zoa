@@ -147,10 +147,13 @@ RUN ln --symbolic /usr/local/lib/claude-code/claude /usr/local/bin/claude
 RUN useradd --create-home --shell /bin/bash sre \
     && chown -R sre:sre /home/sre
 
-# Default prompt — ECS task entrypoint overrides with deployment/target context
-# (e.g., [sre@zoa:us-east-1/mc01] ~ $).
+# Shell prompt uses ZOA_DEPLOYMENT and ZOA_TARGET env vars (injected by
+# Access Lambda at RunTask). Falls back to plain prompt if not set.
+# Example: [sre@zoa:us-east-1/mc01] ~ $
 ENV HOME=/home/sre \
-    PS1="[\u@zoa] \w \$ "
+    PS1='[\u@zoa:${ZOA_DEPLOYMENT:-?}/${ZOA_TARGET:-?}] \w \$ ' \
+    CLAUDE_CODE_USE_BEDROCK=1 \
+    DISABLE_AUTOUPDATER=1
 
 USER sre
 WORKDIR /home/sre

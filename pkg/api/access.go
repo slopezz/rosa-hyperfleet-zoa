@@ -28,6 +28,7 @@ type RunTaskInput struct {
 	Subnets        []string
 	SecurityGroup  string
 	Environment    map[string]string
+	Tags           map[string]string
 }
 
 // RunTaskOutput holds the result of running an ECS task.
@@ -196,8 +197,15 @@ func (h *AccessHandler) handleSessionStart(w http.ResponseWriter, r *http.Reques
 			Subnets:        subnets,
 			SecurityGroup:  target.SecurityGroupId,
 			Environment: map[string]string{
-				"ZOA_API_URL": target.FunctionUrl,
-				"ZOA_TARGET":  req.Target,
+				"ZOA_API_URL":    target.FunctionUrl,
+				"ZOA_TARGET":     req.Target,
+				"ZOA_DEPLOYMENT": req.DeploymentName,
+			},
+			Tags: map[string]string{
+				"sre":        username,
+				"sessionId":  sessionID,
+				"deployment": req.DeploymentName,
+				"target":     req.Target,
 			},
 		})
 		if err != nil {
