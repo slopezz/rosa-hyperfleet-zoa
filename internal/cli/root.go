@@ -51,15 +51,16 @@ Set ZOA_API_URL to your ZOA endpoint (Function URL, API Gateway, or CNAME).`,
 			if cmd.CalledAs() == "__complete" || cmd.CalledAs() == "__completeNoDesc" {
 				return nil
 			}
-			// Commands that read SSM directly or set opts.Deployment themselves
-			// don't need ZOA_API_URL — they go through newDeploymentClient.
-			// targets (any args): handled inside its own RunE.
+			// `zoa deployments` reads SSM directly — no API URL needed.
+			if name == "deployments" {
+				return nil
+			}
+			// `zoa targets <deployment>` auto-resolves from SSM via positional arg.
 			if name == "targets" {
 				return nil
 			}
-			// Session subcommands set opts.Deployment from their local --deployment flag;
-			// PersistentPreRunE runs before the subcommand's own PreRunE and flag binding,
-			// so we can't check opts.Deployment yet. Let getClient decide at call time.
+			// Session subcommands resolve deployment from positional args or
+			// compound session IDs. Let getClient decide at call time.
 			if cmd.Parent() != nil && cmd.Parent().Name() == "session" {
 				return nil
 			}
@@ -88,6 +89,7 @@ Set ZOA_API_URL to your ZOA endpoint (Function URL, API Gateway, or CNAME).`,
 		newActionsCommand(opts),
 		newDescribeCommand(opts),
 		newAuditCommand(opts),
+		newDeploymentsCommand(opts),
 		newTargetsCommand(opts),
 		newSessionCommand(opts),
 		newVersionCommand(opts),

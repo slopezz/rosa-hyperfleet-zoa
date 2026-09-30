@@ -1,151 +1,72 @@
 package cli
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
-	awsconfig "github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	"github.com/spf13/cobra"
 
 	"github.com/openshift-online/rosa-hyperfleet-zoa/internal/output"
 )
 
-// ssmDeploymentsPath is the SSM Parameter Store path that contains
-// deployment pointers (deployment_name → Access Function URL + invoker role).
-// Written by RC Terraform into the Central Account, read directly by the CLI
-// from the SRE's active credentials (Central Account).
-const ssmDeploymentsPath = "/zoa/deployments"
-
-// ssmDeployment represents a single deployment entry in SSM.
-type ssmDeployment struct {
-	DeploymentName string `json:"deployment_name"`
-	AccessURL      string `json:"access_url"`
-	InvokerRoleARN string `json:"invoker_role_arn"`
-	Region         string `json:"region"`
-	AccountID      string `json:"account_id"`
-}
-
 func newTargetsCommand(opts *GlobalOptions) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "targets [deployment]",
-		Short: "List boundary targets",
-		Long: `List available ZOA deployments and targets.
+		Use:   "targets <deployment>",
+		Short: "List targets within a deployment",
+		Long: `List the targets (RC and MC clusters) available in a given deployment.
 
-Without arguments, lists all available deployments by reading SSM Parameter
-Store directly (uses your active AWS credentials — Central Account).
+Requires a deployment name as a positional argument. The CLI auto-resolves
+the Access Lambda URL and invoker role from SSM, then queries the Access
+Lambda for target details.
 
-With a deployment argument, lists targets within that deployment by querying
-the ZOA Access Lambda Function URL (requires ZOA_API_URL or auto-resolves
-from the deployment's access_url).`,
-		Args: cobra.MaximumNArgs(1),
+Use 'zoa deployments' to discover available deployment names.`,
+		Example: `  # List targets in a deployment
+  zoa targets us-east-1
+
+  # List targets in an ephemeral deployment
+  zoa targets us-east-1-eph-f8d5483c
+
+  # JSON output
+  zoa targets us-east-1 -o json`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// With deployment arg: list targets within that deployment via Access Lambda.
-			// If ZOA_API_URL is not set, auto-resolve from SSM by setting the deployment
-			// context so getClient assumes the invoker role transparently.
-			if len(args) == 1 {
-				if opts.APIURL == "" && opts.Deployment == "" {
-					opts.Deployment = args[0]
-				}
-
-				c, err := getClient(opts)
-				if err != nil {
-					return fmt.Errorf("creating client: %w", err)
-				}
-
-				list, err := c.ListTargetsByDeployment(cmd.Context(), args[0])
-				if err != nil {
-					return fmt.Errorf("listing targets: %w", err)
-				}
-
-				if opts.OutputFormat == output.FormatJSON {
-					enc := json.NewEncoder(os.Stdout)
-					enc.SetIndent("", "  ")
-					return enc.Encode(list)
-				}
-
-				if len(list.Items) == 0 {
-					fmt.Printf("No targets found for deployment %q\n", args[0])
-					return nil
-				}
-
-				tw := output.NewTable(os.Stdout)
-				fmt.Fprintln(tw, "TARGET\tTYPE\tREGION\tVPC\tSTATUS")
-				for _, t := range list.Items {
-					fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
-						t.TargetID, t.TargetType, t.Region,
-						output.Dash(t.VpcId), output.Dash(t.Status))
-				}
-				return tw.Flush()
+			deployment := args[0]
+			if opts.APIURL == "" {
+				opts.Deployment = deployment
 			}
 
-			// No args: list deployments from SSM directly (no Access Lambda needed).
-			deployments, err := listDeploymentsFromSSM(cmd.Context())
+			c, err := getClient(opts)
 			if err != nil {
-				return fmt.Errorf("listing deployments from SSM: %w", err)
+				return fmt.Errorf("creating client: %w", err)
+			}
+
+			list, err := c.ListTargetsByDeployment(cmd.Context(), deployment)
+			if err != nil {
+				return fmt.Errorf("listing targets: %w", err)
 			}
 
 			if opts.OutputFormat == output.FormatJSON {
 				enc := json.NewEncoder(os.Stdout)
 				enc.SetIndent("", "  ")
-				return enc.Encode(map[string]interface{}{
-					"items": deployments,
-					"count": len(deployments),
-				})
+				return enc.Encode(list)
 			}
 
-			if len(deployments) == 0 {
-				fmt.Println("No deployments found in SSM")
-				fmt.Println()
-				fmt.Println("Hint: ensure your AWS credentials point to the correct account")
-				fmt.Printf("      (SSM path: %s)\n", ssmDeploymentsPath)
+			if len(list.Items) == 0 {
+				fmt.Printf("No targets found for deployment %q\n", deployment)
 				return nil
 			}
 
 			tw := output.NewTable(os.Stdout)
-			fmt.Fprintln(tw, "DEPLOYMENT\tREGION\tACCESS URL\tINVOKER ROLE")
-			for _, d := range deployments {
-				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n",
-					d.DeploymentName,
-					output.Dash(d.Region),
-					output.Dash(d.AccessURL),
-					output.Dash(d.InvokerRoleARN))
+			fmt.Fprintln(tw, "TARGET\tTYPE\tREGION\tVPC\tSTATUS")
+			for _, t := range list.Items {
+				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
+					t.TargetID, t.TargetType, t.Region,
+					output.Dash(t.VpcId), output.Dash(t.Status))
 			}
 			return tw.Flush()
 		},
 	}
 
 	return cmd
-}
-
-// listDeploymentsFromSSM reads /zoa/deployments from SSM Parameter Store
-// using the SRE's active AWS credentials (direct read, no Lambda involved).
-func listDeploymentsFromSSM(ctx context.Context) ([]ssmDeployment, error) {
-	cfg, err := awsconfig.LoadDefaultConfig(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("loading AWS config: %w", err)
-	}
-
-	ssmClient := ssm.NewFromConfig(cfg)
-
-	out, err := ssmClient.GetParametersByPath(ctx, &ssm.GetParametersByPathInput{
-		Path:      aws.String(ssmDeploymentsPath + "/"),
-		Recursive: aws.Bool(false),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("reading SSM %s: %w", ssmDeploymentsPath, err)
-	}
-
-	var deployments []ssmDeployment
-	for _, param := range out.Parameters {
-		var d ssmDeployment
-		if err := json.Unmarshal([]byte(aws.ToString(param.Value)), &d); err != nil {
-			return nil, fmt.Errorf("parsing SSM parameter %s: %w", aws.ToString(param.Name), err)
-		}
-		deployments = append(deployments, d)
-	}
-	return deployments, nil
 }
