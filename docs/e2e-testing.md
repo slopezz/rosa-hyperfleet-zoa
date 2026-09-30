@@ -82,10 +82,10 @@ your code changes.
 ### Step-by-step
 
 ```bash
-# 1. Build + push both images to Quay (single command)
+# 1. Build + push container images to Quay (single command)
 cd rosa-hyperfleet-zoa
 make images-push
-# → pushes quay.io/rrp-dev-ci/zoa-lambda:<commit> and zoa-runner:<commit>
+# → pushes quay.io/rrp-dev-ci/zoa-lambda:<commit>, zoa-runner:<commit>, and zoa-boundary:<commit>
 
 # 2. Note the commit tag (printed during push, or run:)
 git rev-parse --short HEAD   # e.g. fc40612
@@ -95,6 +95,7 @@ cd ../rosa-hyperfleet
 # Edit config/defaults.yaml:
 #   zoa_lambda_image_tag: "fc40612"
 #   zoa_runner_image_tag: "fc40612"
+#   zoa_boundary_image: "quay.io/rrp-dev-ci/zoa-boundary:fc40612"   # only when testing boundary ECS tasks
 uv run scripts/render.py     # regenerate deploy/ files
 
 # 4. Resync the ephemeral to deploy the new Lambda

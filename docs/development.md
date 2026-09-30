@@ -33,9 +33,11 @@ make all                    # fmt → vet → lint → test → build
 | `make test-e2e-smoke` | E2E smoke subset only (~2min) |
 | `make image-lambda` | Build Lambda container image |
 | `make image-runner` | Build runner container image |
+| `make image-boundary` | Build ZOA Boundary ECS task image (`Containerfile.boundary`) |
 | `make image-push-lambda` | Build + push Lambda image (`:latest` + `:commit`) |
 | `make image-push-runner` | Build + push runner image (`:latest` + `:commit`) |
-| `make images-push` | Build + push both images (single command for dev workflow) |
+| `make image-push-boundary` | Build + push boundary image (`:latest` + `:commit`) |
+| `make images-push` | Build + push lambda, runner, and boundary (single command for dev workflow) |
 
 ## Binaries
 
@@ -135,7 +137,7 @@ workflow then:
 Install instructions for end users are in the
 [CLI Reference](cli-reference.md#install).
 
-Lambda and runner images are separate; they are not GitHub Release assets.
+Lambda, runner, and boundary images are separate; they are not GitHub Release assets.
 
 ## Container Images
 
@@ -143,13 +145,18 @@ Lambda and runner images are separate; they are not GitHub Release assets.
 |-------|---------------|---------|
 | `zoa-lambda` | `Containerfile` | Lambda container (UBI-minimal + `zoa-lambda` binary) |
 | `zoa-runner` | `Containerfile.runner` | Async runner (UBI9 + `zoa-runner` + `zoa` CLI, runs inside K8s Jobs) |
+| `zoa-boundary` | `Containerfile.boundary` | Boundary ECS task (UBI9 + `zoa` CLI, aws/kubectl/jq, Claude Code via Bedrock) |
+
+Default Quay repos for local push: `quay.io/rrp-dev-ci/zoa-{lambda,runner,boundary}` (override with `IMAGE_REPO`, `RUNNER_IMAGE_REPO`, `BOUNDARY_IMAGE_REPO`).
 
 ```bash
-make image-lambda        # Build Lambda image only
-make image-runner        # Build runner image only
-make image-push-lambda   # Build + push Lambda (:latest + :commit)
-make image-push-runner   # Build + push runner (:latest + :commit)
-make images-push         # Build + push both images (dev workflow)
+make image-lambda          # Build Lambda image only
+make image-runner          # Build runner image only
+make image-boundary        # Build boundary image only
+make image-push-lambda     # Build + push Lambda (:latest + :commit)
+make image-push-runner     # Build + push runner (:latest + :commit)
+make image-push-boundary   # Build + push boundary (:latest + :commit)
+make images-push           # Build + push all three images (dev workflow)
 ```
 
 ## GVM Users
