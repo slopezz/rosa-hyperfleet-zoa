@@ -81,14 +81,10 @@ func main() {
 			Logger:       logger,
 		})
 
-		h := handler.New(handler.Deps{
-			Cfg:           cfg,
-			AccessHandler: accessHandler,
-			Logger:        logger,
-		})
+		streamingHandler := lambdahttp.NewStreamingHandler(accessHandler)
 
-		logger.Info("Access mode: boundary session lifecycle handler")
-		lambda.Start(h.HandleEvent)
+		logger.Info("Access mode: native Lambda Function URL streaming handler")
+		lambda.Start(streamingHandler.Handle)
 		return
 	}
 

@@ -284,7 +284,18 @@ This ensures:
 | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `make ephemeral-zoa-e2e ID=...` (from `rosa-hyperfleet`)   | Automatic — `ephemeral-env.sh` maps your host profiles → `rrp-rc`/`rrp-mc` inside the container                                                  |
 | `make test-e2e` (from this repo directly)                  | Manual — set `ZOA_RC_AWS_PROFILE=rrp-regional-dev` and `ZOA_MC_AWS_PROFILE=rrp-management-dev`                                                   |
-| CI (`nightly-ephemeral`, `on-demand-e2e`)                  | Automatic — Prow mounts a Vault secret with `rrp-rc`/`rrp-mc` profiles pre-configured                                                            |
+| CI (`nightly-ephemeral`, `on-demand-e2e`)                  | Automatic — Vault `aws_config` includes `rrp-central`, `rrp-rc`, and `rrp-mc`; today's Lambda e2e uses only `rrp-rc`/`rrp-mc` (direct Function URLs) |
+
+### ZOA Access / Boundary e2e (future)
+
+Commands such as `zoa deployments`, `zoa targets`, and `zoa session` use **central** credentials (SSM in central → assume invoker in RC). They do not use `ZOA_RC_API_URL` / `rrp-rc` for the Access Lambda path.
+
+When adding Access/Boundary e2e specs:
+
+- Set default profile to **`rrp-central`** inside CI (same name as pipeline/ephemeral Vault config), or introduce **`ZOA_CENTRAL_AWS_PROFILE`** mirroring `ZOA_RC_AWS_PROFILE`.
+- Local dev: **`rrp-central-dev`** / **`rrp-ephemeral-central`** mapped to container **`rrp-central`** (already done in `ephemeral-env.sh` for central; extend e2e env when tests land).
+- **Integration/stage** nightly secrets today ship `rrp-rc` + customer profiles only — add **`rrp-central`** to those Vault `aws_config` blobs when standing envs run Access e2e (same pattern as ephemeral creds).
+
 | Smoke via `rosa-hyperfleet`/`rosa-hyperfleet-api` CI jobs  | Automatic — same Prow secret; `rosa-hyperfleet/ci/e2e-tests.sh` sets profiles, then calls `make test-e2e-smoke`                                   |
 
 ## CI: How It Runs

@@ -665,7 +665,7 @@ Go interfaces: `Session` struct, `SessionStore` interface with `Put`, `Get`, `Li
 | 7 | Bedrock model invocation logging enabled via `aws_bedrock_model_invocation_logging_configuration` — CloudWatch Logs only, no payload capture, no S3. Log group: `/aws/bedrock/model-invocations` (KMS-encrypted). |
 | 8 | ECS task tags set by Access Lambda at `RunTask`: `sre`, `sessionId`, `deployment`, `target`. Task role has NO `ecs:TagResource` permission (tamper-proof). |
 | 9 | Worker Lambda has `ecs:StopTask` + `ecs:DescribeTasks` IAM and reaper EventBridge schedule |
-| 10 | Invoker role trusts only the environment Central Account and configured assumer role names (not `mc_ou_path`). Central account ID is derived from pipeline `CENTRAL_ACCOUNT_ID` / `aws.central` provider at RC apply time. |
+| 10 | Invoker role trusts only the environment Central Account and configured assumer role names (not `mc_ou_path`). Central account ID comes from `data.aws_caller_identity.central` (same `aws.central` provider as SSM deployment writes). |
 | 11 | `terraform validate` and `terraform plan` pass; `make pre-push` passes |
 | 12 | Ephemeral environment deploys end-to-end (RC + MC) |
 
