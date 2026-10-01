@@ -170,9 +170,9 @@ type ServerVersionInfo struct {
 type APISurface string
 
 const (
-	// APISurfaceAPIPlane is the per-VPC TA Lambda (HANDLER_MODE=api), /api/v0/trusted-actions/...
-	// Break-glass TAs will use the same plane when added.
-	APISurfaceAPIPlane APISurface = "ZOA API plane"
+	// APISurfaceAPI is the per-VPC TA Lambda (HANDLER_MODE=api), /api/v0/trusted-actions/…
+	// Break-glass TAs will use the same surface when added.
+	APISurfaceAPI APISurface = "ZOA API"
 	// APISurfaceAccess is the RC Access Lambda (HANDLER_MODE=access), /targets, /sessions, ...
 	APISurfaceAccess APISurface = "ZOA Access API"
 )

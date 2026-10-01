@@ -413,8 +413,8 @@ func TestClientDo_WhenLambdaRuntimeError_ItShouldReturnLambdaError(t *testing.T)
 	if lambdaErr.ErrorType != "Runtime.ExitError" {
 		t.Errorf("expected Runtime.ExitError, got %q", lambdaErr.ErrorType)
 	}
-	if lambdaErr.Surface != APISurfaceAPIPlane {
-		t.Errorf("Surface = %q, want %q", lambdaErr.Surface, APISurfaceAPIPlane)
+	if lambdaErr.Surface != APISurfaceAPI {
+		t.Errorf("Surface = %q, want %q", lambdaErr.Surface, APISurfaceAPI)
 	}
 }
 
