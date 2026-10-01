@@ -31,16 +31,35 @@ type GlobalOptions struct {
 	ClientFactory func(*GlobalOptions) (APIClient, error)
 }
 
+const (
+	cmdGroupDiscovery = "discovery"
+	cmdGroupBoundary  = "boundary"
+	cmdGroupTA        = "trusted-actions"
+	cmdGroupAudit     = "audit"
+	cmdGroupOther     = "other"
+)
+
 func NewRootCommand() *cobra.Command {
 	opts := &GlobalOptions{}
 
 	cmd := &cobra.Command{
 		Use:   "zoa",
 		Short: "ZOA — Zero Operator Access CLI",
-		Long: `ZOA executes audited Trusted Actions against target clusters via the Platform API.
+		Long: `ZOA (Zero Operator Access) — audited SRE operations on HyperFleet clusters.
 
-All operations are authenticated with AWS SigV4 using your current credentials.
-Set ZOA_API_URL to your ZOA endpoint (Function URL, API Gateway, or CNAME).`,
+Typical workflow (boundary):
+  zoa deployments                           List deployments (central SSM; no API URL)
+  zoa targets us-east-1                     List RC/MC targets (use your deployment name)
+  zoa session start us-east-1 mc01          Start a time-boxed session for audited SRE access
+
+Trusted Actions (per-target API Lambda in each VPC):
+  export ZOA_API_URL="https://..."     Function URL for the target you are operating on
+  zoa run <action> ...                 Execute a Trusted Action
+
+Session and discovery commands resolve the Access Lambda from the deployment name
+via SSM and assume the invoker role automatically. TA commands use ZOA_API_URL.
+
+All requests are signed with AWS SigV4 using your current credentials.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
@@ -79,21 +98,71 @@ Set ZOA_API_URL to your ZOA endpoint (Function URL, API Gateway, or CNAME).`,
 		opts.OutputFormat = output.ParseFormat(outputFlag)
 	})
 
+	cmd.AddGroup(
+		&cobra.Group{ID: cmdGroupDiscovery, Title: "Discovery:"},
+		&cobra.Group{ID: cmdGroupBoundary, Title: "Boundary access:"},
+		&cobra.Group{ID: cmdGroupTA, Title: "Trusted Actions:"},
+		&cobra.Group{ID: cmdGroupAudit, Title: "Audit:"},
+		&cobra.Group{ID: cmdGroupOther, Title: "Other:"},
+	)
+
+	deploymentsCmd := newDeploymentsCommand(opts)
+	deploymentsCmd.GroupID = cmdGroupDiscovery
+
+	targetsCmd := newTargetsCommand(opts)
+	targetsCmd.GroupID = cmdGroupDiscovery
+
+	sessionCmd := newSessionCommand(opts)
+	sessionCmd.GroupID = cmdGroupBoundary
+
+	runCmd := newRunCommand(opts)
+	runCmd.GroupID = cmdGroupTA
+
+	getCmd := newGetCommand(opts)
+	getCmd.GroupID = cmdGroupTA
+
+	outputCmd := newOutputCommand(opts)
+	outputCmd.GroupID = cmdGroupTA
+
+	logsCmd := newLogsCommand(opts)
+	logsCmd.GroupID = cmdGroupTA
+
+	downloadCmd := newDownloadCommand(opts)
+	downloadCmd.GroupID = cmdGroupTA
+
+	runsCmd := newRunsCommand(opts)
+	runsCmd.GroupID = cmdGroupTA
+
+	actionsCmd := newActionsCommand(opts)
+	actionsCmd.GroupID = cmdGroupTA
+
+	describeCmd := newDescribeCommand(opts)
+	describeCmd.GroupID = cmdGroupTA
+
+	auditCmd := newAuditCommand(opts)
+	auditCmd.GroupID = cmdGroupAudit
+
+	versionCmd := newVersionCommand(opts)
+	versionCmd.GroupID = cmdGroupOther
+
+	completionCmd := newCompletionCommand()
+	completionCmd.GroupID = cmdGroupOther
+
 	cmd.AddCommand(
-		newRunCommand(opts),
-		newGetCommand(opts),
-		newOutputCommand(opts),
-		newLogsCommand(opts),
-		newDownloadCommand(opts),
-		newRunsCommand(opts),
-		newActionsCommand(opts),
-		newDescribeCommand(opts),
-		newAuditCommand(opts),
-		newDeploymentsCommand(opts),
-		newTargetsCommand(opts),
-		newSessionCommand(opts),
-		newVersionCommand(opts),
-		newCompletionCommand(),
+		deploymentsCmd,
+		targetsCmd,
+		sessionCmd,
+		runCmd,
+		getCmd,
+		outputCmd,
+		logsCmd,
+		downloadCmd,
+		runsCmd,
+		actionsCmd,
+		describeCmd,
+		auditCmd,
+		versionCmd,
+		completionCmd,
 	)
 
 	return cmd

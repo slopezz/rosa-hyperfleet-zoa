@@ -16,16 +16,14 @@ func newTargetsCommand(opts *GlobalOptions) *cobra.Command {
 		Short: "List targets within a deployment",
 		Long: `List the targets (RC and MC clusters) available in a given deployment.
 
-Requires a deployment name as a positional argument. The CLI auto-resolves
-the Access Lambda URL and invoker role from SSM, then queries the Access
-Lambda for target details.
-
-Use 'zoa deployments' to discover available deployment names.`,
-		Example: `  # List targets in a deployment
+Requires the deployment name from 'zoa deployments' (DEPLOYMENT column). This is
+HyperFleet deployment_name (e.g. us-east-1 or us-east-1-eph-b6563804), not the
+infrastructure regional_id (e.g. eph-b6563804-regional).`,
+		Example: `  # Stage/integration (deployment name is the AWS region)
   zoa targets us-east-1
 
-  # List targets in an ephemeral deployment
-  zoa targets us-east-1-eph-f8d5483c
+  # Ephemeral (region + ephemeral id suffix)
+  zoa targets us-east-1-eph-b6563804
 
   # JSON output
   zoa targets us-east-1 -o json`,
