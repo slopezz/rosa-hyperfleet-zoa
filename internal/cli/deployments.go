@@ -38,10 +38,8 @@ func newDeploymentsCommand(opts *GlobalOptions) *cobra.Command {
 Uses your active AWS credentials (Central Account). No Access Lambda
 or invoker role needed — this is a direct SSM read.
 
-Each deployment is one regional ZOA installation. The name is HyperFleet
-deployment_name (typically the AWS region, e.g. us-east-1). Ephemeral stacks
-use the same pattern with an extra suffix; use the DEPLOYMENT column from
-this command — not the regional cluster regional_id.`,
+Each deployment is one regional ZOA installation. Use the DEPLOYMENT
+values from this list with zoa targets and zoa session.`,
 		Example: `  # List all deployments
   zoa deployments
 
@@ -66,8 +64,7 @@ this command — not the regional cluster regional_id.`,
 			if len(deployments) == 0 {
 				fmt.Println("No deployments found in SSM")
 				fmt.Println()
-				fmt.Println("Hint: deployment names match HyperFleet deployment_name")
-				fmt.Println("      (typically the AWS region, e.g. us-east-1 — not regional_id)")
+				fmt.Println("Hint: ensure AWS credentials can read deployment discovery in this account")
 				fmt.Printf("      (SSM path: %s)\n", ssmDeploymentsPath)
 				return nil
 			}
