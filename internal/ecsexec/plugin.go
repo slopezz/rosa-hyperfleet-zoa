@@ -51,7 +51,7 @@ func StartSessionManagerPlugin(region string, session *Session, creds aws.Creden
 
 func pluginEnv(creds aws.Credentials) ([]string, error) {
 	if creds.AccessKeyID == "" || creds.SecretAccessKey == "" {
-		return nil, fmt.Errorf("AWS credentials required for ECS Exec (set ZOA_EXEC_AWS_PROFILE or export regional account credentials)")
+		return nil, fmt.Errorf("AWS credentials required for ECS Exec (use your Jump/Central AWS login; the CLI assumes into the deployment account)")
 	}
 
 	stripKeys := map[string]bool{
