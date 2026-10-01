@@ -39,9 +39,9 @@ Uses your active AWS credentials (Central Account). No Access Lambda
 or invoker role needed — this is a direct SSM read.
 
 Each deployment is one regional ZOA installation. The name is HyperFleet
-deployment_name: the AWS region alone (e.g. us-east-1), or region plus
-ephemeral id for CI/dev stacks (e.g. us-east-1-eph-b6563804). It is not
-the regional cluster regional_id used in AWS resource names.`,
+deployment_name (typically the AWS region, e.g. us-east-1). Ephemeral stacks
+use the same pattern with an extra suffix; use the DEPLOYMENT column from
+this command — not the regional cluster regional_id.`,
 		Example: `  # List all deployments
   zoa deployments
 
@@ -67,7 +67,7 @@ the regional cluster regional_id used in AWS resource names.`,
 				fmt.Println("No deployments found in SSM")
 				fmt.Println()
 				fmt.Println("Hint: deployment names match HyperFleet deployment_name")
-				fmt.Println("      (region, or region-eph_prefix — not regional_id)")
+				fmt.Println("      (typically the AWS region, e.g. us-east-1 — not regional_id)")
 				fmt.Printf("      (SSM path: %s)\n", ssmDeploymentsPath)
 				return nil
 			}

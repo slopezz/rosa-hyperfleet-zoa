@@ -16,16 +16,10 @@ func newTargetsCommand(opts *GlobalOptions) *cobra.Command {
 		Short: "List targets within a deployment",
 		Long: `List the targets (RC and MC clusters) available in a given deployment.
 
-Requires the deployment name from 'zoa deployments' (DEPLOYMENT column). This is
-HyperFleet deployment_name (e.g. us-east-1 or us-east-1-eph-b6563804), not the
-infrastructure regional_id (e.g. eph-b6563804-regional).`,
-		Example: `  # Stage/integration (deployment name is the AWS region)
-  zoa targets us-east-1
+Requires the deployment name from 'zoa deployments' (DEPLOYMENT column): HyperFleet
+deployment_name (e.g. us-east-1), not the infrastructure regional_id.`,
+		Example: `  zoa targets us-east-1
 
-  # Ephemeral (region + ephemeral id suffix)
-  zoa targets us-east-1-eph-b6563804
-
-  # JSON output
   zoa targets us-east-1 -o json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
