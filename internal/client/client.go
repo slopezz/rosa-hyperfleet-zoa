@@ -257,7 +257,7 @@ func (c *Client) do(ctx context.Context, method, path string, body any, result a
 		return fmt.Errorf("reading response: %w", err)
 	}
 
-	if err := decodeResponse(APISurfaceAPIPlane, resp.StatusCode, respBody, result); err != nil {
+	if err := decodeResponse(APISurfaceAPI, resp.StatusCode, respBody, result); err != nil {
 		return err
 	}
 	return nil
