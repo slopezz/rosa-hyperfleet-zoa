@@ -16,7 +16,9 @@ func newSessionCommand(opts *GlobalOptions) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "session",
 		Short: "Manage boundary sessions",
-		Long:  `Start, stop, join, and list boundary sessions for audited SRE access.`,
+		Long: `Start, stop, join, and list boundary sessions for audited SRE access.
+
+Session IDs use the form <deployment>/<session-id> (see 'zoa session start').`,
 	}
 
 	cmd.AddCommand(
@@ -42,6 +44,7 @@ Positional args: <deployment> <target>. Also available as flags for scripts.
 The CLI auto-resolves the Access Lambda URL and invoker role from SSM.`,
 		Example: `  # Positional (interactive use)
   zoa session start us-east-1 mc01
+  zoa session start us-east-1-eph-b6563804 mc01
 
   # Flags (scripts and automation)
   zoa session start -d us-east-1 -t mc01`,
@@ -105,7 +108,7 @@ The CLI auto-resolves the Access Lambda URL and invoker role from SSM.`,
 		},
 	}
 
-	cmd.Flags().StringVarP(&flagDeployment, "deployment", "d", "", "Deployment name (e.g. us-east-1)")
+	cmd.Flags().StringVarP(&flagDeployment, "deployment", "d", "", "Deployment name (e.g. us-east-1, us-east-1-eph-b6563804)")
 	cmd.Flags().StringVarP(&flagTarget, "target", "t", "", "Target ID (e.g. mc01)")
 
 	return cmd
