@@ -94,6 +94,13 @@ func TestFlexString_WhenMarshalJSONObject_ItShouldReturnRawJSON(t *testing.T) {
 	}
 }
 
+func TestAPIError_WhenReasonAndHTTPStatus_ItShouldIncludeHTTP(t *testing.T) {
+	e := &APIError{Code: "not_found", Reason: "execution not found", Surface: APISurfaceAPI, HTTPStatus: 404}
+	if e.Error() != "ZOA API (HTTP 404): execution not found" {
+		t.Errorf("unexpected: %q", e.Error())
+	}
+}
+
 func TestAPIError_WhenReasonSet_ItShouldReturnReason(t *testing.T) {
 	e := &APIError{Code: "not_found", Reason: "execution not found", Message: "some message"}
 	if e.Error() != "execution not found" {
@@ -116,21 +123,35 @@ func TestAPIError_WhenOnlyCode_ItShouldReturnCode(t *testing.T) {
 }
 
 func TestLambdaRuntimeError_WhenInvalidEntrypoint_ItShouldReturnUnavailableMessage(t *testing.T) {
-	e := &LambdaRuntimeError{ErrorType: "Runtime.InvalidEntrypoint", ErrorMessage: "RequestId: abc", Surface: APISurfaceAccess}
-	msg := e.Error()
-	if !strings.Contains(msg, "ZOA Access API") {
-		t.Errorf("expected ZOA Access API in message, got %q", msg)
+	e := &LambdaRuntimeError{
+		ErrorType:    "Runtime.InvalidEntrypoint",
+		ErrorMessage: "RequestId: abc",
+		Surface:      APISurfaceAccess,
+		HTTPStatus:   200,
 	}
-	if !strings.Contains(msg, "architecture") {
-		t.Errorf("expected architecture hint, got %q", msg)
+	msg := e.Error()
+	if strings.Count(msg, "ZOA Access API") != 1 {
+		t.Errorf("expected surface once, got %q", msg)
+	}
+	if !strings.Contains(msg, "ZOA Access API (HTTP 200):") {
+		t.Errorf("expected HTTP status in message, got %q", msg)
+	}
+	if !strings.Contains(msg, "Runtime.InvalidEntrypoint") {
+		t.Errorf("expected aws error type in message, got %q", msg)
+	}
+	if !strings.Contains(msg, "RequestId: abc") {
+		t.Errorf("expected aws errorMessage in message, got %q", msg)
 	}
 }
 
 func TestLambdaRuntimeError_WhenExitError_ItShouldReturnUnavailableMessage(t *testing.T) {
-	e := &LambdaRuntimeError{ErrorType: "Runtime.ExitError", ErrorMessage: "exit status 1"}
-	expected := "ZOA API is unavailable (Lambda failed to start — check CloudWatch logs for startup health failures)"
-	if e.Error() != expected {
-		t.Errorf("expected %q, got %q", expected, e.Error())
+	e := &LambdaRuntimeError{ErrorType: "Runtime.ExitError", ErrorMessage: "exit status 1", HTTPStatus: 502}
+	msg := e.Error()
+	if !strings.Contains(msg, "HTTP 502") {
+		t.Errorf("expected HTTP 502, got %q", msg)
+	}
+	if !strings.Contains(msg, "exit status 1") {
+		t.Errorf("expected aws detail, got %q", msg)
 	}
 	if !e.IsUnavailable() {
 		t.Error("expected IsUnavailable() true")
@@ -138,10 +159,9 @@ func TestLambdaRuntimeError_WhenExitError_ItShouldReturnUnavailableMessage(t *te
 }
 
 func TestLambdaRuntimeError_WhenDeadlineExceeded_ItShouldReturnTimeoutMessage(t *testing.T) {
-	e := &LambdaRuntimeError{ErrorType: "Runtime.DeadlineExceeded"}
-	expected := "ZOA API timed out (Lambda execution deadline exceeded)"
-	if e.Error() != expected {
-		t.Errorf("expected %q, got %q", expected, e.Error())
+	e := &LambdaRuntimeError{ErrorType: "Runtime.DeadlineExceeded", HTTPStatus: 503}
+	if !strings.Contains(e.Error(), "HTTP 503") {
+		t.Errorf("unexpected: %q", e.Error())
 	}
 	if e.IsUnavailable() {
 		t.Error("expected IsUnavailable() false for deadline exceeded")
@@ -150,14 +170,14 @@ func TestLambdaRuntimeError_WhenDeadlineExceeded_ItShouldReturnTimeoutMessage(t 
 
 func TestLambdaRuntimeError_WhenOtherErrorWithMessage_ItShouldIncludeBoth(t *testing.T) {
 	e := &LambdaRuntimeError{ErrorType: "Runtime.Unknown", ErrorMessage: "something broke"}
-	if e.Error() != "ZOA API error [Runtime.Unknown]: something broke" {
+	if e.Error() != "aws Runtime.Unknown: something broke" {
 		t.Errorf("unexpected: %q", e.Error())
 	}
 }
 
 func TestLambdaRuntimeError_WhenOtherErrorNoMessage_ItShouldShowType(t *testing.T) {
 	e := &LambdaRuntimeError{ErrorType: "Runtime.Unknown"}
-	if e.Error() != "ZOA API error: Runtime.Unknown" {
+	if e.Error() != "aws Runtime.Unknown" {
 		t.Errorf("unexpected: %q", e.Error())
 	}
 }

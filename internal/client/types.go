@@ -178,10 +178,11 @@ const (
 )
 
 type APIError struct {
-	Code    string `json:"code"`
-	Reason  string `json:"reason"`
-	Message string `json:"message,omitempty"`
-	Surface APISurface `json:"-"`
+	Code       string `json:"code"`
+	Reason     string `json:"reason"`
+	Message    string `json:"message,omitempty"`
+	Surface    APISurface `json:"-"`
+	HTTPStatus int        `json:"-"`
 }
 
 func (e *APIError) Error() string {
@@ -193,10 +194,7 @@ func (e *APIError) Error() string {
 	} else {
 		msg = e.Code
 	}
-	if e.Surface != "" {
-		return string(e.Surface) + ": " + msg
-	}
-	return msg
+	return formatClientError(e.Surface, e.HTTPStatus, msg)
 }
 
 // LambdaRuntimeError is returned by AWS Lambda Function URLs when the Lambda
@@ -206,29 +204,42 @@ type LambdaRuntimeError struct {
 	ErrorMessage string     `json:"errorMessage"`
 	ErrorType    string     `json:"errorType"`
 	Surface      APISurface `json:"-"`
+	HTTPStatus   int        `json:"-"`
 }
 
-func (e *LambdaRuntimeError) apiName() string {
-	if e.Surface != "" {
-		return string(e.Surface)
+func formatClientError(surface APISurface, httpStatus int, detail string) string {
+	if surface != "" && httpStatus > 0 {
+		return fmt.Sprintf("%s (HTTP %d): %s", surface, httpStatus, detail)
 	}
-	return "ZOA API"
+	if surface != "" {
+		return string(surface) + ": " + detail
+	}
+	if httpStatus > 0 {
+		return fmt.Sprintf("HTTP %d: %s", httpStatus, detail)
+	}
+	return detail
+}
+
+func (e *LambdaRuntimeError) awsFacts() string {
+	if e.ErrorMessage != "" {
+		return fmt.Sprintf("aws %s: %s", e.ErrorType, e.ErrorMessage)
+	}
+	return fmt.Sprintf("aws %s", e.ErrorType)
 }
 
 func (e *LambdaRuntimeError) Error() string {
-	name := e.apiName()
 	switch e.ErrorType {
 	case "Runtime.ExitError":
-		return fmt.Sprintf("%s is unavailable (Lambda failed to start — check CloudWatch logs for startup health failures)", name)
+		detail := fmt.Sprintf("%s — Lambda failed to start; check CloudWatch", e.awsFacts())
+		return formatClientError(e.Surface, e.HTTPStatus, detail)
 	case "Runtime.InvalidEntrypoint":
-		return fmt.Sprintf("%s is unavailable (Lambda container failed to start — check image architecture matches the function and CloudWatch logs)", name)
+		detail := fmt.Sprintf("%s — Lambda did not start; check function CPU arch vs image and CloudWatch", e.awsFacts())
+		return formatClientError(e.Surface, e.HTTPStatus, detail)
 	case "Runtime.DeadlineExceeded":
-		return fmt.Sprintf("%s timed out (Lambda execution deadline exceeded)", name)
+		detail := fmt.Sprintf("%s — Lambda execution deadline exceeded", e.awsFacts())
+		return formatClientError(e.Surface, e.HTTPStatus, detail)
 	default:
-		if e.ErrorMessage != "" {
-			return fmt.Sprintf("%s error [%s]: %s", name, e.ErrorType, e.ErrorMessage)
-		}
-		return fmt.Sprintf("%s error: %s", name, e.ErrorType)
+		return formatClientError(e.Surface, e.HTTPStatus, e.awsFacts())
 	}
 }
 

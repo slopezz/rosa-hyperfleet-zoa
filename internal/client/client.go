@@ -323,6 +323,7 @@ func decodeResponse(surface APISurface, statusCode int, respBody []byte, result 
 		var lambdaErr LambdaRuntimeError
 		if json.Unmarshal(respBody, &lambdaErr) == nil && lambdaErr.ErrorType != "" {
 			lambdaErr.Surface = surface
+			lambdaErr.HTTPStatus = statusCode
 			return &lambdaErr
 		}
 	}
@@ -330,13 +331,14 @@ func decodeResponse(surface APISurface, statusCode int, respBody []byte, result 
 		var apiErr APIError
 		if json.Unmarshal(respBody, &apiErr) == nil && apiErr.Code != "" {
 			apiErr.Surface = surface
+			apiErr.HTTPStatus = statusCode
 			return &apiErr
 		}
 		body := string(respBody)
 		if len(body) > 512 {
 			body = body[:512] + "...(truncated)"
 		}
-		return fmt.Errorf("%s: HTTP %d: %s", surface, statusCode, body)
+		return fmt.Errorf("%s", formatClientError(surface, statusCode, body))
 	}
 	if result != nil {
 		if err := json.Unmarshal(respBody, result); err != nil {
