@@ -66,8 +66,13 @@ func ExecAWSConfig(ctx context.Context, deploymentName string) (aws.Config, erro
 		o.RoleSessionName = sessionName
 	})
 
-	cfg := baseCfg
-	cfg.Region = dep.Region
-	cfg.Credentials = aws.NewCredentialsCache(execCreds)
+	// Isolated config for the deployment account/region only (avoid central profile endpoints/regions leaking into ECS Exec).
+	cfg, err := awsconfig.LoadDefaultConfig(ctx,
+		awsconfig.WithRegion(dep.Region),
+		awsconfig.WithCredentialsProvider(aws.NewCredentialsCache(execCreds)),
+	)
+	if err != nil {
+		return cfg, fmt.Errorf("loading ECS Exec AWS config for %q: %w", deploymentName, err)
+	}
 	return cfg, nil
 }

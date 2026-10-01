@@ -42,14 +42,14 @@ func StartSessionManagerPlugin(region string, session *Session, creds aws.Creden
 		ssmEndpoint,
 	}
 
-	env, err := pluginEnv(creds)
+	env, err := pluginEnv(region, creds)
 	if err != nil {
 		return err
 	}
 	return execSessionManagerPlugin(pluginPath, args, env)
 }
 
-func pluginEnv(creds aws.Credentials) ([]string, error) {
+func pluginEnv(region string, creds aws.Credentials) ([]string, error) {
 	if creds.AccessKeyID == "" || creds.SecretAccessKey == "" {
 		return nil, fmt.Errorf("AWS credentials required for ECS Exec (use your Jump/Central AWS login; the CLI assumes into the deployment account)")
 	}
@@ -58,6 +58,7 @@ func pluginEnv(creds aws.Credentials) ([]string, error) {
 		"AWS_ACCESS_KEY_ID": true, "AWS_SECRET_ACCESS_KEY": true, "AWS_SESSION_TOKEN": true,
 		"AWS_SECURITY_TOKEN": true, "AWS_PROFILE": true, "AWS_DEFAULT_PROFILE": true,
 		"AWS_SHARED_CREDENTIALS_FILE": true, "AWS_CONFIG_FILE": true,
+		"AWS_REGION": true, "AWS_DEFAULT_REGION": true,
 	}
 
 	env := make([]string, 0, len(os.Environ())+3)
@@ -73,6 +74,9 @@ func pluginEnv(creds aws.Credentials) ([]string, error) {
 	)
 	if creds.SessionToken != "" {
 		env = append(env, "AWS_SESSION_TOKEN="+creds.SessionToken)
+	}
+	if region != "" {
+		env = append(env, "AWS_REGION="+region, "AWS_DEFAULT_REGION="+region)
 	}
 	return env, nil
 }
