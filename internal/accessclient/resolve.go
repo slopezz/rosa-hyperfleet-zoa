@@ -25,7 +25,8 @@ type DeploymentInfo struct {
 	Credentials aws.CredentialsProvider // Invoker-role assumed credentials
 	Region      string                  // Deployment AWS region
 	AccountID   string                  // Deployment AWS account
-	SessionName string                  // SRE identity (extracted from caller ARN)
+	SessionName string                  // SRE username (RoleSessionName on invoker role)
+	OperatorARN string                  // Full STS ARN after assuming invoker (for X-Operator)
 }
 
 // ssmDeployment mirrors the JSON stored in SSM by Terraform.
@@ -61,12 +62,18 @@ func Resolve(ctx context.Context, deploymentName string) (*DeploymentInfo, error
 
 	creds := assumeInvokerRole(cfg, dep.InvokerRoleARN, sessionName)
 
+	operatorARN, err := callerARN(ctx, cfg, creds)
+	if err != nil {
+		return nil, fmt.Errorf("invoker role identity: %w", err)
+	}
+
 	return &DeploymentInfo{
 		AccessURL:   dep.AccessURL,
 		Credentials: creds,
 		Region:      dep.Region,
 		AccountID:   dep.AccountID,
 		SessionName: sessionName,
+		OperatorARN: operatorARN,
 	}, nil
 }
 
@@ -149,4 +156,20 @@ func assumeInvokerRole(cfg aws.Config, roleARN, sessionName string) aws.Credenti
 	return stscreds.NewAssumeRoleProvider(stsClient, roleARN, func(o *stscreds.AssumeRoleOptions) {
 		o.RoleSessionName = sessionName
 	})
+}
+
+// callerARN returns GetCallerIdentity.Arn for the given credential provider.
+func callerARN(ctx context.Context, baseCfg aws.Config, creds aws.CredentialsProvider) (string, error) {
+	cfg := baseCfg
+	cfg.Credentials = aws.NewCredentialsCache(creds)
+	stsClient := sts.NewFromConfig(cfg)
+	out, err := stsClient.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
+	if err != nil {
+		return "", fmt.Errorf("getting caller identity: %w", err)
+	}
+	arn := aws.ToString(out.Arn)
+	if arn == "" {
+		return "", fmt.Errorf("empty caller ARN")
+	}
+	return arn, nil
 }
