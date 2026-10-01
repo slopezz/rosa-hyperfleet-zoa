@@ -119,8 +119,10 @@ type sessionStartRequest struct {
 type sessionStartResponse struct {
 	SessionID string              `json:"session_id"`
 	Status    store.SessionStatus `json:"status"`
+	Target    string              `json:"target"`
 	TaskArn   string              `json:"task_arn,omitempty"`
 	Deadline  string              `json:"deadline"`
+	Region    string              `json:"region,omitempty"`
 }
 
 func (h *AccessHandler) handleSessionStart(w http.ResponseWriter, r *http.Request) {
@@ -184,57 +186,75 @@ func (h *AccessHandler) handleSessionStart(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Run ECS task if client is available
-	if h.ecsClient != nil {
-		ecsCluster := target.EcsClusterArn
-		taskDef := target.TaskDefinitionArn
-
-		subnets := splitCSV(target.SubnetIds)
-
-		taskOutput, err := h.ecsClient.RunTask(ctx, &RunTaskInput{
-			Cluster:        ecsCluster,
-			TaskDefinition: taskDef,
-			Subnets:        subnets,
-			SecurityGroup:  target.SecurityGroupId,
-			Environment: map[string]string{
-				"ZOA_API_URL":    target.FunctionUrl,
-				"ZOA_TARGET":     req.Target,
-				"ZOA_DEPLOYMENT": req.DeploymentName,
-			},
-			Tags: map[string]string{
-				"sre":        username,
-				"sessionId":  sessionID,
-				"deployment": req.DeploymentName,
-				"target":     req.Target,
-			},
-		})
-		if err != nil {
-			h.logger.Error("failed to run ECS task", "error", err)
-			_ = h.sessionStore.UpdateStatus(ctx, sessionID, store.SessionStatusCreating, store.SessionStatusFailed,
-				map[string]interface{}{"terminationReason": "ecs_task_failed"})
-			writeError(w, http.StatusInternalServerError, "ecs_error", "failed to start boundary container")
-			return
-		}
-
-		_ = h.sessionStore.UpdateStatus(ctx, sessionID, store.SessionStatusCreating, store.SessionStatusActive,
-			map[string]interface{}{
-				"taskArn":    taskOutput.TaskArn,
-				"taskId":     taskOutput.TaskID,
-				"ecsCluster": ecsCluster,
-			})
-		session.TaskArn = taskOutput.TaskArn
-		session.TaskID = taskOutput.TaskID
-		session.Status = store.SessionStatusActive
-	}
-
 	h.recordAccessAudit(r, http.StatusOK, "session_start", sessionID)
 
 	writeJSON(w, http.StatusOK, sessionStartResponse{
 		SessionID: sessionID,
 		Status:    session.Status,
-		TaskArn:   session.TaskArn,
+		Target:    req.Target,
 		Deadline:  session.Deadline,
+		Region:    session.Region,
 	})
+}
+
+func (h *AccessHandler) ensureBoundaryTask(ctx context.Context, session *store.Session) error {
+	if session.TaskArn != "" {
+		return nil
+	}
+	if h.ecsClient == nil {
+		return fmt.Errorf("ecs client not configured")
+	}
+
+	target, err := h.targetStore.Get(ctx, session.TargetCluster)
+	if err != nil {
+		return fmt.Errorf("looking up target %q: %w", session.TargetCluster, err)
+	}
+	if target == nil {
+		return fmt.Errorf("target %q not found", session.TargetCluster)
+	}
+
+	subnets := splitCSV(target.SubnetIds)
+	taskOutput, err := h.ecsClient.RunTask(ctx, &RunTaskInput{
+		Cluster:        target.EcsClusterArn,
+		TaskDefinition: target.TaskDefinitionArn,
+		Subnets:        subnets,
+		SecurityGroup:  target.SecurityGroupId,
+		Environment: map[string]string{
+			"ZOA_API_URL":    target.FunctionUrl,
+			"ZOA_TARGET":     session.TargetCluster,
+			"ZOA_DEPLOYMENT": session.DeploymentName,
+		},
+		Tags: map[string]string{
+			"sre":        session.Operator,
+			"sessionId":  session.SessionID,
+			"deployment": session.DeploymentName,
+			"target":     session.TargetCluster,
+		},
+	})
+	if err != nil {
+		_ = h.sessionStore.UpdateStatus(ctx, session.SessionID, session.Status, store.SessionStatusFailed,
+			map[string]interface{}{"terminationReason": "ecs_task_failed"})
+		return fmt.Errorf("starting boundary task: %w", err)
+	}
+
+	from := session.Status
+	if from == "" {
+		from = store.SessionStatusCreating
+	}
+	if err := h.sessionStore.UpdateStatus(ctx, session.SessionID, from, store.SessionStatusActive,
+		map[string]interface{}{
+			"taskArn":    taskOutput.TaskArn,
+			"taskId":     taskOutput.TaskID,
+			"ecsCluster": target.EcsClusterArn,
+		}); err != nil {
+		return fmt.Errorf("updating session after RunTask: %w", err)
+	}
+
+	session.Status = store.SessionStatusActive
+	session.TaskArn = taskOutput.TaskArn
+	session.TaskID = taskOutput.TaskID
+	session.EcsCluster = target.EcsClusterArn
+	return nil
 }
 
 func (h *AccessHandler) handleSessionList(w http.ResponseWriter, r *http.Request) {
@@ -323,8 +343,10 @@ func (h *AccessHandler) handleSessionStop(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if session.Status != store.SessionStatusActive {
-		writeError(w, http.StatusConflict, "invalid_status", fmt.Sprintf("session is %s, not active", session.Status))
+	switch session.Status {
+	case store.SessionStatusActive, store.SessionStatusCreating:
+	default:
+		writeError(w, http.StatusConflict, "invalid_status", fmt.Sprintf("session is %s, not stoppable", session.Status))
 		return
 	}
 
@@ -339,7 +361,7 @@ func (h *AccessHandler) handleSessionStop(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	err = h.sessionStore.UpdateStatus(ctx, sessionID, store.SessionStatusActive, store.SessionStatusTerminated,
+	err = h.sessionStore.UpdateStatus(ctx, sessionID, session.Status, store.SessionStatusTerminated,
 		map[string]interface{}{"terminationReason": "sre_exit"})
 	if err != nil {
 		h.logger.Error("failed to update session status", "error", err)
@@ -384,6 +406,19 @@ func (h *AccessHandler) handleSessionJoin(w http.ResponseWriter, r *http.Request
 
 	if session.Operator != username {
 		writeError(w, http.StatusForbidden, "forbidden", "only the session owner can join")
+		return
+	}
+
+	switch session.Status {
+	case store.SessionStatusActive, store.SessionStatusCreating:
+	default:
+		writeError(w, http.StatusConflict, "invalid_status", fmt.Sprintf("session is %s, not joinable", session.Status))
+		return
+	}
+
+	if err := h.ensureBoundaryTask(ctx, session); err != nil {
+		h.logger.Error("failed to ensure boundary task", "session_id", sessionID, "error", err)
+		writeError(w, http.StatusInternalServerError, "ecs_error", "failed to start boundary container")
 		return
 	}
 

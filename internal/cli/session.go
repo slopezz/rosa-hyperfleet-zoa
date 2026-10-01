@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -84,6 +85,11 @@ ZOA_EXEC_AWS_PROFILE only if needed locally.`,
 			}
 
 			compoundID := FormatSessionID(deployment, resp.SessionID)
+			displayTarget := sessionStartTarget(deployment, target, resp)
+
+			if opts.OutputFormat != output.FormatJSON {
+				printSessionDispatched(sessionProgressWriter(), compoundID, displayTarget)
+			}
 
 			connect := !flagNoConnect
 			if connect && opts.OutputFormat == output.FormatJSON {
@@ -91,7 +97,12 @@ ZOA_EXEC_AWS_PROFILE only if needed locally.`,
 			}
 
 			if connect {
-				joinResp, err := c.SessionJoin(cmd.Context(), resp.SessionID)
+				var joinResp *client.SessionJoinResponse
+				err := runWithSpinner(cmd.Context(), "provisioning boundary", func(ctx context.Context) error {
+					var joinErr error
+					joinResp, joinErr = accessClientForJoin(c).SessionJoin(ctx, resp.SessionID)
+					return joinErr
+				})
 				if err != nil {
 					return fmt.Errorf("joining session after start: %w", err)
 				}
@@ -121,15 +132,7 @@ ZOA_EXEC_AWS_PROFILE only if needed locally.`,
 				return enc.Encode(result)
 			}
 
-			fmt.Printf("Session started: %s\n", compoundID)
-			fmt.Printf("Status: %s\n", resp.Status)
-			if resp.TaskArn != "" {
-				fmt.Printf("Task:   %s\n", resp.TaskArn)
-			}
-			if resp.Region != "" {
-				fmt.Printf("Region: %s\n", resp.Region)
-			}
-			fmt.Fprintf(os.Stderr, "\nConnect with: zoa session join %s\n", compoundID)
+			printSessionJoinHint(sessionProgressWriter(), compoundID)
 			return nil
 		},
 	}

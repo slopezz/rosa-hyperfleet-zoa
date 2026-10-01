@@ -59,6 +59,15 @@ func (m *mockSessionStoreAccess) UpdateStatus(_ context.Context, id string, _, t
 			if reason, ok := updates["terminationReason"]; ok {
 				s.TerminationReason = reason.(string)
 			}
+			if arn, ok := updates["taskArn"]; ok {
+				s.TaskArn = arn.(string)
+			}
+			if tid, ok := updates["taskId"]; ok {
+				s.TaskID = tid.(string)
+			}
+			if cluster, ok := updates["ecsCluster"]; ok {
+				s.EcsCluster = cluster.(string)
+			}
 		}
 	}
 	return nil
@@ -83,6 +92,25 @@ func (m *mockSessionStoreAccess) ListExpired(_ context.Context) ([]*store.Sessio
 
 type mockTargetStoreAccess struct {
 	targets []*store.Target
+}
+
+type mockECSAccess struct{}
+
+func (m *mockECSAccess) RunTask(_ context.Context, input *RunTaskInput) (*RunTaskOutput, error) {
+	return &RunTaskOutput{
+		TaskArn: "arn:aws:ecs:us-east-1:123456789012:task/test-cluster/task-abc",
+		TaskID:  "task-abc",
+	}, nil
+}
+
+func (m *mockECSAccess) StopTask(_ context.Context, _ *StopTaskInput) error {
+	return nil
+}
+
+func testAccessHandlerWithECS(sessionStore store.SessionStore, targetStore store.TargetStore) *AccessHandler {
+	h := testAccessHandler(sessionStore, targetStore)
+	h.ecsClient = &mockECSAccess{}
+	return h
 }
 
 func (m *mockTargetStoreAccess) Get(_ context.Context, id string) (*store.Target, error) {
@@ -195,12 +223,15 @@ func TestAccessHandler_WhenSessionStart_ItShouldCreateSession(t *testing.T) {
 	targets := &mockTargetStoreAccess{
 		targets: []*store.Target{
 			{
-				TargetID:       "mc01",
-				DeploymentName: "us-east-1",
-				VpcId:          "vpc-123",
-				SubnetIds:      "subnet-a,subnet-b",
-				FunctionUrl:    "https://test.lambda-url.us-east-1.on.aws",
-				Region:         "us-east-1",
+				TargetID:          "mc01",
+				DeploymentName:    "us-east-1",
+				VpcId:             "vpc-123",
+				SubnetIds:         "subnet-a,subnet-b",
+				SecurityGroupId:   "sg-1",
+				EcsClusterArn:     "arn:aws:ecs:us-east-1:123456789012:cluster/test",
+				TaskDefinitionArn: "arn:aws:ecs:us-east-1:123456789012:task-definition/td:1",
+				FunctionUrl:       "https://test.lambda-url.us-east-1.on.aws",
+				Region:            "us-east-1",
 			},
 		},
 	}
@@ -223,6 +254,51 @@ func TestAccessHandler_WhenSessionStart_ItShouldCreateSession(t *testing.T) {
 	}
 	if sessions.sessions[0].Operator != "slopezma" {
 		t.Errorf("expected operator 'slopezma', got %q", sessions.sessions[0].Operator)
+	}
+	if sessions.sessions[0].Status != store.SessionStatusCreating {
+		t.Errorf("expected status creating, got %q", sessions.sessions[0].Status)
+	}
+	if sessions.sessions[0].TaskArn != "" {
+		t.Errorf("expected no task on start, got %q", sessions.sessions[0].TaskArn)
+	}
+}
+
+func TestAccessHandler_WhenSessionJoinFromCreating_ItShouldRunTask(t *testing.T) {
+	targets := &mockTargetStoreAccess{
+		targets: []*store.Target{
+			{
+				TargetID:          "mc01",
+				SubnetIds:         "subnet-a",
+				SecurityGroupId:   "sg-1",
+				EcsClusterArn:     "arn:aws:ecs:us-east-1:123456789012:cluster/test",
+				TaskDefinitionArn: "arn:aws:ecs:us-east-1:123456789012:task-definition/td:1",
+				FunctionUrl:       "https://test.lambda-url.us-east-1.on.aws",
+			},
+		},
+	}
+	sessions := &mockSessionStoreAccess{
+		sessions: []*store.Session{
+			{
+				SessionID:      "session-123",
+				Operator:       "slopezma",
+				TargetCluster:  "mc01",
+				DeploymentName: "us-east-1",
+				Status:         store.SessionStatusCreating,
+			},
+		},
+	}
+	h := testAccessHandlerWithECS(sessions, targets)
+
+	rr := doAccessRequest(h, "POST", "/api/v0/sessions/join/session-123", nil, accessHeaders())
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if sessions.sessions[0].Status != store.SessionStatusActive {
+		t.Errorf("expected active, got %q", sessions.sessions[0].Status)
+	}
+	if sessions.sessions[0].TaskArn == "" {
+		t.Error("expected task ARN after join")
 	}
 }
 

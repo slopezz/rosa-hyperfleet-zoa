@@ -39,17 +39,26 @@ func ConnectInteractive(ctx context.Context, cfg aws.Config, p JoinParams) error
 
 	ecsClient := NewClient(cfg, clusterName)
 
+	var session *Session
+
 	if !p.NoWait {
-		if err := ecsClient.WaitForRunning(ctx, taskID); err != nil {
+		if err := runWithSpinner(ctx, "boundary task starting", func(ctx context.Context) error {
+			return ecsClient.WaitForRunning(ctx, taskID)
+		}); err != nil {
 			return fmt.Errorf("task not running: %w", err)
 		}
-		if err := ecsClient.WaitForExecAgent(ctx, taskID, p.ContainerName, 30*time.Second); err != nil {
+		if err := runWithSpinner(ctx, "ECS Exec agent", func(ctx context.Context) error {
+			return ecsClient.WaitForExecAgent(ctx, taskID, p.ContainerName, 30*time.Second)
+		}); err != nil {
 			return fmt.Errorf("exec agent not ready: %w", err)
 		}
 	}
 
-	session, err := ecsClient.ExecuteCommand(ctx, taskID, p.ContainerName, p.Command)
-	if err != nil {
+	if err := runWithSpinner(ctx, "opening ECS Exec", func(ctx context.Context) error {
+		var execErr error
+		session, execErr = ecsClient.ExecuteCommand(ctx, taskID, p.ContainerName, p.Command)
+		return execErr
+	}); err != nil {
 		return err
 	}
 

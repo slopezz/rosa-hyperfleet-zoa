@@ -254,6 +254,7 @@ type Target struct {
 	TargetID       string `json:"target_id"`
 	DeploymentName string `json:"deployment_name"`
 	VpcId          string `json:"vpc_id,omitempty"`
+	AccountId      string `json:"account_id,omitempty"`
 	TargetType     string `json:"target_type"`
 	Region         string `json:"region"`
 	Status         string `json:"status,omitempty"`
@@ -291,8 +292,10 @@ type SessionStartRequest struct {
 type SessionStartResponse struct {
 	SessionID string `json:"session_id"`
 	Status    string `json:"status"`
+	Target    string `json:"target,omitempty"`
 	TaskArn   string `json:"task_arn,omitempty"`
 	Region    string `json:"region,omitempty"`
+	Deadline  string `json:"deadline,omitempty"`
 }
 
 type SessionJoinResponse struct {
