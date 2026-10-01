@@ -2,6 +2,7 @@ package client
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -111,6 +112,17 @@ func TestAPIError_WhenOnlyCode_ItShouldReturnCode(t *testing.T) {
 	e := &APIError{Code: "forbidden"}
 	if e.Error() != "forbidden" {
 		t.Errorf("expected 'forbidden', got %q", e.Error())
+	}
+}
+
+func TestLambdaRuntimeError_WhenInvalidEntrypoint_ItShouldReturnUnavailableMessage(t *testing.T) {
+	e := &LambdaRuntimeError{ErrorType: "Runtime.InvalidEntrypoint", ErrorMessage: "RequestId: abc", Surface: APISurfaceAccess}
+	msg := e.Error()
+	if !strings.Contains(msg, "ZOA Access API") {
+		t.Errorf("expected ZOA Access API in message, got %q", msg)
+	}
+	if !strings.Contains(msg, "architecture") {
+		t.Errorf("expected architecture hint, got %q", msg)
 	}
 }
 
