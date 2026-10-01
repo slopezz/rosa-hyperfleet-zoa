@@ -222,9 +222,14 @@ func newDeploymentClient(opts *GlobalOptions) (*client.Client, error) {
 		region = info.Region
 	}
 
+	operatorARN := info.OperatorARN
+	if operatorARN == "" {
+		return nil, fmt.Errorf("deployment %q: missing operator ARN after invoker assume", opts.Deployment)
+	}
+
 	return client.New(info.AccessURL, info.Credentials, client.Options{
 		AccountID: info.AccountID,
-		Operator:  info.SessionName,
+		Operator:  operatorARN,
 		Region:    region,
 	})
 }

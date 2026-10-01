@@ -46,6 +46,22 @@ Each cluster has a unique Function URL. Set `ZOA_API_URL` to the target cluster'
 |--------|------|-------------|
 | `GET` | `/api/v0/trusted-actions/audit` | Query audit trail |
 
+### Access (boundary sessions)
+
+All Access routes use the same `/api/v0` prefix and error envelope as Trusted Actions. Served by the regional Access Lambda (`HANDLER_MODE=access`).
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v0/targets` | List targets (RC + MC) for the deployment |
+| `POST` | `/api/v0/sessions/start` | Start a boundary session |
+| `GET` | `/api/v0/sessions` | List sessions |
+| `POST` | `/api/v0/sessions/stop/{id}` | Stop a session |
+| `POST` | `/api/v0/sessions/join/{id}` | Join a session (ECS Exec credentials) |
+| `POST` | `/api/v0/approve/{id}` | Approve request (stub) |
+| `POST` | `/api/v0/reject/{id}` | Reject request (stub) |
+
+Session and target routes require `X-Operator` (assumed-role ARN) and `X-Account-ID`, same as TA execution.
+
 ---
 
 ## POST /api/v0/trusted-actions/{action}/run

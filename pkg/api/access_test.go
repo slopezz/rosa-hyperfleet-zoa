@@ -177,7 +177,7 @@ func TestAccessHandler_WhenListTargets_ItShouldReturnAllTargets(t *testing.T) {
 	}
 	h := testAccessHandler(&mockSessionStoreAccess{}, targets)
 
-	rr := doAccessRequest(h, "GET", "/targets", nil, accessHeaders())
+	rr := doAccessRequest(h, "GET", "/api/v0/targets", nil, accessHeaders())
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
@@ -212,7 +212,7 @@ func TestAccessHandler_WhenSessionStart_ItShouldCreateSession(t *testing.T) {
 		Target:         "mc01",
 	}
 
-	rr := doAccessRequest(h, "POST", "/sessions/start", body, accessHeaders())
+	rr := doAccessRequest(h, "POST", "/api/v0/sessions/start", body, accessHeaders())
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
@@ -231,7 +231,7 @@ func TestAccessHandler_WhenSessionStartMissingTarget_ItShouldReturn400(t *testin
 
 	body := sessionStartRequest{DeploymentName: "us-east-1"}
 
-	rr := doAccessRequest(h, "POST", "/sessions/start", body, accessHeaders())
+	rr := doAccessRequest(h, "POST", "/api/v0/sessions/start", body, accessHeaders())
 
 	if rr.Code != http.StatusBadRequest {
 		t.Errorf("expected 400, got %d: %s", rr.Code, rr.Body.String())
@@ -246,7 +246,7 @@ func TestAccessHandler_WhenSessionStartTargetNotFound_ItShouldReturn404(t *testi
 		Target:         "nonexistent",
 	}
 
-	rr := doAccessRequest(h, "POST", "/sessions/start", body, accessHeaders())
+	rr := doAccessRequest(h, "POST", "/api/v0/sessions/start", body, accessHeaders())
 
 	if rr.Code != http.StatusNotFound {
 		t.Errorf("expected 404, got %d: %s", rr.Code, rr.Body.String())
@@ -265,7 +265,7 @@ func TestAccessHandler_WhenSessionStop_ItShouldTerminateOwnSession(t *testing.T)
 	}
 	h := testAccessHandler(sessions, &mockTargetStoreAccess{})
 
-	rr := doAccessRequest(h, "POST", "/sessions/stop/session-123", nil, accessHeaders())
+	rr := doAccessRequest(h, "POST", "/api/v0/sessions/stop/session-123", nil, accessHeaders())
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
@@ -287,7 +287,7 @@ func TestAccessHandler_WhenSessionStopByNonOwner_ItShouldReturn403(t *testing.T)
 	}
 	h := testAccessHandler(sessions, &mockTargetStoreAccess{})
 
-	rr := doAccessRequest(h, "POST", "/sessions/stop/session-123", nil, accessHeaders())
+	rr := doAccessRequest(h, "POST", "/api/v0/sessions/stop/session-123", nil, accessHeaders())
 
 	if rr.Code != http.StatusForbidden {
 		t.Errorf("expected 403, got %d: %s", rr.Code, rr.Body.String())
@@ -308,7 +308,7 @@ func TestAccessHandler_WhenSessionJoinByNonOwner_ItShouldReturn403(t *testing.T)
 	}
 	h := testAccessHandler(sessions, &mockTargetStoreAccess{})
 
-	rr := doAccessRequest(h, "POST", "/sessions/join/session-123", nil, accessHeaders())
+	rr := doAccessRequest(h, "POST", "/api/v0/sessions/join/session-123", nil, accessHeaders())
 
 	if rr.Code != http.StatusForbidden {
 		t.Errorf("expected 403, got %d: %s", rr.Code, rr.Body.String())
@@ -330,7 +330,7 @@ func TestAccessHandler_WhenSessionJoinOwnSession_ItShouldReturnConnectionInfo(t 
 	}
 	h := testAccessHandler(sessions, &mockTargetStoreAccess{})
 
-	rr := doAccessRequest(h, "POST", "/sessions/join/session-123", nil, accessHeaders())
+	rr := doAccessRequest(h, "POST", "/api/v0/sessions/join/session-123", nil, accessHeaders())
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
@@ -355,7 +355,7 @@ func TestAccessHandler_WhenSessionList_ItShouldReturnSessions(t *testing.T) {
 	}
 	h := testAccessHandler(sessions, &mockTargetStoreAccess{})
 
-	rr := doAccessRequest(h, "GET", "/sessions", nil, accessHeaders())
+	rr := doAccessRequest(h, "GET", "/api/v0/sessions", nil, accessHeaders())
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
@@ -372,7 +372,7 @@ func TestAccessHandler_WhenSessionList_ItShouldReturnSessions(t *testing.T) {
 func TestAccessHandler_WhenApproveStub_ItShouldReturn501(t *testing.T) {
 	h := testAccessHandler(&mockSessionStoreAccess{}, &mockTargetStoreAccess{})
 
-	rr := doAccessRequest(h, "POST", "/approve/req-123", nil, accessHeaders())
+	rr := doAccessRequest(h, "POST", "/api/v0/approve/req-123", nil, accessHeaders())
 
 	if rr.Code != http.StatusNotImplemented {
 		t.Errorf("expected 501, got %d: %s", rr.Code, rr.Body.String())
@@ -382,7 +382,7 @@ func TestAccessHandler_WhenApproveStub_ItShouldReturn501(t *testing.T) {
 func TestAccessHandler_WhenRejectStub_ItShouldReturn501(t *testing.T) {
 	h := testAccessHandler(&mockSessionStoreAccess{}, &mockTargetStoreAccess{})
 
-	rr := doAccessRequest(h, "POST", "/reject/req-123", nil, accessHeaders())
+	rr := doAccessRequest(h, "POST", "/api/v0/reject/req-123", nil, accessHeaders())
 
 	if rr.Code != http.StatusNotImplemented {
 		t.Errorf("expected 501, got %d: %s", rr.Code, rr.Body.String())
@@ -394,7 +394,7 @@ func TestAccessHandler_WhenSessionStartInvalidIdentity_ItShouldReturn400(t *test
 
 	body := sessionStartRequest{Target: "mc01"}
 
-	rr := doAccessRequest(h, "POST", "/sessions/start", body, map[string]string{
+	rr := doAccessRequest(h, "POST", "/api/v0/sessions/start", body, map[string]string{
 		"X-Operator": "not-a-valid-arn",
 	})
 
@@ -406,7 +406,7 @@ func TestAccessHandler_WhenSessionStartInvalidIdentity_ItShouldReturn400(t *test
 func TestAccessHandler_WhenSessionStopNotFound_ItShouldReturn404(t *testing.T) {
 	h := testAccessHandler(&mockSessionStoreAccess{}, &mockTargetStoreAccess{})
 
-	rr := doAccessRequest(h, "POST", "/sessions/stop/nonexistent", nil, accessHeaders())
+	rr := doAccessRequest(h, "POST", "/api/v0/sessions/stop/nonexistent", nil, accessHeaders())
 
 	if rr.Code != http.StatusNotFound {
 		t.Errorf("expected 404, got %d: %s", rr.Code, rr.Body.String())
@@ -427,7 +427,7 @@ func TestAccessHandler_WhenSessionStartStoreFails_ItShouldReturn500(t *testing.T
 		Target:         "mc01",
 	}
 
-	rr := doAccessRequest(h, "POST", "/sessions/start", body, accessHeaders())
+	rr := doAccessRequest(h, "POST", "/api/v0/sessions/start", body, accessHeaders())
 
 	if rr.Code != http.StatusInternalServerError {
 		t.Errorf("expected 500, got %d: %s", rr.Code, rr.Body.String())

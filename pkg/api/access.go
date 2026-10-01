@@ -82,12 +82,12 @@ func NewAccessHandler(deps AccessDeps) *AccessHandler {
 }
 
 func (h *AccessHandler) registerRoutes() {
-	h.mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
+	h.mux.HandleFunc("GET "+PathHealth, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
 
-	h.mux.HandleFunc("GET /version", func(w http.ResponseWriter, _ *http.Request) {
+	h.mux.HandleFunc("GET "+PathVersion, func(w http.ResponseWriter, _ *http.Request) {
 		info := version.Get()
 		writeJSON(w, http.StatusOK, struct {
 			version.Info
@@ -95,15 +95,15 @@ func (h *AccessHandler) registerRoutes() {
 		}{Info: info, Mode: "access"})
 	})
 
-	h.mux.HandleFunc("POST /sessions/start", h.handleSessionStart)
-	h.mux.HandleFunc("GET /sessions", h.handleSessionList)
-	h.mux.HandleFunc("POST /sessions/stop/{id}", h.handleSessionStop)
-	h.mux.HandleFunc("POST /sessions/join/{id}", h.handleSessionJoin)
+	h.mux.HandleFunc("POST "+PathSessionsStart, h.handleSessionStart)
+	h.mux.HandleFunc("GET "+PathSessions, h.handleSessionList)
+	h.mux.HandleFunc("POST "+PathSessionsStop+"{id}", h.handleSessionStop)
+	h.mux.HandleFunc("POST "+PathSessionsJoin+"{id}", h.handleSessionJoin)
 
-	h.mux.HandleFunc("GET /targets", h.handleTargetList)
+	h.mux.HandleFunc("GET "+PathTargets, h.handleTargetList)
 
-	h.mux.HandleFunc("POST /approve/{id}", h.handleApproveStub)
-	h.mux.HandleFunc("POST /reject/{id}", h.handleRejectStub)
+	h.mux.HandleFunc("POST "+PathApprove+"{id}", h.handleApproveStub)
+	h.mux.HandleFunc("POST "+PathReject+"{id}", h.handleRejectStub)
 }
 
 func (h *AccessHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {

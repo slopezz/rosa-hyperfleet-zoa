@@ -364,10 +364,10 @@ func TestClientRawGet(t *testing.T) {
 	})
 }
 
-func TestClientDoRoot_WhenLambdaRuntimeErrorOn200_ItShouldReturnLambdaError(t *testing.T) {
+func TestClientDoV0_WhenLambdaRuntimeErrorOn200_ItShouldReturnLambdaError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/targets" {
-			t.Fatalf("path = %q, want /targets", r.URL.Path)
+		if r.URL.Path != "/api/v0/targets" {
+			t.Fatalf("path = %q, want /api/v0/targets", r.URL.Path)
 		}
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"errorMessage":"RequestId: abc","errorType":"Runtime.InvalidEntrypoint"}`))
@@ -386,11 +386,11 @@ func TestClientDoRoot_WhenLambdaRuntimeErrorOn200_ItShouldReturnLambdaError(t *t
 	if lambdaErr.ErrorType != "Runtime.InvalidEntrypoint" {
 		t.Errorf("expected Runtime.InvalidEntrypoint, got %q", lambdaErr.ErrorType)
 	}
-	if lambdaErr.Surface != APISurfaceAccess {
-		t.Errorf("Surface = %q, want %q", lambdaErr.Surface, APISurfaceAccess)
+	if lambdaErr.Surface != APISurfaceZOA {
+		t.Errorf("Surface = %q, want %q", lambdaErr.Surface, APISurfaceZOA)
 	}
-	if !strings.Contains(lambdaErr.Error(), "ZOA Access API") {
-		t.Errorf("Error() = %q, want ZOA Access API prefix", lambdaErr.Error())
+	if !strings.Contains(lambdaErr.Error(), "ZOA API") {
+		t.Errorf("Error() = %q, want ZOA API prefix", lambdaErr.Error())
 	}
 }
 
@@ -503,6 +503,36 @@ func TestClientDo_WhenHeadersSet_ItShouldSendAccountAndOperator(t *testing.T) {
 		operator:    "arn:aws:iam::999888:user/sre",
 	}
 	_, err := c.ListActions(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestClientDoV0_WhenSessionStart_ItShouldSendAccountAndOperator(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v0/sessions/start" {
+			t.Errorf("expected path /api/v0/sessions/start, got %q", r.URL.Path)
+		}
+		if r.Header.Get("X-Account-ID") != "599476212575" {
+			t.Errorf("expected X-Account-ID, got %q", r.Header.Get("X-Account-ID"))
+		}
+		if r.Header.Get("X-Operator") != "arn:aws:sts::599476212575:assumed-role/zoa-access-invoker/slopezma" {
+			t.Errorf("expected X-Operator, got %q", r.Header.Get("X-Operator"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(SessionStartResponse{SessionID: "s1", Status: "creating"})
+	}))
+	defer server.Close()
+
+	c := &Client{
+		baseURL:     server.URL,
+		region:      "us-east-1",
+		credentials: staticCredentials{},
+		httpClient:  http.DefaultClient,
+		accountID:   "599476212575",
+		operator:    "arn:aws:sts::599476212575:assumed-role/zoa-access-invoker/slopezma",
+	}
+	_, err := c.SessionStart(context.Background(), &SessionStartRequest{Target: "mc01"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

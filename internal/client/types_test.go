@@ -130,10 +130,10 @@ func TestLambdaRuntimeError_WhenInvalidEntrypoint_ItShouldReturnUnavailableMessa
 		HTTPStatus:   200,
 	}
 	msg := e.Error()
-	if strings.Count(msg, "ZOA Access API") != 1 {
+	if strings.Count(msg, "ZOA API") != 1 {
 		t.Errorf("expected surface once, got %q", msg)
 	}
-	if !strings.Contains(msg, "ZOA Access API (HTTP 200):") {
+	if !strings.Contains(msg, "ZOA API (HTTP 200):") {
 		t.Errorf("expected HTTP status in message, got %q", msg)
 	}
 	if !strings.Contains(msg, "Runtime.InvalidEntrypoint") {

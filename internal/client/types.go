@@ -170,17 +170,18 @@ type ServerVersionInfo struct {
 type APISurface string
 
 const (
-	// APISurfaceAPI is the per-VPC TA Lambda (HANDLER_MODE=api), /api/v0/trusted-actions/…
-	// Break-glass TAs will use the same surface when added.
-	APISurfaceAPI APISurface = "ZOA API"
-	// APISurfaceAccess is the RC Access Lambda (HANDLER_MODE=access), /targets, /sessions, ...
-	APISurfaceAccess APISurface = "ZOA Access API"
+	// APISurfaceZOA is the unified label for all ZOA v0 HTTP APIs (TA and Access planes).
+	APISurfaceZOA APISurface = "ZOA API"
+	// APISurfaceAPI is an alias for APISurfaceZOA (Trusted Action Lambda).
+	APISurfaceAPI = APISurfaceZOA
+	// APISurfaceAccess is an alias for APISurfaceZOA (Access Lambda).
+	APISurfaceAccess = APISurfaceZOA
 )
 
 type APIError struct {
-	Code       string `json:"code"`
-	Reason     string `json:"reason"`
-	Message    string `json:"message,omitempty"`
+	Code       string     `json:"code"`
+	Reason     string     `json:"reason"`
+	Message    string     `json:"message,omitempty"`
 	Surface    APISurface `json:"-"`
 	HTTPStatus int        `json:"-"`
 }

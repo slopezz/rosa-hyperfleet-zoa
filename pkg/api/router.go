@@ -100,13 +100,12 @@ func (h *Handler) resolveIdentity(r *http.Request) (operator, signerARN, session
 }
 
 func (h *Handler) registerRoutes() {
-	// Health check endpoint
-	h.mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
+	h.mux.HandleFunc("GET "+PathHealth, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
 
-	h.mux.HandleFunc("GET /version", func(w http.ResponseWriter, _ *http.Request) {
+	h.mux.HandleFunc("GET "+PathVersion, func(w http.ResponseWriter, _ *http.Request) {
 		info := version.Get()
 		resp := struct {
 			version.Info
@@ -119,20 +118,20 @@ func (h *Handler) registerRoutes() {
 	})
 
 	// TA execution
-	h.mux.HandleFunc("POST /api/v0/trusted-actions/{action}/run", h.handleCreateRoute)
+	h.mux.HandleFunc("POST "+PathTrustedActions+"/{action}/run", h.handleCreateRoute)
 
 	// Execution queries
-	h.mux.HandleFunc("GET /api/v0/trusted-actions/runs/{id}/output", h.handleOutputRoute)
-	h.mux.HandleFunc("GET /api/v0/trusted-actions/runs/{id}/logs", h.handleLogsRoute)
-	h.mux.HandleFunc("GET /api/v0/trusted-actions/runs/{id}", h.handleGetExecutionRoute)
-	h.mux.HandleFunc("GET /api/v0/trusted-actions/runs", h.handleListExecutions)
+	h.mux.HandleFunc("GET "+PathTrustedActionsRuns+"/{id}/output", h.handleOutputRoute)
+	h.mux.HandleFunc("GET "+PathTrustedActionsRuns+"/{id}/logs", h.handleLogsRoute)
+	h.mux.HandleFunc("GET "+PathTrustedActionsRuns+"/{id}", h.handleGetExecutionRoute)
+	h.mux.HandleFunc("GET "+PathTrustedActionsRuns, h.handleListExecutions)
 
 	// TA metadata
-	h.mux.HandleFunc("GET /api/v0/trusted-actions/{action}", h.handleDescribeActionRoute)
-	h.mux.HandleFunc("GET /api/v0/trusted-actions", h.handleListActions)
+	h.mux.HandleFunc("GET "+PathTrustedActions+"/{action}", h.handleDescribeActionRoute)
+	h.mux.HandleFunc("GET "+PathTrustedActions, h.handleListActions)
 
 	// Audit
-	h.mux.HandleFunc("GET /api/v0/trusted-actions/audit", h.handleAudit)
+	h.mux.HandleFunc("GET "+PathTrustedActionsAudit, h.handleAudit)
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {

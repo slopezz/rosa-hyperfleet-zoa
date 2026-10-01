@@ -149,7 +149,7 @@ sequenceDiagram
     SRE->>JA: kinit slopezma@REDHAT.COM
     JA-->>SRE: IAM role: assumed-role/sre-role/slopezma
 
-    SRE->>AL: POST /sessions/start (SigV4)
+    SRE->>AL: POST /api/v0/sessions/start (SigV4)
     Note over AL: Extract from SigV4:<br/>ARN: ...assumed-role/sre-role/slopezma<br/>Session name: slopezma
     AL->>DDB: PUT {sessionId: task-abc, operator: slopezma, operatorARN: ...sre-role/slopezma}
     AL->>ECS: ecs:RunTask → task-abc starts
@@ -297,15 +297,15 @@ The `zoa-lambda` container image serves all three Lambda roles. The `HANDLER_MOD
 
 | Mode | Routes | Caller | Deployment |
 |---|---|---|---|
-| `access` | `/sessions/start`, `/sessions`, `/sessions/stop/{id}`, `/targets`, `/approve/{id}`, `/reject/{id}` | Laptop (invoker role via Function URL) | RC account, no VPC, 1 per region |
+| `access` | `/api/v0/sessions/start`, `/api/v0/sessions`, `/api/v0/sessions/stop/{id}`, `/api/v0/targets`, `/api/v0/approve/{id}`, `/api/v0/reject/{id}` | Laptop (invoker role via Function URL) | RC account, no VPC, 1 per region |
 | `api` | `/run`, `/runs`, `/actions`, `/audit`, `/version`, `/approve/{id}`, `/reject/{id}` | Boundary container (ECS task role via Function URL) | Per-VPC (RC + each MC) |
 | `worker` | EventBridge reconciler/GC/reaper events, self-invoke `execute` events | EventBridge + Lambda self-invoke | Per-VPC (RC + each MC) |
 
 `/approve/{id}` and `/reject/{id}` on both `access` and `api` modes — approver can do it from laptop (ZOA Access) or from inside a boundary (per-VPC API). Routes return `501 Not Implemented` until the approval workflow epic ships.
 
 Access Lambda handles:
-- **Session lifecycle**: `POST /sessions/start`, `GET /sessions`, `POST /sessions/stop/{id}`
-- **Target listing**: `GET /targets` (reads SSM `/zoa/targets/<deployment>/` parameters, RC-local)
+- **Session lifecycle**: `POST /api/v0/sessions/start`, `GET /api/v0/sessions`, `POST /api/v0/sessions/stop/{id}`
+- **Target listing**: `GET /api/v0/targets` (reads SSM `/zoa/targets/<deployment>/` parameters, RC-local)
 - **Placement routing**: resolve target cluster → VPC → Function URL from SSM target parameters
 - **Cross-account session creation**: `sts:AssumeRole` into MC account to `ecs:RunTask` there
 - **Identity recording**: map SigV4 caller (Central Account role) to SRE identity, write to `boundary-sessions` DynamoDB table
