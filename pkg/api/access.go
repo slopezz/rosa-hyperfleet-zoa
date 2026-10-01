@@ -233,7 +233,7 @@ func (h *AccessHandler) ensureBoundaryTask(ctx context.Context, session *store.S
 	})
 	if err != nil {
 		_ = h.sessionStore.UpdateStatus(ctx, session.SessionID, session.Status, store.SessionStatusFailed,
-			map[string]interface{}{"terminationReason": "ecs_task_failed"})
+			map[string]interface{}{"stopReason": store.StopReasonProvisionFailed})
 		return fmt.Errorf("starting boundary task: %w", err)
 	}
 
@@ -263,7 +263,7 @@ func (h *AccessHandler) handleSessionList(w http.ResponseWriter, r *http.Request
 	operatorARN := r.Header.Get("X-Operator")
 
 	filter := &store.SessionFilter{}
-	if v := q.Get("status"); v != "" {
+	if v := q.Get("status"); v != "" && v != "all" {
 		s := store.SessionStatus(v)
 		filter.Status = &s
 	}
@@ -271,13 +271,22 @@ func (h *AccessHandler) handleSessionList(w http.ResponseWriter, r *http.Request
 		filter.Target = &v
 	}
 
-	// scope=mine: default for `session list` — show only caller's sessions.
-	// No scope param (or scope=all): `session history` — show all operators.
+	// scope=mine: `zoa session list` — caller's sessions only; no cross-operator listing.
 	if q.Get("scope") == "mine" {
-		username, _, err := ExtractSREIdentity(operatorARN)
-		if err == nil && username != "" {
-			filter.Operator = &username
+		if q.Get("operator") != "" {
+			writeError(w, http.StatusBadRequest, "invalid_query", "operator filter is not allowed with scope=mine")
+			return
 		}
+		username, _, err := ExtractSREIdentity(operatorARN)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_identity", "cannot extract SRE identity")
+			return
+		}
+		if username == "" {
+			writeError(w, http.StatusBadRequest, "invalid_identity", "cannot extract SRE identity")
+			return
+		}
+		filter.Operator = &username
 	} else if v := q.Get("operator"); v != "" {
 		filter.Operator = &v
 	}
@@ -350,19 +359,25 @@ func (h *AccessHandler) handleSessionStop(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Stop ECS task if client is available
-	if h.ecsClient != nil && session.TaskArn != "" {
+	if session.TaskArn != "" {
+		if h.ecsClient == nil {
+			h.logger.Error("cannot stop session: ECS client not configured", "session_id", sessionID, "task_arn", session.TaskArn)
+			writeError(w, http.StatusServiceUnavailable, "task_stop_failed", "cannot stop boundary task")
+			return
+		}
 		if err := h.ecsClient.StopTask(ctx, &StopTaskInput{
 			Cluster: session.EcsCluster,
 			TaskArn: session.TaskArn,
-			Reason:  "sre_exit",
+			Reason:  store.StopReasonOperatorStop,
 		}); err != nil {
-			h.logger.Error("failed to stop ECS task", "task_arn", session.TaskArn, "error", err)
+			h.logger.Error("failed to stop ECS task", "session_id", sessionID, "task_arn", session.TaskArn, "error", err)
+			writeError(w, http.StatusBadGateway, "task_stop_failed", "failed to stop boundary ECS task; session is still active")
+			return
 		}
 	}
 
 	err = h.sessionStore.UpdateStatus(ctx, sessionID, session.Status, store.SessionStatusTerminated,
-		map[string]interface{}{"terminationReason": "sre_exit"})
+		map[string]interface{}{"stopReason": store.StopReasonOperatorStop})
 	if err != nil {
 		h.logger.Error("failed to update session status", "error", err)
 		writeError(w, http.StatusInternalServerError, "internal_error", "failed to update session")

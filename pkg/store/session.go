@@ -22,6 +22,13 @@ const (
 	SessionStatusFailed     SessionStatus = "failed"
 )
 
+// StopReason values stored in DynamoDB (stopReason). Bounded enum for audit + metrics.
+const (
+	StopReasonOperatorStop       = "operatorStop"
+	StopReasonDeadlineReaperStop = "deadlineReaperStop"
+	StopReasonProvisionFailed    = "provisionFailed"
+)
+
 // Session represents a ZOA Boundary session in DynamoDB.
 type Session struct {
 	SessionID         string        `json:"session_id" dynamodbav:"sessionId"`
@@ -35,8 +42,8 @@ type Session struct {
 	Status            SessionStatus `json:"status" dynamodbav:"status"`
 	CreatedAt         string        `json:"created_at" dynamodbav:"createdAt"`
 	Deadline          string        `json:"deadline" dynamodbav:"deadline"`
-	TerminatedAt      string        `json:"terminated_at,omitempty" dynamodbav:"terminatedAt,omitempty"`
-	TerminationReason string        `json:"termination_reason,omitempty" dynamodbav:"terminationReason,omitempty"`
+	TerminatedAt string `json:"terminated_at,omitempty" dynamodbav:"terminatedAt,omitempty"`
+	StopReason   string `json:"stop_reason,omitempty" dynamodbav:"stopReason,omitempty"`
 	VpcId             string        `json:"vpc_id,omitempty" dynamodbav:"vpcId,omitempty"`
 	DeploymentName    string        `json:"deployment_name,omitempty" dynamodbav:"deploymentName,omitempty"`
 

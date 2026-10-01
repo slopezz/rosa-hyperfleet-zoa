@@ -71,7 +71,7 @@ func (r *Reaper) Run(ctx context.Context) error {
 		// Stop the ECS task if it's still running.
 		if session.TaskArn != "" && session.EcsCluster != "" && r.ecs != nil {
 			log.Info("reaper: stopping ECS task", "task_arn", session.TaskArn)
-			if err := r.ecs.StopTask(ctx, session.EcsCluster, session.TaskArn, "session expired (max duration exceeded)"); err != nil {
+			if err := r.ecs.StopTask(ctx, session.EcsCluster, session.TaskArn, store.StopReasonDeadlineReaperStop); err != nil {
 				log.Error("reaper: failed to stop ECS task", "error", err)
 				errs = append(errs, fmt.Errorf("stop task %s: %w", session.SessionID, err))
 				continue
@@ -82,7 +82,7 @@ func (r *Reaper) Run(ctx context.Context) error {
 		if err := r.sessionStore.UpdateStatus(ctx, session.SessionID,
 			store.SessionStatusActive, store.SessionStatusTerminated,
 			map[string]interface{}{
-				"terminationReason": "expired (max duration exceeded)",
+				"stopReason": store.StopReasonDeadlineReaperStop,
 			},
 		); err != nil {
 			log.Error("reaper: failed to update session status", "error", err)
