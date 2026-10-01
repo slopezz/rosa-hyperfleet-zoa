@@ -42,11 +42,8 @@ func newSessionStartCommand(opts *GlobalOptions) *cobra.Command {
 
 Positional args: <deployment> <target>. Also available as flags for scripts.
 The CLI auto-resolves the Access Lambda URL and invoker role from SSM.`,
-		Example: `  # Positional (interactive use)
-  zoa session start us-east-1 mc01
-  zoa session start us-east-1-eph-b6563804 mc01
+		Example: `  zoa session start us-east-1 mc01
 
-  # Flags (scripts and automation)
   zoa session start -d us-east-1 -t mc01`,
 		Args: cobra.MaximumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -108,7 +105,7 @@ The CLI auto-resolves the Access Lambda URL and invoker role from SSM.`,
 		},
 	}
 
-	cmd.Flags().StringVarP(&flagDeployment, "deployment", "d", "", "Deployment name (e.g. us-east-1, us-east-1-eph-b6563804)")
+	cmd.Flags().StringVarP(&flagDeployment, "deployment", "d", "", "Deployment name (e.g. us-east-1)")
 	cmd.Flags().StringVarP(&flagTarget, "target", "t", "", "Target ID (e.g. mc01)")
 
 	return cmd
@@ -211,13 +208,10 @@ Use 'zoa session history' to see past sessions with extended filters.`,
 		Example: `  # Active sessions
   zoa session list us-east-1
 
-  # All statuses
   zoa session list us-east-1 --status all
 
-  # Filter by target
   zoa session list us-east-1 --target mc01
 
-  # JSON output
   zoa session list us-east-1 -o json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -282,16 +276,12 @@ func newSessionHistoryCommand(opts *GlobalOptions) *cobra.Command {
 		Short: "View session history across all operators",
 		Long: `Show session history across all operators (audit view).
 Defaults to last 24 hours.`,
-		Example: `  # All sessions in the last 24 hours
-  zoa session history us-east-1
+		Example: `  zoa session history us-east-1
 
-  # Last 7 days
   zoa session history us-east-1 --since 7d
 
-  # Filter by operator
   zoa session history us-east-1 --operator slopezma --since 7d
 
-  # JSON output
   zoa session history us-east-1 -o json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
