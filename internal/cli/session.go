@@ -47,8 +47,9 @@ The CLI auto-resolves the Access Lambda URL and invoker role from SSM.
 By default, after the task is active the CLI connects via ECS Exec (same as
 'zoa session join'). Use --no-connect to only print the session ID.
 
-ECS Exec uses credentials from ZOA_EXEC_AWS_PROFILE or your default AWS chain
-(regional account with ecs:ExecuteCommand), not the Access invoker role.`,
+ECS Exec assumes OrganizationAccountAccessRole in the deployment account (from
+central credentials), same as routine cross-account access. Override with
+ZOA_EXEC_AWS_PROFILE only if needed locally.`,
 		Example: `  zoa session start us-east-1 mc01
 
   zoa session start -d us-east-1 -t mc01 --no-connect`,
@@ -92,7 +93,7 @@ ECS Exec uses credentials from ZOA_EXEC_AWS_PROFILE or your default AWS chain
 					return fmt.Errorf("joining session after start: %w", err)
 				}
 				region := sessionJoinRegion(opts, joinResp)
-				if err := runSessionECSExec(cmd.Context(), region, joinResp); err != nil {
+				if err := runSessionECSExec(cmd.Context(), deployment, region, joinResp); err != nil {
 					return fmt.Errorf("ECS Exec: %w", err)
 				}
 				return nil
@@ -183,8 +184,8 @@ func newSessionJoinCommand(opts *GlobalOptions) *cobra.Command {
 Calls the Access API for ownership checks, then opens an interactive shell via
 ECS Exec and session-manager-plugin.
 
-ECS Exec uses ZOA_EXEC_AWS_PROFILE or your default AWS credentials in the
-deployment region (regional account), not the Access invoker role.`,
+ECS Exec assumes OrganizationAccountAccessRole in the deployment account using
+your current (Central) credentials. Override with ZOA_EXEC_AWS_PROFILE if needed.`,
 		Example: `  zoa session join us-east-1/sess-abc123`,
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -214,7 +215,7 @@ deployment region (regional account), not the Access invoker role.`,
 			}
 
 			region := sessionJoinRegion(opts, resp)
-			if err := runSessionECSExec(cmd.Context(), region, resp); err != nil {
+			if err := runSessionECSExec(cmd.Context(), deployment, region, resp); err != nil {
 				return fmt.Errorf("ECS Exec: %w", err)
 			}
 			return nil

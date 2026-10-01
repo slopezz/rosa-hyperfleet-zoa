@@ -59,8 +59,9 @@ Trusted Actions (per-target API Lambda in each VPC):
 Session and discovery commands resolve the Access Lambda from the deployment name
 via SSM and assume the invoker role automatically. TA commands use ZOA_API_URL.
 
-Boundary ECS Exec uses ZOA_EXEC_AWS_PROFILE (regional account) or default AWS
-credentials — not the invoker role. Install session-manager-plugin.
+Boundary ECS Exec assumes OrganizationAccountAccessRole in the deployment
+account (from Central credentials). Optional: ZOA_EXEC_AWS_PROFILE. Requires
+session-manager-plugin.
 
 All requests are signed with AWS SigV4 using your current credentials.`,
 		SilenceUsage:  true,
