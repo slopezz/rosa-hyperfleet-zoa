@@ -77,6 +77,13 @@ For **discovery and boundary sessions** (`deployments`, `targets`, `session`), u
 | `audit` | View audit trail |
 | `version` | Print client and server version |
 | `completion` | Generate shell completion scripts |
+| `session start` | Start a boundary session (prints join hint; use `--connect` for ECS Exec) |
+| `session join` | Join an existing session via ECS Exec |
+| `session stop` | Stop a session |
+| `session list` | List your active sessions |
+| `session history` | Audit view of sessions across operators |
+
+**Session UX (aligned with `rosa-boundary`):** `zoa session start` creates the task and prints `zoa session join <id>`. Pass **`--connect`** to attach immediately (same as `rosa-boundary start-task --connect`). JSON output never auto-connects.
 
 ## Examples
 
