@@ -166,46 +166,74 @@ type ServerVersionInfo struct {
 	Target    string `json:"target"`
 }
 
+// APISurface identifies which ZOA HTTP endpoint returned an error (for CLI logs and bug reports).
+type APISurface string
+
+const (
+	// APISurfaceAPIPlane is the per-VPC TA Lambda (HANDLER_MODE=api), /api/v0/trusted-actions/...
+	// Break-glass TAs will use the same plane when added.
+	APISurfaceAPIPlane APISurface = "ZOA API plane"
+	// APISurfaceAccess is the RC Access Lambda (HANDLER_MODE=access), /targets, /sessions, ...
+	APISurfaceAccess APISurface = "ZOA Access API"
+)
+
 type APIError struct {
 	Code    string `json:"code"`
 	Reason  string `json:"reason"`
 	Message string `json:"message,omitempty"`
+	Surface APISurface `json:"-"`
 }
 
 func (e *APIError) Error() string {
+	var msg string
 	if e.Reason != "" {
-		return e.Reason
+		msg = e.Reason
+	} else if e.Message != "" {
+		msg = e.Message
+	} else {
+		msg = e.Code
 	}
-	if e.Message != "" {
-		return e.Message
+	if e.Surface != "" {
+		return string(e.Surface) + ": " + msg
 	}
-	return e.Code
+	return msg
 }
 
 // LambdaRuntimeError is returned by AWS Lambda Function URLs when the Lambda
 // function crashes, times out, or returns an unhandled error. The format differs
 // from ZOA's APIError.
 type LambdaRuntimeError struct {
-	ErrorMessage string `json:"errorMessage"`
-	ErrorType    string `json:"errorType"`
+	ErrorMessage string     `json:"errorMessage"`
+	ErrorType    string     `json:"errorType"`
+	Surface      APISurface `json:"-"`
+}
+
+func (e *LambdaRuntimeError) apiName() string {
+	if e.Surface != "" {
+		return string(e.Surface)
+	}
+	return "ZOA API"
 }
 
 func (e *LambdaRuntimeError) Error() string {
+	name := e.apiName()
 	switch e.ErrorType {
 	case "Runtime.ExitError":
-		return "ZOA API is unavailable (Lambda failed to start — check CloudWatch logs for startup health failures)"
+		return fmt.Sprintf("%s is unavailable (Lambda failed to start — check CloudWatch logs for startup health failures)", name)
+	case "Runtime.InvalidEntrypoint":
+		return fmt.Sprintf("%s is unavailable (Lambda container failed to start — check image architecture matches the function and CloudWatch logs)", name)
 	case "Runtime.DeadlineExceeded":
-		return "ZOA API timed out (Lambda execution deadline exceeded)"
+		return fmt.Sprintf("%s timed out (Lambda execution deadline exceeded)", name)
 	default:
 		if e.ErrorMessage != "" {
-			return fmt.Sprintf("ZOA API error [%s]: %s", e.ErrorType, e.ErrorMessage)
+			return fmt.Sprintf("%s error [%s]: %s", name, e.ErrorType, e.ErrorMessage)
 		}
-		return fmt.Sprintf("ZOA API error: %s", e.ErrorType)
+		return fmt.Sprintf("%s error: %s", name, e.ErrorType)
 	}
 }
 
 func (e *LambdaRuntimeError) IsUnavailable() bool {
-	return e.ErrorType == "Runtime.ExitError"
+	return e.ErrorType == "Runtime.ExitError" || e.ErrorType == "Runtime.InvalidEntrypoint"
 }
 
 // --- Access / Boundary types ---

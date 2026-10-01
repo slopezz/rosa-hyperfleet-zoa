@@ -257,28 +257,8 @@ func (c *Client) do(ctx context.Context, method, path string, body any, result a
 		return fmt.Errorf("reading response: %w", err)
 	}
 
-	if resp.StatusCode >= 400 {
-		// ZOA API structured error
-		var apiErr APIError
-		if json.Unmarshal(respBody, &apiErr) == nil && apiErr.Code != "" {
-			return &apiErr
-		}
-		// Lambda runtime error (Function URL returns this when Lambda crashes or returns an error)
-		var lambdaErr LambdaRuntimeError
-		if json.Unmarshal(respBody, &lambdaErr) == nil && lambdaErr.ErrorType != "" {
-			return &lambdaErr
-		}
-		body := string(respBody)
-		if len(body) > 512 {
-			body = body[:512] + "...(truncated)"
-		}
-		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, body)
-	}
-
-	if result != nil {
-		if err := json.Unmarshal(respBody, result); err != nil {
-			return fmt.Errorf("decoding response: %w", err)
-		}
+	if err := decodeResponse(APISurfaceAPIPlane, resp.StatusCode, respBody, result); err != nil {
+		return err
 	}
 	return nil
 }
@@ -329,8 +309,34 @@ func (c *Client) doRoot(ctx context.Context, method, path string, body any, resu
 	if err != nil {
 		return fmt.Errorf("reading response: %w", err)
 	}
-	if resp.StatusCode >= 400 {
-		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(respBody))
+	if err := decodeResponse(APISurfaceAccess, resp.StatusCode, respBody, result); err != nil {
+		return err
+	}
+	return nil
+}
+
+// decodeResponse parses Function URL / API responses. Lambda may return runtime
+// error JSON (errorType/errorMessage) with HTTP 200 on streaming URLs — never
+// treat that as a successful empty API payload.
+func decodeResponse(surface APISurface, statusCode int, respBody []byte, result any) error {
+	if len(respBody) > 0 {
+		var lambdaErr LambdaRuntimeError
+		if json.Unmarshal(respBody, &lambdaErr) == nil && lambdaErr.ErrorType != "" {
+			lambdaErr.Surface = surface
+			return &lambdaErr
+		}
+	}
+	if statusCode >= 400 {
+		var apiErr APIError
+		if json.Unmarshal(respBody, &apiErr) == nil && apiErr.Code != "" {
+			apiErr.Surface = surface
+			return &apiErr
+		}
+		body := string(respBody)
+		if len(body) > 512 {
+			body = body[:512] + "...(truncated)"
+		}
+		return fmt.Errorf("%s: HTTP %d: %s", surface, statusCode, body)
 	}
 	if result != nil {
 		if err := json.Unmarshal(respBody, result); err != nil {

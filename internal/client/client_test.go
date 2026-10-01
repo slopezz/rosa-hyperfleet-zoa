@@ -364,6 +364,36 @@ func TestClientRawGet(t *testing.T) {
 	})
 }
 
+func TestClientDoRoot_WhenLambdaRuntimeErrorOn200_ItShouldReturnLambdaError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/targets" {
+			t.Fatalf("path = %q, want /targets", r.URL.Path)
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"errorMessage":"RequestId: abc","errorType":"Runtime.InvalidEntrypoint"}`))
+	}))
+	defer server.Close()
+
+	c := &Client{baseURL: server.URL, region: "us-east-1", sigService: "lambda", credentials: staticCredentials{}, httpClient: http.DefaultClient}
+	_, err := c.ListTargets(context.Background())
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	lambdaErr, ok := err.(*LambdaRuntimeError)
+	if !ok {
+		t.Fatalf("expected *LambdaRuntimeError, got %T: %v", err, err)
+	}
+	if lambdaErr.ErrorType != "Runtime.InvalidEntrypoint" {
+		t.Errorf("expected Runtime.InvalidEntrypoint, got %q", lambdaErr.ErrorType)
+	}
+	if lambdaErr.Surface != APISurfaceAccess {
+		t.Errorf("Surface = %q, want %q", lambdaErr.Surface, APISurfaceAccess)
+	}
+	if !strings.Contains(lambdaErr.Error(), "ZOA Access API") {
+		t.Errorf("Error() = %q, want ZOA Access API prefix", lambdaErr.Error())
+	}
+}
+
 func TestClientDo_WhenLambdaRuntimeError_ItShouldReturnLambdaError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -382,6 +412,9 @@ func TestClientDo_WhenLambdaRuntimeError_ItShouldReturnLambdaError(t *testing.T)
 	}
 	if lambdaErr.ErrorType != "Runtime.ExitError" {
 		t.Errorf("expected Runtime.ExitError, got %q", lambdaErr.ErrorType)
+	}
+	if lambdaErr.Surface != APISurfaceAPIPlane {
+		t.Errorf("Surface = %q, want %q", lambdaErr.Surface, APISurfaceAPIPlane)
 	}
 }
 
