@@ -34,6 +34,7 @@ Session IDs use the form <deployment>/<session-id> (see 'zoa session start').`,
 
 func newSessionStartCommand(opts *GlobalOptions) *cobra.Command {
 	var flagDeployment, flagTarget string
+	var flagConnect, flagNoConnect bool
 
 	cmd := &cobra.Command{
 		Use:   "start [deployment] [target]",
@@ -41,10 +42,16 @@ func newSessionStartCommand(opts *GlobalOptions) *cobra.Command {
 		Long: `Start a boundary session for audited SRE access to a target cluster.
 
 Positional args: <deployment> <target>. Also available as flags for scripts.
-The CLI auto-resolves the Access Lambda URL and invoker role from SSM.`,
+The CLI auto-resolves the Access Lambda URL and invoker role from SSM.
+
+By default, after the task is active the CLI connects via ECS Exec (same as
+'zoa session join'). Use --no-connect to only print the session ID.
+
+ECS Exec uses credentials from ZOA_EXEC_AWS_PROFILE or your default AWS chain
+(regional account with ecs:ExecuteCommand), not the Access invoker role.`,
 		Example: `  zoa session start us-east-1 mc01
 
-  zoa session start -d us-east-1 -t mc01`,
+  zoa session start -d us-east-1 -t mc01 --no-connect`,
 		Args: cobra.MaximumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			deployment, target := resolveDeploymentTarget(args, flagDeployment, flagTarget)
@@ -74,6 +81,23 @@ The CLI auto-resolves the Access Lambda URL and invoker role from SSM.`,
 
 			compoundID := FormatSessionID(deployment, resp.SessionID)
 
+			connect := flagConnect && !flagNoConnect
+			if connect && opts.OutputFormat == output.FormatJSON {
+				connect = false
+			}
+
+			if connect {
+				joinResp, err := c.SessionJoin(cmd.Context(), resp.SessionID)
+				if err != nil {
+					return fmt.Errorf("joining session after start: %w", err)
+				}
+				region := sessionJoinRegion(opts, joinResp)
+				if err := runSessionECSExec(cmd.Context(), region, joinResp); err != nil {
+					return fmt.Errorf("ECS Exec: %w", err)
+				}
+				return nil
+			}
+
 			if opts.OutputFormat == output.FormatJSON {
 				result := map[string]interface{}{
 					"session_id": compoundID,
@@ -101,12 +125,15 @@ The CLI auto-resolves the Access Lambda URL and invoker role from SSM.`,
 			if resp.Region != "" {
 				fmt.Printf("Region: %s\n", resp.Region)
 			}
+			fmt.Fprintf(os.Stderr, "\nConnect with: zoa session join %s\n", compoundID)
 			return nil
 		},
 	}
 
 	cmd.Flags().StringVarP(&flagDeployment, "deployment", "d", "", "Deployment name (e.g. us-east-1)")
 	cmd.Flags().StringVarP(&flagTarget, "target", "t", "", "Target ID (e.g. mc01)")
+	cmd.Flags().BoolVar(&flagConnect, "connect", true, "Connect via ECS Exec after the task is active")
+	cmd.Flags().BoolVar(&flagNoConnect, "no-connect", false, "Do not connect; only create the session")
 
 	return cmd
 }
@@ -153,7 +180,11 @@ func newSessionJoinCommand(opts *GlobalOptions) *cobra.Command {
 		Short: "Join a boundary session via ECS Exec",
 		Long: `Join a boundary session by its compound ID (deployment/session-id).
 
-The compound ID is returned by 'zoa session start' and 'zoa session list'.`,
+Calls the Access API for ownership checks, then opens an interactive shell via
+ECS Exec and session-manager-plugin.
+
+ECS Exec uses ZOA_EXEC_AWS_PROFILE or your default AWS credentials in the
+deployment region (regional account), not the Access invoker role.`,
 		Example: `  zoa session join us-east-1/sess-abc123`,
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -182,14 +213,10 @@ The compound ID is returned by 'zoa session start' and 'zoa session list'.`,
 				return enc.Encode(resp)
 			}
 
-			fmt.Println("Connect with:")
-			fmt.Printf("  aws ecs execute-command \\\n")
-			fmt.Printf("    --cluster %s \\\n", resp.ClusterArn)
-			fmt.Printf("    --task %s \\\n", resp.TaskArn)
-			fmt.Printf("    --container %s \\\n", resp.ContainerName)
-			fmt.Printf("    --interactive \\\n")
-			fmt.Printf("    --command /bin/bash \\\n")
-			fmt.Printf("    --region %s\n", resp.Region)
+			region := sessionJoinRegion(opts, resp)
+			if err := runSessionECSExec(cmd.Context(), region, resp); err != nil {
+				return fmt.Errorf("ECS Exec: %w", err)
+			}
 			return nil
 		},
 	}

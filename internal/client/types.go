@@ -298,7 +298,7 @@ type SessionStartResponse struct {
 type SessionJoinResponse struct {
 	SessionID     string `json:"session_id"`
 	TaskArn       string `json:"task_arn"`
-	ClusterArn    string `json:"cluster_arn"`
+	ClusterArn    string `json:"cluster"`
 	ContainerName string `json:"container_name"`
 	Region        string `json:"region"`
 }
