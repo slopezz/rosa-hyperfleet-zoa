@@ -132,7 +132,7 @@ func TestDynamoDBSessionStore_UpdateStatus_WhenTerminated_ItShouldSetTerminatedA
 
 	s := NewSessionStore(mock, "test-sessions", 30)
 	err := s.UpdateStatus(context.Background(), "task-abc", SessionStatusActive, SessionStatusTerminated,
-		map[string]interface{}{"terminationReason": "sre_exit"})
+		map[string]interface{}{"stopReason": StopReasonOperatorStop})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

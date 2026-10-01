@@ -277,6 +277,7 @@ type Session struct {
 	CreatedAt   string `json:"created_at,omitempty"`
 	Deadline    string `json:"deadline,omitempty"`
 	CompletedAt string `json:"terminated_at,omitempty"`
+	StopReason  string `json:"stop_reason,omitempty"`
 }
 
 type SessionList struct {

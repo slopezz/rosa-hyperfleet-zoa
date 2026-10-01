@@ -56,8 +56,8 @@ func (m *mockSessionStoreAccess) UpdateStatus(_ context.Context, id string, _, t
 	for _, s := range m.sessions {
 		if s.SessionID == id {
 			s.Status = to
-			if reason, ok := updates["terminationReason"]; ok {
-				s.TerminationReason = reason.(string)
+			if reason, ok := updates["stopReason"]; ok {
+				s.StopReason = reason.(string)
 			}
 			if arn, ok := updates["taskArn"]; ok {
 				s.TaskArn = arn.(string)
@@ -83,8 +83,20 @@ func (m *mockSessionStoreAccess) ListByOperator(_ context.Context, operator stri
 	return result, nil
 }
 
-func (m *mockSessionStoreAccess) ListAll(_ context.Context, _ *store.SessionFilter) ([]*store.Session, error) {
-	return m.sessions, nil
+func (m *mockSessionStoreAccess) ListAll(_ context.Context, filter *store.SessionFilter) ([]*store.Session, error) {
+	var out []*store.Session
+	for _, s := range m.sessions {
+		if filter != nil {
+			if filter.Operator != nil && s.Operator != *filter.Operator {
+				continue
+			}
+			if filter.Status != nil && s.Status != *filter.Status {
+				continue
+			}
+		}
+		out = append(out, s)
+	}
+	return out, nil
 }
 func (m *mockSessionStoreAccess) ListExpired(_ context.Context) ([]*store.Session, error) {
 	return nil, nil
@@ -94,7 +106,9 @@ type mockTargetStoreAccess struct {
 	targets []*store.Target
 }
 
-type mockECSAccess struct{}
+type mockECSAccess struct {
+	stopErr error
+}
 
 func (m *mockECSAccess) RunTask(_ context.Context, input *RunTaskInput) (*RunTaskOutput, error) {
 	return &RunTaskOutput{
@@ -104,7 +118,7 @@ func (m *mockECSAccess) RunTask(_ context.Context, input *RunTaskInput) (*RunTas
 }
 
 func (m *mockECSAccess) StopTask(_ context.Context, _ *StopTaskInput) error {
-	return nil
+	return m.stopErr
 }
 
 func testAccessHandlerWithECS(sessionStore store.SessionStore, targetStore store.TargetStore) *AccessHandler {
@@ -351,6 +365,31 @@ func TestAccessHandler_WhenSessionStop_ItShouldTerminateOwnSession(t *testing.T)
 	}
 }
 
+func TestAccessHandler_WhenSessionStopTaskFails_ItShouldKeepSessionActive(t *testing.T) {
+	sessions := &mockSessionStoreAccess{
+		sessions: []*store.Session{
+			{
+				SessionID:  "session-123",
+				Operator:   "slopezma",
+				Status:     store.SessionStatusActive,
+				TaskArn:    "arn:aws:ecs:us-east-1:123:task/cluster/task-1",
+				EcsCluster: "cluster",
+			},
+		},
+	}
+	h := testAccessHandlerWithECS(sessions, &mockTargetStoreAccess{})
+	h.ecsClient = &mockECSAccess{stopErr: fmt.Errorf("AccessDenied")}
+
+	rr := doAccessRequest(h, "POST", "/api/v0/sessions/stop/session-123", nil, accessHeaders())
+
+	if rr.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if sessions.sessions[0].Status != store.SessionStatusActive {
+		t.Errorf("expected session to stay active, got %q", sessions.sessions[0].Status)
+	}
+}
+
 func TestAccessHandler_WhenSessionStopByNonOwner_ItShouldReturn403(t *testing.T) {
 	sessions := &mockSessionStoreAccess{
 		sessions: []*store.Session{
@@ -431,7 +470,7 @@ func TestAccessHandler_WhenSessionList_ItShouldReturnSessions(t *testing.T) {
 	}
 	h := testAccessHandler(sessions, &mockTargetStoreAccess{})
 
-	rr := doAccessRequest(h, "GET", "/api/v0/sessions", nil, accessHeaders())
+	rr := doAccessRequest(h, "GET", "/api/v0/sessions?scope=mine", nil, accessHeaders())
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
@@ -440,8 +479,18 @@ func TestAccessHandler_WhenSessionList_ItShouldReturnSessions(t *testing.T) {
 	var resp map[string]interface{}
 	json.NewDecoder(rr.Body).Decode(&resp)
 	count, ok := resp["count"].(float64)
-	if !ok || int(count) != 2 {
-		t.Errorf("expected count=2, got %v", resp["count"])
+	if !ok || int(count) != 1 {
+		t.Errorf("expected count=1 (mine only), got %v", resp["count"])
+	}
+}
+
+func TestAccessHandler_WhenSessionListMineWithOperatorParam_ItShouldReturn400(t *testing.T) {
+	h := testAccessHandler(&mockSessionStoreAccess{}, &mockTargetStoreAccess{})
+
+	rr := doAccessRequest(h, "GET", "/api/v0/sessions?scope=mine&operator=other", nil, accessHeaders())
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d: %s", rr.Code, rr.Body.String())
 	}
 }
 

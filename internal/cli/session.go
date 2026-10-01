@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 
@@ -172,7 +173,7 @@ The compound ID is returned by 'zoa session start' and 'zoa session list'.`,
 				return fmt.Errorf("stopping session: %w", err)
 			}
 
-			fmt.Printf("Session %s stopped\n", args[0])
+			fmt.Printf("Session %s terminated\n", args[0])
 			return nil
 		},
 	}
@@ -235,17 +236,19 @@ func newSessionListCommand(opts *GlobalOptions) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "list <deployment>",
-		Short: "List boundary sessions",
-		Long: `List boundary sessions for a deployment. Defaults to active sessions.
-Use 'zoa session history' to see past sessions with extended filters.`,
-		Example: `  # Active sessions
-  zoa session list us-east-1
+		Short: "List your boundary sessions",
+		Long: `List your boundary sessions for a deployment (last 24 hours).
 
-  zoa session list us-east-1 --status all
+Only the signed-in operator's sessions are returned; the API does not allow
+listing other operators here. Use 'zoa session history' for fleet-wide audit.`,
+		Example: `  # All your sessions in the last 24h (default)
+  zoa session list us-east-1-eph-f37869e8
 
-  zoa session list us-east-1 --target mc01
+  zoa session list us-east-1-eph-f37869e8 --status active
 
-  zoa session list us-east-1 -o json`,
+  zoa session list us-east-1-eph-f37869e8 -t eph-f37869e8-regional
+
+  zoa session list us-east-1-eph-f37869e8 -o json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			deployment := args[0]
@@ -260,7 +263,7 @@ Use 'zoa session history' to see past sessions with extended filters.`,
 
 			query := url.Values{}
 			query.Set("scope", "mine")
-			if status != "" {
+			if status != "" && status != "all" {
 				query.Set("status", status)
 			}
 			if target != "" {
@@ -272,37 +275,19 @@ Use 'zoa session history' to see past sessions with extended filters.`,
 				return fmt.Errorf("listing sessions: %w", err)
 			}
 
-			if opts.OutputFormat == output.FormatJSON {
-				enc := json.NewEncoder(os.Stdout)
-				enc.SetIndent("", "  ")
-				return enc.Encode(list)
-			}
-
-			if len(list.Items) == 0 {
-				fmt.Println("No sessions found")
-				return nil
-			}
-
-			tw := output.NewTable(os.Stdout)
-			fmt.Fprintln(tw, "SESSION ID\tTARGET\tSTATUS\tCREATED\tDEADLINE")
-			for _, s := range list.Items {
-				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
-					FormatSessionID(deployment, s.SessionID),
-					s.Target, s.Status,
-					output.Dash(s.CreatedAt), output.Dash(s.Deadline))
-			}
-			return tw.Flush()
+			return printSessionTable(os.Stdout, opts, deployment, list, false)
 		},
 	}
 
-	cmd.Flags().StringVar(&status, "status", "", "Filter by status (active, terminated, failed, all)")
-	cmd.Flags().StringVar(&target, "target", "", "Filter by target cluster")
+	cmd.Flags().StringVar(&status, "status", "all", "Filter by status (creating, active, terminated, failed, all)")
+	cmd.Flags().StringVarP(&target, "target", "t", "", "Filter by target cluster")
 
 	return cmd
 }
 
 func newSessionHistoryCommand(opts *GlobalOptions) *cobra.Command {
 	var since, until, operator, target, status string
+	var limit int
 
 	cmd := &cobra.Command{
 		Use:   "history <deployment>",
@@ -314,6 +299,8 @@ Defaults to last 24 hours.`,
   zoa session history us-east-1 --since 7d
 
   zoa session history us-east-1 --operator slopezma --since 7d
+
+  zoa session history us-east-1 --status terminated --since 7d
 
   zoa session history us-east-1 -o json`,
 		Args: cobra.ExactArgs(1),
@@ -341,8 +328,11 @@ Defaults to last 24 hours.`,
 			if target != "" {
 				query.Set("target", target)
 			}
-			if status != "" {
+			if status != "" && status != "all" {
 				query.Set("status", status)
+			}
+			if limit > 0 {
+				query.Set("limit", fmt.Sprintf("%d", limit))
 			}
 
 			list, err := c.ListSessions(cmd.Context(), query)
@@ -350,36 +340,54 @@ Defaults to last 24 hours.`,
 				return fmt.Errorf("listing session history: %w", err)
 			}
 
-			if opts.OutputFormat == output.FormatJSON {
-				enc := json.NewEncoder(os.Stdout)
-				enc.SetIndent("", "  ")
-				return enc.Encode(list)
-			}
-
-			if len(list.Items) == 0 {
-				fmt.Println("No sessions found")
-				return nil
-			}
-
-			tw := output.NewTable(os.Stdout)
-			fmt.Fprintln(tw, "SESSION ID\tOPERATOR\tTARGET\tSTATUS\tCREATED\tDEADLINE")
-			for _, s := range list.Items {
-				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",
-					FormatSessionID(deployment, s.SessionID),
-					s.Operator, s.Target, s.Status,
-					output.Dash(s.CreatedAt), output.Dash(s.Deadline))
-			}
-			return tw.Flush()
+			return printSessionTable(os.Stdout, opts, deployment, list, true)
 		},
 	}
 
-	cmd.Flags().StringVar(&since, "since", "24h", "Show sessions since (e.g. 1h, 7d, 2026-01-01)")
-	cmd.Flags().StringVar(&until, "until", "", "Show sessions until (e.g. 1h, 2026-01-01)")
+	cmd.Flags().StringVar(&since, "since", "24h", "Start of time window (duration: 1h, 7d; date: 2026-08-25; RFC3339)")
+	cmd.Flags().StringVar(&until, "until", "", "End of time window (same formats as --since; default: now)")
 	cmd.Flags().StringVar(&operator, "operator", "", "Filter by operator")
-	cmd.Flags().StringVar(&target, "target", "", "Filter by target cluster")
-	cmd.Flags().StringVar(&status, "status", "", "Filter by status")
+	cmd.Flags().StringVarP(&target, "target", "t", "", "Filter by target cluster")
+	cmd.Flags().StringVar(&status, "status", "", "Filter by status (creating, active, terminated, failed, all)")
+	cmd.Flags().IntVar(&limit, "limit", 50, "Max results (max 200)")
 
 	return cmd
+}
+
+func printSessionTable(w io.Writer, opts *GlobalOptions, deployment string, list *client.SessionList, history bool) error {
+	if opts.OutputFormat == output.FormatJSON {
+		enc := json.NewEncoder(w)
+		enc.SetIndent("", "  ")
+		return enc.Encode(list)
+	}
+
+	if len(list.Items) == 0 {
+		fmt.Fprintln(w, "No sessions found")
+		return nil
+	}
+
+	tw := output.NewTable(w)
+	if history {
+		fmt.Fprintln(tw, "SESSION ID\tOPERATOR\tTARGET\tSTATUS\tSTOP REASON\tCREATED\tENDED\tDEADLINE")
+		for _, s := range list.Items {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+				FormatSessionID(deployment, s.SessionID),
+				s.Operator, s.Target, s.Status,
+				output.Dash(s.StopReason),
+				output.Dash(s.CreatedAt),
+				output.Dash(s.CompletedAt),
+				output.Dash(s.Deadline))
+		}
+	} else {
+		fmt.Fprintln(tw, "SESSION ID\tTARGET\tSTATUS\tCREATED\tDEADLINE")
+		for _, s := range list.Items {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
+				FormatSessionID(deployment, s.SessionID),
+				s.Target, s.Status,
+				output.Dash(s.CreatedAt), output.Dash(s.Deadline))
+		}
+	}
+	return tw.Flush()
 }
 
 // resolveDeploymentTarget resolves deployment and target from positional args
