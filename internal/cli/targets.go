@@ -17,7 +17,10 @@ func newTargetsCommand(opts *GlobalOptions) *cobra.Command {
 		Long: `List the targets (RC and MC clusters) available in a given deployment.
 
 Use a deployment name from 'zoa deployments' (e.g. us-east-1). The CLI
-auto-resolves the Access Lambda and invoker role from SSM, then lists targets.`,
+auto-resolves the Access Lambda and invoker role from SSM, then lists targets.
+
+STATUS is registration metadata from cluster Terraform (ready = registered in SSM
+with boundary VPC/ECS metadata and eligible for session start; not a health probe).`,
 		Example: `  zoa targets us-east-1
 
   zoa targets us-east-1 -o json`,
@@ -50,10 +53,10 @@ auto-resolves the Access Lambda and invoker role from SSM, then lists targets.`,
 			}
 
 			tw := output.NewTable(os.Stdout)
-			fmt.Fprintln(tw, "TARGET\tTYPE\tREGION\tVPC\tSTATUS")
+			fmt.Fprintln(tw, "TARGET\tREGION\tTYPE\tACCOUNT\tVPC\tSTATUS")
 			for _, t := range list.Items {
-				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
-					t.TargetID, t.TargetType, t.Region,
+				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",
+					t.TargetID, t.Region, t.TargetType, output.Dash(t.AccountId),
 					output.Dash(t.VpcId), output.Dash(t.Status))
 			}
 			return tw.Flush()
