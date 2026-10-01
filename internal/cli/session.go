@@ -34,7 +34,7 @@ Session IDs use the form <deployment>/<session-id> (see 'zoa session start').`,
 
 func newSessionStartCommand(opts *GlobalOptions) *cobra.Command {
 	var flagDeployment, flagTarget string
-	var flagConnect bool
+	var flagNoConnect bool
 
 	cmd := &cobra.Command{
 		Use:   "start [deployment] [target]",
@@ -44,18 +44,18 @@ func newSessionStartCommand(opts *GlobalOptions) *cobra.Command {
 Positional args: <deployment> <target>. Also available as flags for scripts.
 The CLI auto-resolves the Access Lambda URL and invoker role from SSM.
 
-By default the session is created and connection info is printed (same as
-rosa-boundary start-task). Pass --connect to open ECS Exec after the task is
-active (same as rosa-boundary start-task --connect, or 'zoa session join').
+By default, after the task is active the CLI connects via ECS Exec (same as
+'zoa session join'). Use --no-connect to only print session metadata and exit
+(same idea as 'zoa run --no-wait': create, show id, do not attach).
 
 ECS Exec assumes OrganizationAccountAccessRole in the deployment account (from
 central credentials), same as routine cross-account access. Override with
 ZOA_EXEC_AWS_PROFILE only if needed locally.`,
 		Example: `  zoa session start us-east-1 mc01
 
-  zoa session start us-east-1 mc01 --connect
+  zoa session start us-east-1 mc01 --no-connect
 
-  zoa session start -d us-east-1 -t mc01 -o json`,
+  zoa session start -d us-east-1 -t mc01 --no-connect -o json`,
 		Args: cobra.MaximumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			deployment, target := resolveDeploymentTarget(args, flagDeployment, flagTarget)
@@ -85,7 +85,7 @@ ZOA_EXEC_AWS_PROFILE only if needed locally.`,
 
 			compoundID := FormatSessionID(deployment, resp.SessionID)
 
-			connect := flagConnect
+			connect := !flagNoConnect
 			if connect && opts.OutputFormat == output.FormatJSON {
 				connect = false
 			}
@@ -136,7 +136,7 @@ ZOA_EXEC_AWS_PROFILE only if needed locally.`,
 
 	cmd.Flags().StringVarP(&flagDeployment, "deployment", "d", "", "Deployment name (e.g. us-east-1)")
 	cmd.Flags().StringVarP(&flagTarget, "target", "t", "", "Target ID (e.g. mc01)")
-	cmd.Flags().BoolVar(&flagConnect, "connect", false, "Connect via ECS Exec after the task is active")
+	cmd.Flags().BoolVar(&flagNoConnect, "no-connect", false, "Print session metadata only; do not open ECS Exec (same idea as zoa run --no-wait)")
 
 	return cmd
 }
