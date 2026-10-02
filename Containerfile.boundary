@@ -123,6 +123,8 @@ LABEL name="zoa-boundary" \
       distribution-scope="private" \
       url="https://github.com/openshift-online/rosa-hyperfleet-zoa"
 
+# util-linux: provides /usr/bin/script — required by ECS Exec for command
+# transcript upload to CloudWatch (AWS ECS Exec logging docs; cat is in coreutils).
 RUN microdnf install --assumeyes --nodocs \
         bash-completion \
         bind-utils \
@@ -132,6 +134,7 @@ RUN microdnf install --assumeyes --nodocs \
         shadow-utils \
         tar \
         gzip \
+        util-linux \
         vim-minimal \
     && microdnf clean all \
     && rm --recursive --force /var/cache/yum
@@ -149,12 +152,13 @@ RUN zoa completion bash > /etc/bash_completion.d/zoa \
     && echo 'complete -C /usr/local/bin/aws_completer aws' \
         > /etc/bash_completion.d/aws
 
-RUN useradd --create-home --shell /bin/bash sre \
-    && chown -R sre:sre /home/sre
+# UID 1000 matches ECS task definition user (non-root, no package installs).
+RUN useradd --uid 1000 --create-home --shell /bin/bash sre
 
-# Shell prompt uses ZOA_DEPLOYMENT and ZOA_TARGET env vars (injected by
-# Access Lambda at RunTask). Falls back to plain prompt if not set.
-# Example: [sre@zoa:us-east-1/mc01] ~ $
+# Baked home for the sre user (Claude + shell). Ephemeral per task — no EFS skel copy at runtime.
+COPY --chown=sre:sre boundary/home-sre/ /home/sre/
+
+# Bedrock + model ID come from ECS task environment (Terraform), not the image.
 ENV HOME=/home/sre \
     PS1='[\u@zoa:${ZOA_DEPLOYMENT:-?}/${ZOA_TARGET:-?}] \w \$ ' \
     CLAUDE_CODE_USE_BEDROCK=1 \
