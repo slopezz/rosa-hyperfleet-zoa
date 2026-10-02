@@ -142,8 +142,9 @@ func (m *mockTargetStoreAccess) List(_ context.Context) ([]*store.Target, error)
 
 func testAccessHandler(sessionStore store.SessionStore, targetStore store.TargetStore) *AccessHandler {
 	cfg := &config.Config{
-		HandlerMode: "access",
-		Region:      "us-east-1",
+		HandlerMode:              "access",
+		Region:                   "us-east-1",
+		BoundaryECSExecCommand:   "runuser -u sre -- /bin/bash -l",
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	return NewAccessHandler(AccessDeps{
@@ -458,6 +459,9 @@ func TestAccessHandler_WhenSessionJoinOwnSession_ItShouldReturnConnectionInfo(t 
 	}
 	if resp.ContainerName != "zoa-boundary" {
 		t.Errorf("expected container_name=zoa-boundary, got %q", resp.ContainerName)
+	}
+	if resp.ExecCommand == "" {
+		t.Error("expected exec_command in join response")
 	}
 }
 

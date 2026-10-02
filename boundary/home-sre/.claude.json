@@ -1,0 +1,9 @@
+{
+  "hasCompletedOnboarding": true,
+  "projects": {
+    "/home/sre": {
+      "hasTrustDialogAccepted": true,
+      "hasCompletedProjectOnboarding": true
+    }
+  }
+}

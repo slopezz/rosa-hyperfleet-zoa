@@ -18,6 +18,8 @@ type JoinParams struct {
 	NoWait        bool
 }
 
+// defaultExecCommand is only used when the caller omits Command (tests). Production
+// clients must use exec_command from the ZOA Access session/join API (Terraform → Lambda env).
 const defaultExecCommand = "/bin/bash"
 
 // ConnectInteractive waits for the task, starts ECS Exec, and execs session-manager-plugin.

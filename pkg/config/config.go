@@ -104,6 +104,9 @@ type Config struct {
 
 	// ECSSecurityGroup is the security group ID for boundary ECS tasks.
 	ECSSecurityGroup string
+
+	// BoundaryECSExecCommand is the ecs:ExecuteCommand interactive shell (from Terraform / ZOA_ECS_EXEC_COMMAND).
+	BoundaryECSExecCommand string
 }
 
 func Load() (*Config, error) {
@@ -139,6 +142,7 @@ func Load() (*Config, error) {
 		ECSTaskDefinitionARN:           getEnv("ECS_TASK_DEFINITION_ARN", ""),
 		ECSSubnets:                     getEnv("ECS_SUBNETS", ""),
 		ECSSecurityGroup:               getEnv("ECS_SECURITY_GROUP", ""),
+		BoundaryECSExecCommand:         getEnv("ZOA_ECS_EXEC_COMMAND", "runuser -u sre -- /bin/bash -l"),
 	}
 
 	validModes := map[string]bool{"api": true, "worker": true, "access": true}

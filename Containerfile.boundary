@@ -142,7 +142,14 @@ RUN microdnf install --assumeyes --nodocs \
 COPY --from=builder /workspace/zoa /usr/local/bin/zoa
 COPY --from=tools /tools/kubectl /usr/local/bin/kubectl
 COPY --from=aws-cli-builder /opt/aws-cli /usr/local/aws-cli
-COPY --from=aws-cli-builder /opt/aws-bin /usr/local/bin
+# aws/install uses absolute symlinks (/opt/aws-cli/...); rewire for /usr/local/aws-cli.
+RUN VERSION_DIR="$(ls /usr/local/aws-cli/v2 | grep -v '^current$' | head -1)" \
+    && test -n "${VERSION_DIR}" \
+    && rm --force /usr/local/aws-cli/v2/current \
+    && ln --symbolic "${VERSION_DIR}" /usr/local/aws-cli/v2/current \
+    && ln --symbolic "/usr/local/aws-cli/v2/${VERSION_DIR}/dist/aws" /usr/local/bin/aws \
+    && ln --symbolic "/usr/local/aws-cli/v2/${VERSION_DIR}/dist/aws_completer" /usr/local/bin/aws_completer \
+    && /usr/local/bin/aws --version
 COPY --from=claude-builder /opt/claude /usr/local/lib/claude-code
 RUN ln --symbolic /usr/local/lib/claude-code/claude /usr/local/bin/claude
 
@@ -157,6 +164,10 @@ RUN useradd --uid 1000 --create-home --shell /bin/bash sre
 
 # Baked home for the sre user (Claude + shell). Ephemeral per task — no EFS skel copy at runtime.
 COPY --chown=sre:sre boundary/home-sre/ /home/sre/
+# Claude Code looks for ~/.local/bin/claude first; point at the image binary.
+RUN mkdir --parents /home/sre/.local/bin \
+    && ln --symbolic /usr/local/bin/claude /home/sre/.local/bin/claude \
+    && chown --recursive sre:sre /home/sre/.local
 
 # Bedrock + model ID come from ECS task environment (Terraform), not the image.
 ENV HOME=/home/sre \
