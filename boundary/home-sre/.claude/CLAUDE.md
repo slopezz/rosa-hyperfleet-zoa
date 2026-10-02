@@ -36,7 +36,7 @@ Use **`--jira`** on mutating or tracked work. Use **`-o json`** and **`jq`** for
 | Tool | Notes |
 |------|--------|
 | **`jq`** | Yes — parse `zoa` JSON output. |
-| **`claude`** | Yes — **Amazon Bedrock** (Invoke API), **Haiku 4.5** only via in-region application inference profile (`ANTHROPIC_MODEL` from task env); investigation assistant, not a bypass for TAs. |
+| **`claude`** | Yes — **Amazon Bedrock** (Invoke API); model chosen by Claude Code. Investigation assistant, not a bypass for TAs. |
 | **`aws`** / **`kubectl`** | Binaries are **installed**, but there is **no usable kubeconfig or AWS profile** for direct cluster/account admin by default. Credentials appear only after **break-glass** is approved for this session (`ZOA_BREAKGLASS_ROLE_ARN`), scoped to that grant (kube read/write or AWS read/write). Until then, use **`zoa run`** for operations exposed as TAs. |
 
 ## What you must not do
@@ -51,7 +51,7 @@ Use **`--jira`** on mutating or tracked work. Use **`-o json`** and **`jq`** for
 Laptop  →  ZOA Access Lambda  →  ECS RunTask (this container)
                 ↓
 Inside container:  zoa run  →  SigV4  →  per-VPC ZOA API Lambda  →  EKS / AWS APIs
-                   claude   →  Bedrock Invoke (in-region Haiku via app inference profile)
+                   claude   →  Bedrock Invoke (task `AWS_REGION`; broad task IAM)
 Break-glass (future): scoped sts:AssumeRole after approval — kube/AWS per grant only
 ```
 
