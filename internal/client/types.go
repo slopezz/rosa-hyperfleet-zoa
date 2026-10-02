@@ -300,10 +300,19 @@ type SessionStartResponse struct {
 }
 
 type SessionJoinResponse struct {
-	SessionID     string `json:"session_id"`
-	TaskArn       string `json:"task_arn"`
-	ClusterArn    string `json:"cluster"`
-	ContainerName string `json:"container_name"`
-	Region        string `json:"region"`
-	ExecCommand   string `json:"exec_command"`
+	SessionID       string           `json:"session_id"`
+	TaskArn         string           `json:"task_arn"`
+	ClusterArn      string           `json:"cluster"`
+	ContainerName   string           `json:"container_name"`
+	Region          string           `json:"region"`
+	ExecCommand     string           `json:"exec_command"`
+	ExecCredentials *ExecCredentials `json:"exec_credentials"`
+}
+
+// ExecCredentials are vended by ZOA Access on session join for scoped ECS Exec.
+type ExecCredentials struct {
+	AccessKeyID     string `json:"access_key_id"`
+	SecretAccessKey string `json:"secret_access_key"`
+	SessionToken    string `json:"session_token"`
+	Expiration      string `json:"expiration"`
 }

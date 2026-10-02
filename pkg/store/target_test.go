@@ -126,7 +126,7 @@ func TestSSMTargetStore_List_WhenEmpty_ItShouldReturnEmptySlice(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got != nil && len(got) != 0 {
+	if len(got) != 0 {
 		t.Fatalf("expected empty slice, got %d targets", len(got))
 	}
 }
