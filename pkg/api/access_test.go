@@ -147,7 +147,7 @@ type mockExecVendorAccess struct {
 	err error
 }
 
-func (m *mockExecVendorAccess) VendForTask(_ context.Context, _, _, _, _ string) (*execcreds.APICredentials, error) {
+func (m *mockExecVendorAccess) VendForTask(_ context.Context, _, _, _, _, _ string) (*execcreds.APICredentials, error) {
 	if m != nil && m.err != nil {
 		return nil, m.err
 	}
