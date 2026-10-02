@@ -644,7 +644,7 @@ Go interfaces: `Session` struct, `SessionStore` interface with `Put`, `Get`, `Li
 - ECS task tags: Access Lambda sets tamper-proof tags (`sre`, `sessionId`, `deployment`, `target`) on every ECS task at creation — no `ecs:TagResource` on task role
 - SSM Parameter Store `/zoa/deployments` in Central Account (or RC account for dev/ephemeral)
 - Cross-account IAM: Access Lambda `sts:AssumeRole` into MC for `ecs:RunTask`; MC boundary task role on MC Lambda resource policy
-- Bedrock IAM: regional-only, scoped to `allowed_bedrock_models` Terraform var (default: Haiku). No cross-region inference permitted.
+- Bedrock: **Mantle** in-region only (`claude_mantle_model_id`, default Haiku 4.5). Task env `CLAUDE_CODE_USE_MANTLE=1`, `CLAUDE_CODE_USE_BEDROCK=0`. IAM `bedrock-mantle:*` with `aws:RequestedRegion`. No classic Invoke or geo inference profiles.
 - Bedrock model invocation logging: `aws_bedrock_model_invocation_logging_configuration` to CloudWatch Logs (metadata only — token counts, model ID, identity ARN. No payload capture, no S3).
 - Worker Lambda IAM: `ecs:StopTask` + `ecs:DescribeTasks` + reaper EventBridge schedule
 - Modified `zoa-lambda` module: SSM target self-registration, `SESSIONS_TABLE` env var, boundary module output wiring
@@ -661,7 +661,7 @@ Go interfaces: `Session` struct, `SessionStore` interface with `Put`, `Get`, `Li
 | 3 | `boundary-sessions` DynamoDB table created in `zoa/` module with GSIs (`operator-index`, `status-deadline-index`, `date-bucket-index`, `task-id-index`) and TTL; targets use SSM Parameter Store |
 | 4 | SSM `/zoa/deployments` parameter written to Central Account (or RC account for dev/ephemeral) with Function URL + invoker role ARN |
 | 5 | Cross-account IAM: Access Lambda can `ecs:RunTask` in MC accounts; MC boundary task role is permitted caller on MC Lambda Function URL; invoker role trusts Central Account hub roles only (`central_account_id` + `trusted_assumer_role_names`) |
-| 6 | Bedrock IAM scoped to deployment region only — `bedrock:InvokeModel` resource ARN includes `${var.region}`. `allowed_bedrock_models` Terraform var (default: Haiku only). No cross-region inference profiles. |
+| 6 | Bedrock Mantle scoped to deployment region (`aws:RequestedRegion`); model via `claude_mantle_model_id` (default Haiku 4.5). |
 | 7 | Bedrock model invocation logging enabled via `aws_bedrock_model_invocation_logging_configuration` — CloudWatch Logs only, no payload capture, no S3. Log group: `/aws/bedrock/model-invocations` (KMS-encrypted). |
 | 8 | ECS task tags set by Access Lambda at `RunTask`: `sre`, `sessionId`, `deployment`, `target`. Task role has NO `ecs:TagResource` permission (tamper-proof). |
 | 9 | Worker Lambda has `ecs:StopTask` + `ecs:DescribeTasks` IAM and reaper EventBridge schedule |
@@ -683,12 +683,12 @@ Go interfaces: `Session` struct, `SessionStore` interface with `Put`, `Get`, `Li
 **New module: `terraform/modules/zoa-boundary/`**
 - ECS task definition (Fargate, ZOA Boundary image from ECR)
 - ECS cluster (or reuse existing)
-- IAM task role: `lambda:InvokeFunctionUrl`, `bedrock:InvokeModel` (scoped to Haiku, regional), `ssmmessages:*`, CloudWatch Logs, `kms:GenerateDataKey`/`kms:Decrypt` (for SSM session encryption)
+- IAM task role: `lambda:InvokeFunctionUrl`, **Bedrock Mantle** (in-region Haiku), `ssmmessages:*`, CloudWatch Logs, `kms:GenerateDataKey`/`kms:Decrypt` (for SSM session encryption)
 - IAM task execution role: ECR pull, CloudWatch Logs
 - Security group: egress to Function URL (443), EKS API (443, future break-glass), AWS services, Bedrock. No inbound.
 - CloudWatch Logs log group for SSM session recording (`/ecs/zoa-boundary/ssm-sessions`), KMS-encrypted
 - KMS key for ECS Exec session encryption and CloudWatch Logs
-- Bedrock scoped to `allowed_bedrock_models` Terraform var (default: Haiku only, per-region)
+- Bedrock: `claude_mantle_model_id` (default Haiku 4.5), Mantle-only, in-region
 
 **Bedrock access control (Claude Code in boundary container):**
 
@@ -696,16 +696,12 @@ Bedrock is **regional** — each region has its own endpoint and model catalog. 
 
 | Concern | Design |
 |---|---|
-| Which models allowed | Terraform variable `allowed_bedrock_models` (default: only Haiku for cost control). IAM policy scopes `bedrock:InvokeModel` to specific model ARN patterns. |
-| Regional scope | Resource ARN includes `${var.region}` — no cross-region inference permitted by default. Prevents cost surprises from routing to expensive regions. |
-| Cost control | Haiku-only default keeps costs low (~$0.25/M input tokens vs $15/M for Opus). Production can override to allow Sonnet/Opus if justified. |
-| Model availability | Not all models are available in all regions. Terraform variable allows per-region customization. |
+| Which models allowed | Terraform `claude_mantle_model_id` (default `anthropic.claude-haiku-4-5`). Haiku-only for cost control. |
+| Regional scope | Bedrock **Mantle** endpoint in task `AWS_REGION`; IAM `bedrock-mantle:*` with `aws:RequestedRegion` = deployment region. No classic Invoke, no geo/global inference profiles. |
+| Cost control | Haiku-only default keeps costs low. Override `claude_mantle_model_id` per region only if a different Mantle model is approved. |
+| Model availability | Verify Mantle + Haiku 4.5 in each HyperFleet region before rollout; adjust `claude_mantle_model_id` if needed. |
 
-Conceptual IAM resource scoping:
-```
-arn:aws:bedrock:${region}::foundation-model/anthropic.claude-3-5-haiku-*
-arn:aws:bedrock:${region}:*:inference-profile/${region}.anthropic.claude-3-5-haiku-*
-```
+Task env (Terraform): `CLAUDE_CODE_USE_MANTLE=1`, `CLAUDE_CODE_USE_BEDROCK=0`, `ANTHROPIC_MODEL` / `ANTHROPIC_DEFAULT_HAIKU_MODEL` = `claude_mantle_model_id`.
 
 **DynamoDB table in `terraform/modules/zoa/`:**
 - `boundary-sessions` — PK: `sessionId`, GSIs: `operator-index` (PK: operator, SK: createdAt), `status-deadline-index` (PK: status, SK: deadline), `date-bucket-index` (PK: dateBucket, SK: createdAt), `task-id-index` (PK: taskId). TTL: 30 days.
@@ -1078,7 +1074,7 @@ Task role MUST have:
   ✅ ssmmessages:* (ECS Exec)
   ✅ logs:PutLogEvents (CloudWatch)
   ✅ Lambda Function URL invoke (ZOA API — per-VPC)
-  ✅ bedrock:InvokeModel (scoped to region + allowed models)
+  ✅ bedrock-mantle (in-region, Haiku via claude_mantle_model_id)
 
 Task role MUST NOT have:
   ❌ dynamodb:* (no direct table access)
@@ -1106,15 +1102,9 @@ Claude Code in boundary containers uses Amazon Bedrock via the ECS task role. Th
 
 **1. Regional model sovereignty (data residency)**
 
-Each region uses its own Bedrock endpoint and models. The IAM policy scopes `bedrock:InvokeModel` to the deployment region only — no cross-region inference profiles permitted. This keeps data in-region by design:
+Claude Code uses **Bedrock Mantle** in the task’s `AWS_REGION`. IAM allows `bedrock-mantle:CreateInference` (and related read/list) only when `aws:RequestedRegion` equals the deployment region. No `bedrock:InvokeModel`, no `us.`/`eu.`/`global.` inference profiles.
 
-```
-Resource = [
-  "arn:aws:bedrock:${region}::foundation-model/anthropic.claude-*"
-]
-```
-
-If a model is unavailable in a specific region, the Terraform variable `allowed_bedrock_models` can override to a geographic inference profile (e.g., `us.anthropic.claude-*`) for that region only. This is a per-region config decision, not a runtime fallback.
+If Haiku 4.5 Mantle is unavailable in a region, change `claude_mantle_model_id` (or defer boundary Claude) for that region — no geo-profile fallback.
 
 **2. Bedrock model invocation logging (metadata only)**
 
@@ -1302,7 +1292,7 @@ A future hardening story could place a Private API Gateway with VPC Endpoint in 
 
 1. **Central Account cross-account IAM**: The Central Account already exists per environment, but we need a "pipeline writer" IAM role that RC pipeline roles can assume for `ssm:PutParameter`. Validate with the platform team whether this role can be created via app-interface or needs manual provisioning.
 2. **Break-glass interaction**: The reaper and the boundary container design should account for future break-glass EKS access entries. Not implementing break-glass in this epic, but IAM and network design must not preclude it.
-3. **Bedrock model availability per region**: Not all Claude models are available in all AWS regions. Need to verify Haiku availability in each HyperFleet deployment region and adjust `allowed_bedrock_models` accordingly.
+3. **Bedrock model availability per region**: Verify Mantle + `anthropic.claude-haiku-4-5` in each HyperFleet deployment region; set `claude_mantle_model_id` per region if needed.
 4. **rh-aws-saml-login session name stability**: Does `rh-aws-saml-login` always use the Kerberos principal (e.g., `slopezma`) as the STS session name? If it uses something else (random string, timestamp), we need an alternative identity anchor for ownership checks across re-authentications. This is critical for the identity bridge design.
 5. **Ephemeral SSM parameter lifecycle**: In the dev Central Account, ephemeral deployment entries must be reliably cleaned up on teardown. If an ephemeral teardown fails or is abandoned, stale entries will accumulate. The reaper or a separate GC mechanism may need to detect and clean orphaned entries.
 6. **LDAP integration for future approvals**: Confirm that LDAP group membership (e.g., `zoa-approvers`) is the approved mechanism for approval authorization. Validate network path from Lambda to LDAP, or plan a caching strategy (S3 group dump, refreshed periodically).

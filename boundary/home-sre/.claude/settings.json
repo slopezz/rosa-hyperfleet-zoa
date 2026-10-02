@@ -1,6 +1,7 @@
 {
   "env": {
-    "CLAUDE_CODE_USE_BEDROCK": "1",
+    "CLAUDE_CODE_USE_MANTLE": "1",
+    "CLAUDE_CODE_USE_BEDROCK": "0",
     "DISABLE_AUTOUPDATER": "1"
   },
   "permissions": {
