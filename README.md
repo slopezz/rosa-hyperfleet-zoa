@@ -74,7 +74,7 @@ The split exists because Lambda timeout, concurrency, and invocation mode (strea
 ```mermaid
 graph TD
     subgraph laptop["SRE Laptop"]
-        L["$ kinit / rh-saml<br/>$ rosa-boundary start-task<br/>$ zoa approve/reject"]
+        L["$ kinit / rh-saml<br/>$ zoa session start<br/>$ zoa approve/reject"]
     end
 
     subgraph rc["RC Account"]
@@ -82,7 +82,7 @@ graph TD
         AL["ZOA Access Lambda<br/>(no VPC) · PLANNED"]
         DDB["DynamoDB + S3<br/>(centralized state)"]
         subgraph rc_vpc["Target RC VPC"]
-            BOUNDARY_RC["rosa-boundary<br/>ECS task · PLANNED"]
+            BOUNDARY_RC["ZOA boundary<br/>ECS task · PLANNED"]
             EB_RC["EventBridge Scheduler"]
             API_RC["API Lambda<br/>(Function URL, streaming)"]
             WORKER_RC["Worker Lambda<br/>(self-invoke)"]
@@ -92,7 +92,7 @@ graph TD
 
     subgraph mc["Target MC Account"]
         subgraph mc_vpc["Target MC VPC"]
-            BOUNDARY_MC["rosa-boundary<br/>ECS task · PLANNED"]
+            BOUNDARY_MC["ZOA boundary<br/>ECS task · PLANNED"]
             EB_MC["EventBridge Scheduler"]
             API_MC["API Lambda<br/>(Function URL, streaming)"]
             WORKER_MC["Worker Lambda<br/>(self-invoke)"]
@@ -111,7 +111,7 @@ graph TD
     L -.->|"(2) SSM · PLANNED"| BOUNDARY_RC
     L -.->|"(2) SSM · PLANNED"| BOUNDARY_MC
 
-    %% rosa-boundary calls local API Lambda (PLANNED)
+    %% ZOA boundary calls local API Lambda (PLANNED)
     BOUNDARY_RC -->|"zoa CLI (SigV4)"| API_RC
     BOUNDARY_MC -->|"zoa CLI (SigV4)"| API_MC
 
@@ -140,7 +140,7 @@ graph TD
     WORKER_MC -.->|"cross-account"| DDB
 ```
 
-> **Note:** Components marked `· PLANNED` are part of the target architecture but not yet implemented. Today, the CLI calls API Lambda Function URLs directly via SigV4 (`TEMPORARY` path). Target state: CLI → ZOA Access → rosa-boundary (ECS + SSM) → local API Lambda.
+> **Note:** Components marked `· PLANNED` are part of the target architecture but not yet implemented. Today, the CLI calls API Lambda Function URLs directly via SigV4 (`TEMPORARY` path). Target state: CLI → ZOA Access → ZOA boundary (ECS + SSM) → local API Lambda.
 
 ### Execution Modes
 

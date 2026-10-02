@@ -8,7 +8,7 @@ ZOA deploys **multiple Lambda functions per VPC** (one set per cluster: RC + eac
 |---|---|---|
 | **API** | Function URL (IAM auth) | CLI requests, sync TAs, streaming downloads |
 | **Worker** | EventBridge + self-invoke | Reconciler, GC, async TA execution |
-| **Access** · PLANNED | API Gateway (public) | rosa-boundary session management, approvals |
+| **Access** · PLANNED | API Gateway (public) | ZOA boundary session management, approvals |
 
 API and Worker use the **same binary** (`zoa-lambda`), differentiated by the `HANDLER_MODE` environment variable. Access will be a separate binary.
 
