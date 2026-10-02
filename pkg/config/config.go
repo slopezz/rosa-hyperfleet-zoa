@@ -107,6 +107,12 @@ type Config struct {
 
 	// BoundaryECSExecCommand is the ecs:ExecuteCommand interactive shell (from Terraform / ZOA_ECS_EXEC_COMMAND).
 	BoundaryECSExecCommand string
+
+	// ExecScopedRoleARN is the IAM role assumed by Access on session join to vend per-task ECS Exec credentials.
+	ExecScopedRoleARN string
+
+	// ExecCredentialDurationSeconds is the lifetime of vended exec credentials (default 3600).
+	ExecCredentialDurationSeconds int
 }
 
 func Load() (*Config, error) {
@@ -143,6 +149,8 @@ func Load() (*Config, error) {
 		ECSSubnets:                     getEnv("ECS_SUBNETS", ""),
 		ECSSecurityGroup:               getEnv("ECS_SECURITY_GROUP", ""),
 		BoundaryECSExecCommand:         getEnv("ZOA_ECS_EXEC_COMMAND", "runuser -u sre -- /bin/bash -l"),
+		ExecScopedRoleARN:              getEnv("EXEC_SCOPED_ROLE_ARN", ""),
+		ExecCredentialDurationSeconds:  getEnvInt("EXEC_CREDENTIAL_DURATION_SECONDS", 3600),
 	}
 
 	validModes := map[string]bool{"api": true, "worker": true, "access": true}
@@ -163,6 +171,12 @@ func Load() (*Config, error) {
 		}
 		if cfg.Region == "" {
 			return nil, fmt.Errorf("AWS_REGION is required in access mode")
+		}
+		if cfg.ExecScopedRoleARN == "" {
+			return nil, fmt.Errorf("EXEC_SCOPED_ROLE_ARN is required in access mode")
+		}
+		if cfg.BoundaryECSExecCommand == "" {
+			return nil, fmt.Errorf("ZOA_ECS_EXEC_COMMAND is required in access mode")
 		}
 		return cfg, nil
 	}

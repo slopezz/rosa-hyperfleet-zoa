@@ -67,6 +67,7 @@ func setAccessEnv(t *testing.T) {
 	t.Setenv("TARGETS_SSM_PREFIX", "/zoa/targets/us-east-1")
 	t.Setenv("AUDIT_TABLE", "zoa-audit")
 	t.Setenv("AWS_REGION", "us-east-1")
+	t.Setenv("EXEC_SCOPED_ROLE_ARN", "arn:aws:iam::123456789012:role/test-zoa-access-exec-scoped")
 }
 
 func TestLoad_WhenAccessMode_ItShouldSucceedWithRequiredVars(t *testing.T) {

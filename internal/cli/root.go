@@ -59,9 +59,9 @@ Trusted Actions (per-target API Lambda in each VPC):
 Session and discovery commands resolve the Access Lambda from the deployment name
 via SSM and assume the invoker role automatically. TA commands use ZOA_API_URL.
 
-Boundary session/join: keep your normal Jump/Central AWS login only. The CLI
-assumes the Access invoker role (API) and OrganizationAccountAccessRole in the
-deployment account (ECS Exec). Requires session-manager-plugin.
+Boundary session/join: use your normal Jump/Central AWS login for the Access API (invoker role).
+ECS Exec uses scoped credentials returned by Access on join — not deployment-account admin roles.
+Requires session-manager-plugin.
 
 All requests start from your default AWS credential chain (SigV4).`,
 		SilenceUsage:  true,

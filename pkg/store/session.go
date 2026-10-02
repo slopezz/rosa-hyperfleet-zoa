@@ -31,21 +31,21 @@ const (
 
 // Session represents a ZOA Boundary session in DynamoDB.
 type Session struct {
-	SessionID         string        `json:"session_id" dynamodbav:"sessionId"`
-	Operator          string        `json:"operator" dynamodbav:"operator"`
-	OperatorARN       string        `json:"operator_arn" dynamodbav:"operatorARN"`
-	TargetCluster     string        `json:"target_cluster" dynamodbav:"targetCluster"`
-	Region            string        `json:"region" dynamodbav:"region"`
-	TaskArn           string        `json:"task_arn,omitempty" dynamodbav:"taskArn,omitempty"`
-	TaskID            string        `json:"task_id,omitempty" dynamodbav:"taskId,omitempty"`
-	EcsCluster        string        `json:"ecs_cluster,omitempty" dynamodbav:"ecsCluster,omitempty"`
-	Status            SessionStatus `json:"status" dynamodbav:"status"`
-	CreatedAt         string        `json:"created_at" dynamodbav:"createdAt"`
-	Deadline          string        `json:"deadline" dynamodbav:"deadline"`
-	TerminatedAt string `json:"terminated_at,omitempty" dynamodbav:"terminatedAt,omitempty"`
-	StopReason   string `json:"stop_reason,omitempty" dynamodbav:"stopReason,omitempty"`
-	VpcId             string        `json:"vpc_id,omitempty" dynamodbav:"vpcId,omitempty"`
-	DeploymentName    string        `json:"deployment_name,omitempty" dynamodbav:"deploymentName,omitempty"`
+	SessionID      string        `json:"session_id" dynamodbav:"sessionId"`
+	Operator       string        `json:"operator" dynamodbav:"operator"`
+	OperatorARN    string        `json:"operator_arn" dynamodbav:"operatorARN"`
+	TargetCluster  string        `json:"target_cluster" dynamodbav:"targetCluster"`
+	Region         string        `json:"region" dynamodbav:"region"`
+	TaskArn        string        `json:"task_arn,omitempty" dynamodbav:"taskArn,omitempty"`
+	TaskID         string        `json:"task_id,omitempty" dynamodbav:"taskId,omitempty"`
+	EcsCluster     string        `json:"ecs_cluster,omitempty" dynamodbav:"ecsCluster,omitempty"`
+	Status         SessionStatus `json:"status" dynamodbav:"status"`
+	CreatedAt      string        `json:"created_at" dynamodbav:"createdAt"`
+	Deadline       string        `json:"deadline" dynamodbav:"deadline"`
+	TerminatedAt   string        `json:"terminated_at,omitempty" dynamodbav:"terminatedAt,omitempty"`
+	StopReason     string        `json:"stop_reason,omitempty" dynamodbav:"stopReason,omitempty"`
+	VpcId          string        `json:"vpc_id,omitempty" dynamodbav:"vpcId,omitempty"`
+	DeploymentName string        `json:"deployment_name,omitempty" dynamodbav:"deploymentName,omitempty"`
 
 	DateBucket string `json:"-" dynamodbav:"dateBucket,omitempty"`
 	TTL        int64  `json:"-" dynamodbav:"ttl,omitempty"`

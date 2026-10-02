@@ -50,9 +50,8 @@ By default, after the task is active the CLI connects via ECS Exec (same as
 'zoa session join'). Use --no-connect to only print session metadata and exit
 (same idea as 'zoa run --no-wait': create, show id, do not attach).
 
-ECS Exec assumes OrganizationAccountAccessRole in the deployment account (from
-central credentials), same as routine cross-account access. Override with
-ZOA_EXEC_AWS_PROFILE only if needed locally.`,
+ECS Exec uses scoped credentials returned by the Access API on join (not
+deployment-account admin roles).`,
 		Example: `  zoa session start us-east-1 mc01
 
   zoa session start us-east-1 mc01 --no-connect
@@ -188,10 +187,7 @@ func newSessionJoinCommand(opts *GlobalOptions) *cobra.Command {
 		Long: `Join a boundary session by its compound ID (deployment/session-id).
 
 Calls the Access API for ownership checks, then opens an interactive shell via
-ECS Exec and session-manager-plugin.
-
-ECS Exec assumes OrganizationAccountAccessRole in the deployment account using
-your current (Central) credentials. Override with ZOA_EXEC_AWS_PROFILE if needed.`,
+ECS Exec and session-manager-plugin using scoped credentials from the join response.`,
 		Example: `  zoa session join us-east-1/sess-abc123`,
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

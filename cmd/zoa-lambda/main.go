@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-lambda-go/lambda"
+	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
@@ -20,10 +21,12 @@ import (
 	"k8s.io/client-go/rest"
 
 	"github.com/openshift-online/rosa-hyperfleet-zoa/internal/eksauth"
+	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/accesscross"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/actions"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/api"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/awsecs"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/config"
+	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/execcreds"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/executor"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/handler"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/lambdahttp"
@@ -72,12 +75,25 @@ func main() {
 		targetStore := store.NewTargetStore(ssmClient, cfg.TargetsSSMPrefix)
 		auditStore := store.NewAuditStore(dynamoClient, cfg.AuditTable, cfg.DynamoDBTTLDays)
 
+		caller, err := sts.NewFromConfig(awsCfg).GetCallerIdentity(initCtx, &sts.GetCallerIdentityInput{})
+		if err != nil {
+			logger.Error("failed to get caller identity", "error", err)
+			os.Exit(1)
+		}
+		homeAccountID := aws.ToString(caller.Account)
+
+		execDuration := time.Duration(cfg.ExecCredentialDurationSeconds) * time.Second
+		execVendor := execcreds.NewVendor(sts.NewFromConfig(awsCfg), execDuration)
+		ecsFactory := accesscross.NewECSFactory(awsCfg, homeAccountID, ecsClient)
+
 		accessHandler := api.NewAccessHandler(api.AccessDeps{
 			Cfg:          cfg,
 			SessionStore: sessionStore,
 			TargetStore:  targetStore,
 			AuditStore:   auditStore,
 			ECSClient:    ecsClient,
+			ECSFactory:   ecsFactory,
+			ExecVendor:   execVendor,
 			Logger:       logger,
 		})
 

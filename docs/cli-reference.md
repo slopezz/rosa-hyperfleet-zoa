@@ -60,7 +60,7 @@ export ZOA_API_URL="https://<id>.lambda-url.<region>.on.aws"
 
 For **Trusted Actions** inside a boundary container, set `ZOA_API_URL` to the target VPC Function URL.
 
-For **discovery and boundary sessions** (`deployments`, `targets`, `session`), use your normal **Jump/Central** AWS login only (same default credential chain as `aws` CLI). ZOA reads `/zoa/deployments/<name>` from SSM, assumes the Access **invoker** role for the API, and assumes **OrganizationAccountAccessRole** in the deployment account for ECS Exec — no manual account switch or extra profiles.
+For **discovery and boundary sessions** (`deployments`, `targets`, `session`), use your normal **Jump/Central** AWS login only (same default credential chain as `aws` CLI). ZOA reads `/zoa/deployments/<name>` from SSM and assumes the Access **invoker** role for the API. ECS Exec uses **scoped credentials** returned on `session join` — not deployment-account admin roles.
 
 ## Commands
 

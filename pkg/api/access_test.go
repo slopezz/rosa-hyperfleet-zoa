@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/config"
+	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/execcreds"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/store"
 )
 
@@ -140,11 +141,28 @@ func (m *mockTargetStoreAccess) List(_ context.Context) ([]*store.Target, error)
 	return m.targets, nil
 }
 
+type mockExecVendorAccess struct {
+	err error
+}
+
+func (m *mockExecVendorAccess) VendForTask(_ context.Context, _, _, _, _ string) (*execcreds.APICredentials, error) {
+	if m != nil && m.err != nil {
+		return nil, m.err
+	}
+	return &execcreds.APICredentials{
+		AccessKeyID:     "AKIATEST",
+		SecretAccessKey: "secret",
+		SessionToken:    "token",
+		Expiration:      "2030-01-01T00:00:00Z",
+	}, nil
+}
+
 func testAccessHandler(sessionStore store.SessionStore, targetStore store.TargetStore) *AccessHandler {
 	cfg := &config.Config{
-		HandlerMode:              "access",
-		Region:                   "us-east-1",
-		BoundaryECSExecCommand:   "runuser -u sre -- /bin/bash -l",
+		HandlerMode:            "access",
+		Region:                 "us-east-1",
+		BoundaryECSExecCommand: "runuser -u sre -- /bin/bash -l",
+		ExecScopedRoleARN:      "arn:aws:iam::123:role/exec-scoped",
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	return NewAccessHandler(AccessDeps{
@@ -152,6 +170,7 @@ func testAccessHandler(sessionStore store.SessionStore, targetStore store.Target
 		SessionStore: sessionStore,
 		TargetStore:  targetStore,
 		AuditStore:   &mockAuditStore{},
+		ExecVendor:   &mockExecVendorAccess{},
 		Logger:       logger,
 	})
 }
@@ -370,15 +389,21 @@ func TestAccessHandler_WhenSessionStopTaskFails_ItShouldKeepSessionActive(t *tes
 	sessions := &mockSessionStoreAccess{
 		sessions: []*store.Session{
 			{
-				SessionID:  "session-123",
-				Operator:   "slopezma",
-				Status:     store.SessionStatusActive,
-				TaskArn:    "arn:aws:ecs:us-east-1:123:task/cluster/task-1",
-				EcsCluster: "cluster",
+				SessionID:     "session-123",
+				Operator:      "slopezma",
+				Status:        store.SessionStatusActive,
+				TaskArn:       "arn:aws:ecs:us-east-1:123:task/cluster/task-1",
+				EcsCluster:    "cluster",
+				TargetCluster: "rc-target",
 			},
 		},
 	}
-	h := testAccessHandlerWithECS(sessions, &mockTargetStoreAccess{})
+	targets := &mockTargetStoreAccess{
+		targets: []*store.Target{
+			{TargetID: "rc-target", AccountId: "123", Region: "us-east-1"},
+		},
+	}
+	h := testAccessHandlerWithECS(sessions, targets)
 	h.ecsClient = &mockECSAccess{stopErr: fmt.Errorf("AccessDenied")}
 
 	rr := doAccessRequest(h, "POST", "/api/v0/sessions/stop/session-123", nil, accessHeaders())
@@ -435,16 +460,21 @@ func TestAccessHandler_WhenSessionJoinOwnSession_ItShouldReturnConnectionInfo(t 
 	sessions := &mockSessionStoreAccess{
 		sessions: []*store.Session{
 			{
-				SessionID:  "session-123",
-				Operator:   "slopezma",
-				Status:     store.SessionStatusActive,
-				EcsCluster: "arn:aws:ecs:us-east-1:123:cluster/test",
-				TaskArn:    "arn:aws:ecs:us-east-1:123:task/test/abc",
-				Region:     "us-east-1",
+				SessionID:     "session-123",
+				Operator:      "slopezma",
+				Status:        store.SessionStatusActive,
+				EcsCluster:    "arn:aws:ecs:us-east-1:123:cluster/test",
+				TaskArn:       "arn:aws:ecs:us-east-1:123:task/test/abc",
+				Region:        "us-east-1",
+				TargetCluster: "rc-target",
 			},
 		},
 	}
-	h := testAccessHandler(sessions, &mockTargetStoreAccess{})
+	h := testAccessHandler(sessions, &mockTargetStoreAccess{
+		targets: []*store.Target{
+			{TargetID: "rc-target", AccountId: "123", Region: "us-east-1"},
+		},
+	})
 
 	rr := doAccessRequest(h, "POST", "/api/v0/sessions/join/session-123", nil, accessHeaders())
 
@@ -462,6 +492,9 @@ func TestAccessHandler_WhenSessionJoinOwnSession_ItShouldReturnConnectionInfo(t 
 	}
 	if resp.ExecCommand == "" {
 		t.Error("expected exec_command in join response")
+	}
+	if resp.ExecCredentials == nil || resp.ExecCredentials.AccessKeyID == "" {
+		t.Error("expected exec_credentials in join response")
 	}
 }
 

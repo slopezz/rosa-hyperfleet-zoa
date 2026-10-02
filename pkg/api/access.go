@@ -12,7 +12,9 @@ import (
 
 	"github.com/openshift-online/rosa-hyperfleet-zoa/internal/version"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/config"
+	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/execcreds"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/store"
+	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/targetroles"
 )
 
 // ECSAPI abstracts ECS operations for testability.
@@ -20,6 +22,9 @@ type ECSAPI interface {
 	RunTask(ctx context.Context, input *RunTaskInput) (*RunTaskOutput, error)
 	StopTask(ctx context.Context, input *StopTaskInput) error
 }
+
+// ECSClientFactory resolves an ECS client for a boundary target (RC local or MC cross-account).
+type ECSClientFactory func(ctx context.Context, target *store.Target) (ECSAPI, error)
 
 // RunTaskInput holds parameters for running an ECS task.
 type RunTaskInput struct {
@@ -44,14 +49,20 @@ type StopTaskInput struct {
 	Reason  string
 }
 
+// ExecCredentialVendor vends ECS Exec credentials scoped to one boundary task.
+type ExecCredentialVendor interface {
+	VendForTask(ctx context.Context, execRoleARN, username, clusterARN, taskARN string) (*execcreds.APICredentials, error)
+}
+
 // AccessHandler handles HTTP requests for the access Lambda mode.
-// It manages session lifecycle and target discovery — NOT TA execution.
 type AccessHandler struct {
 	cfg          *config.Config
 	sessionStore store.SessionStore
 	targetStore  store.TargetStore
 	auditStore   store.AuditStore
 	ecsClient    ECSAPI
+	ecsFactory   ECSClientFactory
+	execVendor   ExecCredentialVendor
 	logger       *slog.Logger
 	mux          *http.ServeMux
 }
@@ -63,6 +74,8 @@ type AccessDeps struct {
 	TargetStore  store.TargetStore
 	AuditStore   store.AuditStore
 	ECSClient    ECSAPI
+	ECSFactory   ECSClientFactory
+	ExecVendor   ExecCredentialVendor
 	Logger       *slog.Logger
 }
 
@@ -74,6 +87,8 @@ func NewAccessHandler(deps AccessDeps) *AccessHandler {
 		targetStore:  deps.TargetStore,
 		auditStore:   deps.AuditStore,
 		ecsClient:    deps.ECSClient,
+		ecsFactory:   deps.ECSFactory,
+		execVendor:   deps.ExecVendor,
 		logger:       deps.Logger,
 		mux:          http.NewServeMux(),
 	}
@@ -213,8 +228,13 @@ func (h *AccessHandler) ensureBoundaryTask(ctx context.Context, session *store.S
 		return fmt.Errorf("target %q not found", session.TargetCluster)
 	}
 
+	ecs, err := h.ecsForTarget(ctx, target)
+	if err != nil {
+		return err
+	}
+
 	subnets := splitCSV(target.SubnetIds)
-	taskOutput, err := h.ecsClient.RunTask(ctx, &RunTaskInput{
+	taskOutput, err := ecs.RunTask(ctx, &RunTaskInput{
 		Cluster:        target.EcsClusterArn,
 		TaskDefinition: target.TaskDefinitionArn,
 		Subnets:        subnets,
@@ -225,6 +245,7 @@ func (h *AccessHandler) ensureBoundaryTask(ctx context.Context, session *store.S
 			"ZOA_DEPLOYMENT": session.DeploymentName,
 		},
 		Tags: map[string]string{
+			"Component":  "zoa",
 			"sre":        session.Operator,
 			"sessionId":  session.SessionID,
 			"deployment": session.DeploymentName,
@@ -360,12 +381,19 @@ func (h *AccessHandler) handleSessionStop(w http.ResponseWriter, r *http.Request
 	}
 
 	if session.TaskArn != "" {
-		if h.ecsClient == nil {
-			h.logger.Error("cannot stop session: ECS client not configured", "session_id", sessionID, "task_arn", session.TaskArn)
+		target, tErr := h.targetForSession(ctx, session)
+		if tErr != nil {
+			h.logger.Error("cannot stop session: target lookup failed", "session_id", sessionID, "error", tErr)
+			writeError(w, http.StatusInternalServerError, "internal_error", "failed to resolve session target")
+			return
+		}
+		ecs, eErr := h.ecsForTarget(ctx, target)
+		if eErr != nil {
+			h.logger.Error("cannot stop session: ECS client", "session_id", sessionID, "error", eErr)
 			writeError(w, http.StatusServiceUnavailable, "task_stop_failed", "cannot stop boundary task")
 			return
 		}
-		if err := h.ecsClient.StopTask(ctx, &StopTaskInput{
+		if err := ecs.StopTask(ctx, &StopTaskInput{
 			Cluster: session.EcsCluster,
 			TaskArn: session.TaskArn,
 			Reason:  store.StopReasonOperatorStop,
@@ -390,12 +418,13 @@ func (h *AccessHandler) handleSessionStop(w http.ResponseWriter, r *http.Request
 }
 
 type sessionJoinResponse struct {
-	SessionID     string `json:"session_id"`
-	Cluster       string `json:"cluster"`
-	TaskArn       string `json:"task_arn"`
-	Region        string `json:"region"`
-	ContainerName string `json:"container_name"`
-	ExecCommand   string `json:"exec_command"`
+	SessionID       string                    `json:"session_id"`
+	Cluster         string                    `json:"cluster"`
+	TaskArn         string                    `json:"task_arn"`
+	Region          string                    `json:"region"`
+	ContainerName   string                    `json:"container_name"`
+	ExecCommand     string                    `json:"exec_command"`
+	ExecCredentials *execcreds.APICredentials `json:"exec_credentials"`
 }
 
 func (h *AccessHandler) handleSessionJoin(w http.ResponseWriter, r *http.Request) {
@@ -443,15 +472,42 @@ func (h *AccessHandler) handleSessionJoin(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	if h.execVendor == nil {
+		h.logger.Error("exec credential vendor not configured")
+		writeError(w, http.StatusInternalServerError, "internal_error", "exec credentials not configured")
+		return
+	}
+
+	target, tErr := h.targetForSession(ctx, session)
+	if tErr != nil {
+		h.logger.Error("failed to resolve target for exec", "session_id", sessionID, "error", tErr)
+		writeError(w, http.StatusInternalServerError, "internal_error", "failed to resolve session target")
+		return
+	}
+	execRoleARN := h.execScopedRoleARN(target)
+	if execRoleARN == "" {
+		h.logger.Error("exec scoped role ARN not configured")
+		writeError(w, http.StatusInternalServerError, "internal_error", "exec credentials not configured")
+		return
+	}
+
+	execCreds, err := h.execVendor.VendForTask(ctx, execRoleARN, username, session.EcsCluster, session.TaskArn)
+	if err != nil {
+		h.logger.Error("failed to vend exec credentials", "session_id", sessionID, "error", err)
+		writeError(w, http.StatusInternalServerError, "internal_error", "failed to vend exec credentials")
+		return
+	}
+
 	h.recordAccessAudit(r, http.StatusOK, "session_join", sessionID)
 
 	writeJSON(w, http.StatusOK, sessionJoinResponse{
-		SessionID:     sessionID,
-		Cluster:       session.EcsCluster,
-		TaskArn:       session.TaskArn,
-		Region:        session.Region,
-		ContainerName: "zoa-boundary",
-		ExecCommand:   h.cfg.BoundaryECSExecCommand,
+		SessionID:       sessionID,
+		Cluster:         session.EcsCluster,
+		TaskArn:         session.TaskArn,
+		Region:          session.Region,
+		ContainerName:   "zoa-boundary",
+		ExecCommand:     h.cfg.BoundaryECSExecCommand,
+		ExecCredentials: execCreds,
 	})
 }
 
@@ -502,6 +558,40 @@ func (h *AccessHandler) recordAccessAudit(r *http.Request, statusCode int, actio
 	if err := h.auditStore.Record(r.Context(), entry); err != nil {
 		h.logger.Error("failed to record audit entry", "error", err)
 	}
+}
+
+func (h *AccessHandler) ecsForTarget(ctx context.Context, target *store.Target) (ECSAPI, error) {
+	if h.ecsFactory != nil {
+		return h.ecsFactory(ctx, target)
+	}
+	if h.ecsClient == nil {
+		return nil, fmt.Errorf("ecs client not configured")
+	}
+	return h.ecsClient, nil
+}
+
+func (h *AccessHandler) execScopedRoleARN(target *store.Target) string {
+	if target != nil && target.AccountId != "" && target.TargetID != "" {
+		return targetroles.ExecScopedRoleARN(target.AccountId, target.TargetID)
+	}
+	if h.cfg != nil && h.cfg.ExecScopedRoleARN != "" {
+		return h.cfg.ExecScopedRoleARN
+	}
+	return ""
+}
+
+func (h *AccessHandler) targetForSession(ctx context.Context, session *store.Session) (*store.Target, error) {
+	if session == nil || session.TargetCluster == "" {
+		return nil, fmt.Errorf("session has no target")
+	}
+	target, err := h.targetStore.Get(ctx, session.TargetCluster)
+	if err != nil {
+		return nil, fmt.Errorf("looking up target %q: %w", session.TargetCluster, err)
+	}
+	if target == nil {
+		return nil, fmt.Errorf("target %q not found", session.TargetCluster)
+	}
+	return target, nil
 }
 
 func splitCSV(s string) []string {

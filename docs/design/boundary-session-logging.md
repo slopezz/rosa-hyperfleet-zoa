@@ -23,11 +23,13 @@ From [Monitor Amazon ECS Exec commands using CloudWatch Logs](https://docs.aws.a
 
 1. **Cluster** — `logging = OVERRIDE`, exec log group = `.../ssm-sessions`, same CMK as both log groups.
 2. **Task role** — `logs:DescribeLogGroups`; `CreateLogStream` / `DescribeLogStreams` / `PutLogEvents` on **exec log group only**; KMS `GenerateDataKey` / `Decrypt` on the shared CMK.
-3. **Caller** — KMS for encrypted exec channel (e.g. `OrganizationAccountAccessRole` on RC ZOA key).
+3. **Caller (ECS Exec)** — KMS for encrypted exec channel (`*-zoa-access-exec-scoped` role vended on session join).
 4. **RunTask** — `EnableExecuteCommand: true` (`pkg/awsecs/client.go`).
 5. **Image** — **`script` and `cat`** (`util-linux` in `Containerfile.boundary`); startup fails if missing.
 
-**Interactive shell user:** ECS Exec always attaches as **root**; Terraform sets `ecs_exec_interactive_command` (task env `ZOA_ECS_EXEC_COMMAND`, default `runuser -u sre -- /bin/bash -l`). ZOA Access returns it as `exec_command` on `POST /sessions/join/{id}`; the CLI passes it through to `ExecuteCommand` with no separate business logic.
+**Interactive shell user:** ECS Exec always attaches as **root**; Terraform sets `ecs_exec_interactive_command` (Access Lambda env `ZOA_ECS_EXEC_COMMAND`, default `runuser -u sre -- /bin/bash -l`). ZOA Access returns it as `exec_command` on `POST /sessions/join/{id}`; the CLI passes it through to `ExecuteCommand` with no separate business logic.
+
+**Exec credentials:** On join, Access assumes `${regional_id}-zoa-access-exec-scoped` with a session policy limiting `ecs:ExecuteCommand` to that session's task ARN and returns `exec_credentials` to the CLI. The laptop does not assume `OrganizationAccountAccessRole` for exec.
 
 **Skel files:** `/home/sre/.claude/CLAUDE.md`, baked `.claude/settings.json`, and runtime `.claude/ZOA_SESSION.md` — use `ls -la /home/sre` (plain `ls` hides dotfiles).
 
