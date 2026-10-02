@@ -46,18 +46,21 @@ func NewVendor(client AssumeRoleAPI, duration time.Duration) *Vendor {
 }
 
 // VendForTask returns temporary credentials that can ecs:ExecuteCommand only on the given task.
-func (v *Vendor) VendForTask(ctx context.Context, execRoleARN, username, clusterARN, taskARN string) (*APICredentials, error) {
+func (v *Vendor) VendForTask(ctx context.Context, execRoleARN, username, clusterARN, taskARN, kmsKeyARN string) (*APICredentials, error) {
 	if v == nil || v.client == nil {
 		return nil, fmt.Errorf("exec credential vendor not configured")
 	}
 	if execRoleARN == "" {
 		return nil, fmt.Errorf("exec scoped role ARN not configured")
 	}
+	if kmsKeyARN == "" {
+		return nil, fmt.Errorf("KMS key ARN not configured")
+	}
 	if username == "" || clusterARN == "" || taskARN == "" {
 		return nil, fmt.Errorf("username, cluster ARN, and task ARN are required")
 	}
 
-	policy, err := sessionPolicy(clusterARN, taskARN)
+	policy, err := sessionPolicy(clusterARN, taskARN, kmsKeyARN)
 	if err != nil {
 		return nil, err
 	}
@@ -99,7 +102,7 @@ func apiCredentialsFromSTS(c *types.Credentials) *APICredentials {
 	}
 }
 
-func sessionPolicy(clusterARN, taskARN string) (string, error) {
+func sessionPolicy(clusterARN, taskARN, kmsKeyARN string) (string, error) {
 	doc := map[string]interface{}{
 		"Version": "2012-10-17",
 		"Statement": []map[string]interface{}{
@@ -128,6 +131,16 @@ func sessionPolicy(clusterARN, taskARN string) (string, error) {
 					"ssmmessages:OpenDataChannel",
 				},
 				"Resource": "*",
+			},
+			{
+				"Sid":    "KMSForECSExecChannel",
+				"Effect": "Allow",
+				"Action": []string{
+					"kms:Decrypt",
+					"kms:GenerateDataKey",
+					"kms:DescribeKey",
+				},
+				"Resource": kmsKeyARN,
 			},
 		},
 	}

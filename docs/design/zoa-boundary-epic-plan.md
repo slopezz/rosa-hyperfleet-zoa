@@ -644,7 +644,7 @@ Go interfaces: `Session` struct, `SessionStore` interface with `Put`, `Get`, `Li
 - ECS task tags: Access Lambda sets tamper-proof tags (`sre`, `sessionId`, `deployment`, `target`) on every ECS task at creation — no `ecs:TagResource` on task role
 - SSM Parameter Store `/zoa/deployments` in Central Account (or RC account for dev/ephemeral)
 - Cross-account IAM: Access Lambda `sts:AssumeRole` into MC for `ecs:RunTask`; MC boundary task role on MC Lambda resource policy
-- Bedrock: classic **Invoke** in-region only — application inference profile sourced from the regional Haiku foundation model (no `us.anthropic.*` geo profiles). Task env `CLAUDE_CODE_USE_BEDROCK=1`, `CLAUDE_CODE_USE_MANTLE=0`. IAM `bedrock:InvokeModel` + scoped Marketplace subscribe.
+- Bedrock: classic **Invoke** in-region only — application inference profile sourced from the regional Haiku foundation model (no `us.anthropic.*` geo profiles). Task env `CLAUDE_CODE_USE_BEDROCK=1`. IAM `bedrock:InvokeModel` + scoped Marketplace subscribe.
 - Bedrock model invocation logging: `aws_bedrock_model_invocation_logging_configuration` to CloudWatch Logs (metadata only — token counts, model ID, identity ARN. No payload capture, no S3).
 - Worker Lambda IAM: `ecs:StopTask` + `ecs:DescribeTasks` + reaper EventBridge schedule
 - Modified `zoa-lambda` module: SSM target self-registration, `SESSIONS_TABLE` env var, boundary module output wiring
@@ -701,7 +701,7 @@ Bedrock is **regional** — each region has its own endpoint and model catalog. 
 | Cost control | Haiku-only default keeps costs low. Override foundation model ID per region only if a different model is approved. |
 | Model availability | Verify Haiku 4.5 + app profile creation in each HyperFleet region before rollout. |
 
-Task env (Terraform): `CLAUDE_CODE_USE_BEDROCK=1`, `CLAUDE_CODE_USE_MANTLE=0`, `ANTHROPIC_MODEL` / `ANTHROPIC_DEFAULT_HAIKU_MODEL` = application inference profile ID.
+Task env (Terraform): `CLAUDE_CODE_USE_BEDROCK=1`, `ANTHROPIC_MODEL` / `ANTHROPIC_DEFAULT_HAIKU_MODEL` = application inference profile ID.
 
 **DynamoDB table in `terraform/modules/zoa/`:**
 - `boundary-sessions` — PK: `sessionId`, GSIs: `operator-index` (PK: operator, SK: createdAt), `status-deadline-index` (PK: status, SK: deadline), `date-bucket-index` (PK: dateBucket, SK: createdAt), `task-id-index` (PK: taskId). TTL: 30 days.

@@ -164,19 +164,20 @@ RUN useradd --uid 1000 --create-home --shell /bin/bash sre
 
 # Baked home for the sre user (Claude + shell). Ephemeral per task — no EFS skel copy at runtime.
 COPY --chown=sre:sre boundary/home-sre/ /home/sre/
+COPY --chmod=755 boundary/zoa-boundary-entrypoint.sh /usr/local/bin/zoa-boundary-entrypoint.sh
 # Claude Code looks for ~/.local/bin/claude first; point at the image binary.
 RUN mkdir --parents /home/sre/.local/bin \
     && ln --symbolic /usr/local/bin/claude /home/sre/.local/bin/claude \
     && chown --recursive sre:sre /home/sre/.local
 
-# Bedrock model + Claude flags are set on the ECS task (Terraform). Image defaults match for local runs.
+# Claude/Bedrock flags and model ID: ECS task env from Terraform overrides these for Fargate.
 ENV HOME=/home/sre \
     PS1='[\u@zoa:${ZOA_DEPLOYMENT:-?}/${ZOA_TARGET:-?}] \w \$ ' \
-    CLAUDE_CODE_USE_MANTLE=0 \
     CLAUDE_CODE_USE_BEDROCK=1 \
     DISABLE_AUTOUPDATER=1
 
 USER sre
 WORKDIR /home/sre
 
+ENTRYPOINT ["/usr/local/bin/zoa-boundary-entrypoint.sh"]
 CMD ["sleep", "infinity"]

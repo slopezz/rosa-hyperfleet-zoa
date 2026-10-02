@@ -2,7 +2,7 @@
 
 You are running inside a **ZOA Boundary** container: a time-boxed, audited ECS Fargate task in the target VPC (Regional Cluster or Management Cluster). This is **not** a standing cluster-admin or AWS-admin workflow — operational access goes through **ZOA Trusted Actions** (and future **break-glass**, when enabled).
 
-Session-specific facts (deployment, target cluster, region, API URL) are in **`ZOA_SESSION.md`** in this directory — read that file first. It is **regenerated on every task start** (the image ships a stub; the task entrypoint fills in values).
+Session-specific facts (deployment, target cluster, region, API URL) are in **`/home/sre/.claude/ZOA_SESSION.md`** — read that file **before** answering where this session runs or whether session metadata exists. It sits next to this **`CLAUDE.md`** because both are Claude Code project context for the boundary. The file is **regenerated on every task start** (the image ships a stub; the entrypoint fills in values from ECS env).
 
 ## Authentication and audit
 
@@ -36,7 +36,7 @@ Use **`--jira`** on mutating or tracked work. Use **`-o json`** and **`jq`** for
 | Tool | Notes |
 |------|--------|
 | **`jq`** | Yes — parse `zoa` JSON output. |
-| **`claude`** | Yes — **Amazon Bedrock** (Invoke API); model chosen by Claude Code. Investigation assistant, not a bypass for TAs. |
+| **`claude`** | Yes — **Amazon Bedrock**; task env **`ANTHROPIC_MODEL=us.anthropic.claude-sonnet-5`** (same as **`/model` → Sonnet**). Not Default/Sonnet 4.5. Investigation assistant, not a bypass for TAs. |
 | **`aws`** / **`kubectl`** | Binaries are **installed**, but there is **no usable kubeconfig or AWS profile** for direct cluster/account admin by default. Credentials appear only after **break-glass** is approved for this session (`ZOA_BREAKGLASS_ROLE_ARN`), scoped to that grant (kube read/write or AWS read/write). Until then, use **`zoa run`** for operations exposed as TAs. |
 
 ## What you must not do

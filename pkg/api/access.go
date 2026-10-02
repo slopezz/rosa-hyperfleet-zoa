@@ -51,7 +51,7 @@ type StopTaskInput struct {
 
 // ExecCredentialVendor vends ECS Exec credentials scoped to one boundary task.
 type ExecCredentialVendor interface {
-	VendForTask(ctx context.Context, execRoleARN, username, clusterARN, taskARN string) (*execcreds.APICredentials, error)
+	VendForTask(ctx context.Context, execRoleARN, username, clusterARN, taskARN, kmsKeyARN string) (*execcreds.APICredentials, error)
 }
 
 // AccessHandler handles HTTP requests for the access Lambda mode.
@@ -492,7 +492,7 @@ func (h *AccessHandler) handleSessionJoin(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	execCreds, err := h.execVendor.VendForTask(ctx, execRoleARN, username, session.EcsCluster, session.TaskArn)
+	execCreds, err := h.execVendor.VendForTask(ctx, execRoleARN, username, session.EcsCluster, session.TaskArn, h.cfg.KMSKeyARN)
 	if err != nil {
 		h.logger.Error("failed to vend exec credentials", "session_id", sessionID, "error", err)
 		writeError(w, http.StatusInternalServerError, "internal_error", "failed to vend exec credentials")
