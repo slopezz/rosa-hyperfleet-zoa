@@ -109,9 +109,11 @@ type mockTargetStoreAccess struct {
 
 type mockECSAccess struct {
 	stopErr error
+	lastRun *RunTaskInput
 }
 
 func (m *mockECSAccess) RunTask(_ context.Context, input *RunTaskInput) (*RunTaskOutput, error) {
+	m.lastRun = input
 	return &RunTaskOutput{
 		TaskArn: "arn:aws:ecs:us-east-1:123456789012:task/test-cluster/task-abc",
 		TaskID:  "task-abc",
@@ -322,6 +324,7 @@ func TestAccessHandler_WhenSessionJoinFromCreating_ItShouldRunTask(t *testing.T)
 		},
 	}
 	h := testAccessHandlerWithECS(sessions, targets)
+	ecs := h.ecsClient.(*mockECSAccess)
 
 	rr := doAccessRequest(h, "POST", "/api/v0/sessions/join/session-123", nil, accessHeaders())
 
@@ -333,6 +336,12 @@ func TestAccessHandler_WhenSessionJoinFromCreating_ItShouldRunTask(t *testing.T)
 	}
 	if sessions.sessions[0].TaskArn == "" {
 		t.Error("expected task ARN after join")
+	}
+	if ecs.lastRun == nil {
+		t.Fatal("expected RunTask to be called")
+	}
+	if ecs.lastRun.Tags["Component"] != "zoa" || ecs.lastRun.Tags["function"] != "zoa" {
+		t.Errorf("expected Component and function zoa tags on task, got %v", ecs.lastRun.Tags)
 	}
 }
 

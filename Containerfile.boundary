@@ -169,11 +169,11 @@ RUN mkdir --parents /home/sre/.local/bin \
     && ln --symbolic /usr/local/bin/claude /home/sre/.local/bin/claude \
     && chown --recursive sre:sre /home/sre/.local
 
-# Mantle model + Claude flags are set on the ECS task (Terraform). Image defaults match for local runs.
+# Bedrock model + Claude flags are set on the ECS task (Terraform). Image defaults match for local runs.
 ENV HOME=/home/sre \
     PS1='[\u@zoa:${ZOA_DEPLOYMENT:-?}/${ZOA_TARGET:-?}] \w \$ ' \
-    CLAUDE_CODE_USE_MANTLE=1 \
-    CLAUDE_CODE_USE_BEDROCK=0 \
+    CLAUDE_CODE_USE_MANTLE=0 \
+    CLAUDE_CODE_USE_BEDROCK=1 \
     DISABLE_AUTOUPDATER=1
 
 USER sre

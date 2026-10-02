@@ -246,6 +246,7 @@ func (h *AccessHandler) ensureBoundaryTask(ctx context.Context, session *store.S
 		},
 		Tags: map[string]string{
 			"Component":  "zoa",
+			"function":   "zoa",
 			"sre":        session.Operator,
 			"sessionId":  session.SessionID,
 			"deployment": session.DeploymentName,
