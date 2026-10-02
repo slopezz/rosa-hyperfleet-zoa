@@ -2,29 +2,29 @@
 
 ## Overview
 
-ZOA deploys **multiple Lambda functions per VPC** (one set per cluster: RC + each MC):
+ZOA deploys **multiple Lambda functions per deployment**:
 
 | Lambda | Trigger | Purpose |
 |---|---|---|
-| **API** | Function URL (IAM auth) | CLI requests, sync TAs, streaming downloads |
-| **Worker** | EventBridge + self-invoke | Reconciler, GC, async TA execution |
-| **Access** · PLANNED | API Gateway (public) | ZOA boundary session management, approvals |
+| **API** | Function URL (IAM auth) | CLI requests, sync TAs, streaming downloads (per VPC: RC + each MC) |
+| **Worker** | EventBridge + self-invoke | Reconciler (1m), GC (5m), **boundary session reaper** (5m), async/approved TA execution |
+| **Access** | Function URL (IAM auth) | ZOA boundary session lifecycle, target discovery (RC account, no VPC) |
 
-API and Worker use the **same binary** (`zoa-lambda`), differentiated by the `HANDLER_MODE` environment variable. Access will be a separate binary.
+API, Worker, and Access use the **same container image** (`zoa-lambda`), differentiated by the `HANDLER_MODE` environment variable (`api`, `worker`, `access`).
 
 ## Why Separate Functions
 
 Each Lambda has different operational characteristics that are per-function AWS settings:
 
-| Setting | API | Worker | Access (PLANNED) |
-|---------|-----|--------|-------------------|
-| Invocation | Function URL (streaming) | EventBridge + self-invoke | API Gateway |
-| VPC | Yes (EKS access) | Yes (EKS access) | No (no cluster access) |
+| Setting | API | Worker | Access |
+|---------|-----|--------|--------|
+| Invocation | Function URL (streaming) | EventBridge + self-invoke | Function URL (standard) |
+| VPC | Yes (EKS access) | Yes (EKS access) | No (ECS RunTask, DynamoDB only) |
 | Throttle behavior | HTTP 429 to caller | AWS queues + retries (up to 6h) | HTTP 429 to caller |
 
 These cannot share a single function because timeout, concurrency, invocation mode (streaming vs standard handler), and VPC attachment are per-function settings.
 
-Timeout and concurrency values are configured in Terraform (`terraform/modules/zoa-lambda/variables.tf`).
+Timeout and concurrency values are configured in Terraform (`terraform/modules/zoa-lambda/variables.tf`, `terraform/modules/zoa-access/`).
 
 ## Event Routing
 
@@ -33,8 +33,11 @@ The Worker Lambda uses the `route` field in the event payload:
 ```json
 {"route": "reconciler"}
 {"route": "gc"}
+{"route": "reaper"}
 {"route": "execute", "execution_id": "abc123"}
 ```
+
+The **reaper** route scans DynamoDB for boundary sessions past their deadline and calls `ecs:StopTask` on the matching boundary ECS cluster (implemented in `pkg/scheduler/reaper.go`, scheduled from `terraform/modules/zoa-lambda/main.tf`).
 
 ## Self-Invocation Pattern
 
@@ -57,7 +60,7 @@ When the reconciler dispatches an approved TA:
 Each Lambda has its own `reserved_concurrent_executions` pool (configured in Terraform via `lambda_api_concurrency` and `lambda_worker_concurrency`):
 
 - **API Lambda** — each concurrent CLI request uses one slot. Under saturation, excess requests get throttled (429).
-- **Worker Lambda** — 1 slot is consumed by the scheduled reconciler/GC tick, the rest are available for self-invoked TA executions. Excess invocations queue in Lambda's internal retry queue (up to 6 hours).
+- **Worker Lambda** — scheduled ticks (reconciler, GC, reaper) and self-invoked TA executions share the worker pool. Excess invocations queue in Lambda's internal retry queue (up to 6 hours).
 
 Reserved concurrency guarantees slots are always available (not stolen by other functions in the account) and caps cost by limiting fan-out.
 
@@ -71,6 +74,7 @@ Each route gets a `context.WithTimeout` enforced in code:
 |---|---|---|
 | `reconciler` | 55s | Must finish quickly; runs every 60s |
 | `gc` | 55s | Cleanup can be deferred; runs every 5min |
+| `reaper` | 55s | Session enforcement; runs every 5min |
 | `execute` | 295s | TA execution; bounded by Lambda timeout |
 
 All values are **env-var tunable** without code redeployment.
@@ -87,15 +91,18 @@ Each scheduled phase processes at most `MAX_BATCH_PER_TICK` items (default 30). 
 
 ```mermaid
 graph TD
-    CLI["CLI (laptop)"] -->|"Function URL, SigV4"| API["API Lambda"]
-    API -->|"streaming response"| CLI
+    CLI["CLI (laptop)"] -->|"Access Function URL"| Access["Access Lambda"]
+    CLI -->|"ECS Exec"| Boundary["ZOA boundary"]
+    Boundary -->|"API Function URL, SigV4"| API["API Lambda"]
+    API -->|"streaming response"| Boundary
 
-    EB["EventBridge Scheduler"] -->|"rate(1m) / rate(5m)"| Worker["Worker Lambda<br/>(reconciler, GC)"]
+    EB["EventBridge Scheduler"] -->|"rate(1m) / rate(5m)"| Worker["Worker Lambda<br/>(reconciler, GC, reaper)"]
     Worker -->|"self-invoke<br/>InvocationType=Event"| Slot["Worker Lambda<br/>(concurrent slot)"]
 
-    API --> Data["DynamoDB, S3, K8s"]
-    Worker --> Data
-    Slot -->|"execute single TA"| Data
+    Access --> Data["DynamoDB, ECS"]
+    API --> Data2["DynamoDB, S3, K8s"]
+    Worker --> Data2
+    Slot -->|"execute single TA"| Data2
 ```
 
 ## Cross-Account Access (MC Lambdas)
@@ -115,5 +122,6 @@ No STS AssumeRole needed for data access — policies are on the resources thems
 | Reserved concurrency | Prevents noisy-neighbor issues; caps cost |
 | 300s Lambda timeout | Gives 295s for code; handles slow TAs without hitting AWS 900s limit |
 | Same binary | Zero divergence; route by env var + event payload |
+| Access via Function URL | IAM auth without API Gateway; SSM publishes URL for CLI discovery |
 | EMF metrics | CW Exporter already scrapes CloudWatch; EMF is zero-config |
 | SQS DLQ | Catch failures from EventBridge and self-invocations |

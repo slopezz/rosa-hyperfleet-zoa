@@ -67,80 +67,68 @@ Composite sync availability: **99.95%** (~22 min/month downtime budget, bottlene
 ZOA deploys **two Lambda functions per target VPC** (one per EKS cluster). Both use the same container image differentiated by `HANDLER_MODE`:
 
 - **API Lambda** — Function URL with IAM auth (invoke mode: `RESPONSE_STREAM`). Handles HTTP requests from the CLI and executes sync TAs directly.
-- **Worker Lambda** — EventBridge-triggered (invoke mode: `BUFFERED`). Runs the reconciler (1m), GC (5m), and TA execution for approved workflows (sync or async) via self-invocation.
+- **Worker Lambda** — EventBridge-triggered (invoke mode: `BUFFERED`). Runs the reconciler (1m), GC (5m), boundary session **reaper** (5m), and TA execution for approved workflows (sync or async) via self-invocation.
+- **Access Lambda** — Function URL with IAM auth (RC account, no VPC). Session start/stop/list and cross-account `RunTask` for ZOA boundary.
 
 The split exists because Lambda timeout, concurrency, and invocation mode (streaming vs standard) are per-function settings.
 
 ```mermaid
 graph TD
     subgraph laptop["SRE Laptop"]
-        L["$ kinit / rh-saml<br/>$ zoa session start<br/>$ zoa approve/reject"]
+        L["$ kinit / rh-saml<br/>$ zoa session start D T<br/>$ zoa session join …"]
     end
 
     subgraph rc["RC Account"]
-        AGW["ZOA Access API GW<br/>(public, IAM) · PLANNED"]
-        AL["ZOA Access Lambda<br/>(no VPC) · PLANNED"]
+        ACCESS["ZOA Access Lambda<br/>(Function URL, IAM)"]
         DDB["DynamoDB + S3<br/>(centralized state)"]
         subgraph rc_vpc["Target RC VPC"]
-            BOUNDARY_RC["ZOA boundary<br/>ECS task · PLANNED"]
+            BOUNDARY_RC["ZOA boundary<br/>ECS Fargate + ECS Exec"]
             EB_RC["EventBridge Scheduler"]
             API_RC["API Lambda<br/>(Function URL, streaming)"]
-            WORKER_RC["Worker Lambda<br/>(self-invoke)"]
+            WORKER_RC["Worker Lambda<br/>(reconciler, GC, reaper)"]
             EKS_RC["RC EKS"]
         end
     end
 
     subgraph mc["Target MC Account"]
         subgraph mc_vpc["Target MC VPC"]
-            BOUNDARY_MC["ZOA boundary<br/>ECS task · PLANNED"]
+            BOUNDARY_MC["ZOA boundary<br/>ECS Fargate + ECS Exec"]
             EB_MC["EventBridge Scheduler"]
             API_MC["API Lambda<br/>(Function URL, streaming)"]
-            WORKER_MC["Worker Lambda<br/>(self-invoke)"]
+            WORKER_MC["Worker Lambda<br/>(reconciler, GC, reaper)"]
             EKS_MC["MC EKS"]
         end
     end
 
-    %% ZOA Access (PLANNED): session mgmt + approvals
-    L -->|"(1) start/list/stop<br/>approve/reject · PLANNED"| AGW
-    AGW --> AL
-    AL -->|"read/write<br/>(sessions, approve/reject)"| DDB
-    AL -->|"ecs:RunTask · PLANNED"| BOUNDARY_RC
-    AL -->|"ecs:RunTask · PLANNED"| BOUNDARY_MC
+    L -->|"SigV4: session start/stop/list"| ACCESS
+    ACCESS -->|"sessions, RunTask"| DDB
+    ACCESS -->|"ecs:RunTask"| BOUNDARY_RC
+    ACCESS -->|"ecs:RunTask (cross-account)"| BOUNDARY_MC
 
-    %% SRE connects to container via SSM (PLANNED)
-    L -.->|"(2) SSM · PLANNED"| BOUNDARY_RC
-    L -.->|"(2) SSM · PLANNED"| BOUNDARY_MC
+    L -.->|"ECS Exec (session-manager-plugin)"| BOUNDARY_RC
+    L -.->|"ECS Exec"| BOUNDARY_MC
 
-    %% ZOA boundary calls local API Lambda (PLANNED)
-    BOUNDARY_RC -->|"zoa CLI (SigV4)"| API_RC
-    BOUNDARY_MC -->|"zoa CLI (SigV4)"| API_MC
+    BOUNDARY_RC -->|"zoa run (SigV4)"| API_RC
+    BOUNDARY_MC -->|"zoa run (SigV4)"| API_MC
 
-    %% Break-glass: direct kubectl from container (PLANNED)
-    BOUNDARY_RC -.->|"break-glass · PLANNED"| EKS_RC
-    BOUNDARY_MC -.->|"break-glass · PLANNED"| EKS_MC
+    BOUNDARY_RC -.->|"break-glass · future"| EKS_RC
+    BOUNDARY_MC -.->|"break-glass · future"| EKS_MC
 
-    %% Today: CLI calls Function URL directly (TEMPORARY)
-    L -->|"SigV4 · TEMPORARY"| API_RC
-    L -->|"SigV4 · TEMPORARY"| API_MC
+    EB_RC -->|"1m reconciler / 5m GC / 5m reaper"| WORKER_RC
+    EB_MC -->|"1m reconciler / 5m GC / 5m reaper"| WORKER_MC
 
-    %% EventBridge → Workers
-    EB_RC -->|"reconciler(1m)<br/>GC(5m)<br/>reaper(5m) · PLANNED"| WORKER_RC
-    EB_MC -->|"reconciler(1m)<br/>GC(5m)<br/>reaper(5m) · PLANNED"| WORKER_MC
-
-    %% Lambdas → EKS
     API_RC --> EKS_RC
     WORKER_RC --> EKS_RC
     API_MC --> EKS_MC
     WORKER_MC --> EKS_MC
 
-    %% Data access
     API_RC -->|"read/write"| DDB
     WORKER_RC --> DDB
     API_MC -.->|"cross-account"| DDB
     WORKER_MC -.->|"cross-account"| DDB
 ```
 
-> **Note:** Components marked `· PLANNED` are part of the target architecture but not yet implemented. Today, the CLI calls API Lambda Function URLs directly via SigV4 (`TEMPORARY` path). Target state: CLI → ZOA Access → ZOA boundary (ECS + SSM) → local API Lambda.
+> **Note:** `zoa session start <deployment> <target>` uses positional args (e.g. `zoa session start us-east-1 mc01`). ZOA Access is a **Function URL** with IAM auth (not API Gateway). TA execution from investigations uses the per-VPC API Lambda Function URL inside the boundary container (`ZOA_API_URL`). Break-glass kubectl and approval-gated TAs are not implemented yet.
 
 ### Execution Modes
 
@@ -150,8 +138,8 @@ All modes persist execution state in DynamoDB before dispatch.
 |------|----------|------|
 | **Sync, auto** | None | CLI → API Lambda → execute in-process → output returned inline in HTTP response |
 | **Async, auto** | None | CLI → API Lambda → create Job → reconciler polls → output fetched from S3 |
-| **Sync, manual** | Required | CLI → API Lambda → pending → approve → reconciler → execute → inline · *PLANNED* |
-| **Async, manual** | Required | CLI → API Lambda → pending → approve → reconciler → create Job · *PLANNED* |
+| **Sync, manual** | Required | CLI → API Lambda → pending → approve → reconciler → execute → inline · *future* |
+| **Async, manual** | Required | CLI → API Lambda → pending → approve → reconciler → create Job · *future* |
 
 **Sync output delivery**: the API response contains the TA output (on success) or execution logs (on failure) directly — no second HTTP call or S3 fetch required. S3 archival happens asynchronously for long-term retention.
 
