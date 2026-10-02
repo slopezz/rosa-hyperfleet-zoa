@@ -27,6 +27,10 @@ From [Monitor Amazon ECS Exec commands using CloudWatch Logs](https://docs.aws.a
 4. **RunTask** — `EnableExecuteCommand: true` (`pkg/awsecs/client.go`).
 5. **Image** — **`script` and `cat`** (`util-linux` in `Containerfile.boundary`); startup fails if missing.
 
+**Interactive shell user:** ECS Exec always attaches as **root**; Terraform sets `ecs_exec_interactive_command` (task env `ZOA_ECS_EXEC_COMMAND`, default `runuser -u sre -- /bin/bash -l`). ZOA Access returns it as `exec_command` on `POST /sessions/join/{id}`; the CLI passes it through to `ExecuteCommand` with no separate business logic.
+
+**Skel files:** `/home/sre/.claude/CLAUDE.md`, baked `.claude/settings.json`, and runtime `.claude/ZOA_SESSION.md` — use `ls -la /home/sre` (plain `ls` hides dotfiles).
+
 **Historical root cause (eph, Oct 2026):** Missing `script` in the image; exec transcripts never shipped. Secondary confusion: only reading `container/...` streams in the container log group.
 
 ## What exec logging captures

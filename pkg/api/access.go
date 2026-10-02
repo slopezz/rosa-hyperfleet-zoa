@@ -395,6 +395,7 @@ type sessionJoinResponse struct {
 	TaskArn       string `json:"task_arn"`
 	Region        string `json:"region"`
 	ContainerName string `json:"container_name"`
+	ExecCommand   string `json:"exec_command"`
 }
 
 func (h *AccessHandler) handleSessionJoin(w http.ResponseWriter, r *http.Request) {
@@ -450,6 +451,7 @@ func (h *AccessHandler) handleSessionJoin(w http.ResponseWriter, r *http.Request
 		TaskArn:       session.TaskArn,
 		Region:        session.Region,
 		ContainerName: "zoa-boundary",
+		ExecCommand:   h.cfg.BoundaryECSExecCommand,
 	})
 }
 

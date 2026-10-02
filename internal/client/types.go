@@ -305,4 +305,5 @@ type SessionJoinResponse struct {
 	ClusterArn    string `json:"cluster"`
 	ContainerName string `json:"container_name"`
 	Region        string `json:"region"`
+	ExecCommand   string `json:"exec_command"`
 }
