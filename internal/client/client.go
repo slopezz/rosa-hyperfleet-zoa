@@ -262,6 +262,11 @@ func (c *Client) SessionJoin(ctx context.Context, sessionID string) (*SessionJoi
 	return &resp, nil
 }
 
+func (c *Client) SessionExecAttached(ctx context.Context, sessionID, execSessionID string) error {
+	body := map[string]string{"exec_session_id": execSessionID}
+	return c.doV0(ctx, http.MethodPost, "/sessions/exec-attached/"+url.PathEscape(sessionID), body, nil)
+}
+
 func (c *Client) ListSessions(ctx context.Context, query url.Values) (*SessionList, error) {
 	path := "/sessions"
 	if len(query) > 0 {

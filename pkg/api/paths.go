@@ -12,13 +12,14 @@ const (
 
 // Access / boundary routes (HANDLER_MODE=access). Same v0 prefix and error envelope as TA routes.
 const (
-	PathTargets       = V0Prefix + "/targets"
-	PathSessions      = V0Prefix + "/sessions"
-	PathSessionsStart = V0Prefix + "/sessions/start"
-	PathSessionsStop  = V0Prefix + "/sessions/stop/"
-	PathSessionsJoin  = V0Prefix + "/sessions/join/"
-	PathApprove       = V0Prefix + "/approve/"
-	PathReject        = V0Prefix + "/reject/"
+	PathTargets            = V0Prefix + "/targets"
+	PathSessions           = V0Prefix + "/sessions"
+	PathSessionsStart      = V0Prefix + "/sessions/start"
+	PathSessionsStop       = V0Prefix + "/sessions/stop/"
+	PathSessionsJoin       = V0Prefix + "/sessions/join/"
+	PathSessionsExecAttach = V0Prefix + "/sessions/exec-attached/"
+	PathApprove            = V0Prefix + "/approve/"
+	PathReject             = V0Prefix + "/reject/"
 )
 
 // Operational routes (both handler modes).

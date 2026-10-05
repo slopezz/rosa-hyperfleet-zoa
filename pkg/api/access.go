@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/openshift-online/rosa-hyperfleet-zoa/internal/version"
+	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/boundaryexec"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/config"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/execcreds"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/store"
@@ -114,6 +116,7 @@ func (h *AccessHandler) registerRoutes() {
 	h.mux.HandleFunc("GET "+PathSessions, h.handleSessionList)
 	h.mux.HandleFunc("POST "+PathSessionsStop+"{id}", h.handleSessionStop)
 	h.mux.HandleFunc("POST "+PathSessionsJoin+"{id}", h.handleSessionJoin)
+	h.mux.HandleFunc("POST "+PathSessionsExecAttach+"{id}", h.handleSessionExecAttached)
 
 	h.mux.HandleFunc("GET "+PathTargets, h.handleTargetList)
 
@@ -138,6 +141,20 @@ type sessionStartResponse struct {
 	TaskArn   string              `json:"task_arn,omitempty"`
 	Deadline  string              `json:"deadline"`
 	Region    string              `json:"region,omitempty"`
+}
+
+func (h *AccessHandler) sessionDurationFromRequest(timeoutHours int) (time.Duration, error) {
+	maxHours := h.cfg.SessionMaxDurationHours
+	if maxHours <= 0 {
+		maxHours = 4
+	}
+	if timeoutHours <= 0 {
+		return time.Duration(maxHours) * time.Hour, nil
+	}
+	if timeoutHours > maxHours {
+		return 0, fmt.Errorf("timeout_hours must be between 1 and %d", maxHours)
+	}
+	return time.Duration(timeoutHours) * time.Hour, nil
 }
 
 func (h *AccessHandler) handleSessionStart(w http.ResponseWriter, r *http.Request) {
@@ -173,13 +190,14 @@ func (h *AccessHandler) handleSessionStart(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	timeoutHours := 4
-	if req.TimeoutHours > 0 && req.TimeoutHours <= 8 {
-		timeoutHours = req.TimeoutHours
+	sessionDuration, err := h.sessionDurationFromRequest(req.TimeoutHours)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_timeout", err.Error())
+		return
 	}
 
 	now := time.Now()
-	deadline := now.Add(time.Duration(timeoutHours) * time.Hour)
+	deadline := now.Add(sessionDuration)
 	sessionID := uuid.New().String()
 
 	session := &store.Session{
@@ -240,9 +258,12 @@ func (h *AccessHandler) ensureBoundaryTask(ctx context.Context, session *store.S
 		Subnets:        subnets,
 		SecurityGroup:  target.SecurityGroupId,
 		Environment: map[string]string{
-			"ZOA_API_URL":    target.FunctionUrl,
-			"ZOA_TARGET":     session.TargetCluster,
-			"ZOA_DEPLOYMENT": session.DeploymentName,
+			"ZOA_API_URL":           target.FunctionUrl,
+			"ZOA_TARGET":            session.TargetCluster,
+			"ZOA_DEPLOYMENT":        session.DeploymentName,
+			"ZOA_DEPLOYMENT_TARGET": strings.ToLower(target.TargetType),
+			"ZOA_SESSION_ID":        session.SessionID,
+			"ZOA_OPERATOR":          session.Operator,
 		},
 		Tags: map[string]string{
 			"Component":  "zoa",
@@ -509,6 +530,64 @@ func (h *AccessHandler) handleSessionJoin(w http.ResponseWriter, r *http.Request
 		ContainerName:   "zoa-boundary",
 		ExecCommand:     h.cfg.BoundaryECSExecCommand,
 		ExecCredentials: execCreds,
+	})
+}
+
+type sessionExecAttachedRequest struct {
+	ExecSessionID string `json:"exec_session_id"`
+}
+
+func (h *AccessHandler) handleSessionExecAttached(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	sessionID := r.PathValue("id")
+	operatorARN := r.Header.Get("X-Operator")
+
+	username, _, err := ExtractSREIdentity(operatorARN)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_identity", "cannot extract SRE identity")
+		return
+	}
+
+	var req sessionExecAttachedRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body")
+		return
+	}
+	if err := boundaryexec.ValidateExecSessionID(req.ExecSessionID); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_exec_session_id", err.Error())
+		return
+	}
+
+	session, err := h.sessionStore.Get(ctx, sessionID)
+	if err != nil {
+		h.logger.Error("failed to get session", "session_id", sessionID, "error", err)
+		writeError(w, http.StatusInternalServerError, "internal_error", "failed to get session")
+		return
+	}
+	if session == nil {
+		writeError(w, http.StatusNotFound, "not_found", "session not found")
+		return
+	}
+	if session.Operator != username {
+		writeError(w, http.StatusForbidden, "forbidden", "only the session owner can attach exec sessions")
+		return
+	}
+	if session.Status != store.SessionStatusActive {
+		writeError(w, http.StatusConflict, "invalid_status", fmt.Sprintf("session is %s, not active", session.Status))
+		return
+	}
+
+	if err := h.sessionStore.RecordExecSession(ctx, sessionID, username, req.ExecSessionID); err != nil {
+		h.logger.Error("failed to record exec session", "session_id", sessionID, "error", err)
+		writeError(w, http.StatusInternalServerError, "internal_error", "failed to record exec session")
+		return
+	}
+
+	h.recordAccessAudit(r, http.StatusOK, "session_exec_attached", sessionID)
+
+	writeJSON(w, http.StatusOK, map[string]string{
+		"status":          "ok",
+		"exec_session_id": boundaryexec.LogStreamName(req.ExecSessionID),
 	})
 }
 

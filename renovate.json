@@ -4,14 +4,41 @@
     "group:allDigest"
   ],
   "enabledManagers": [
+    "custom.regex",
     "dockerfile",
     "gomod",
     "tekton"
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "kubectl release in zoa-boundary image",
+      "managerFilePatterns": ["/^Containerfile\\.boundary$/"],
+      "matchStrings": [
+        "# renovate: datasource=github-releases depName=kubernetes/kubernetes\\s+ARG KUBECTL_VERSION=\"(?<currentValue>v[^\"]+)\""
+      ],
+      "depNameTemplate": "kubernetes/kubernetes",
+      "datasourceTemplate": "github-releases",
+      "versioningTemplate": "semver-coerced"
+    },
+    {
+      "customType": "regex",
+      "description": "Claude Code release in zoa-boundary image",
+      "managerFilePatterns": ["/^Containerfile\\.boundary$/"],
+      "matchStrings": [
+        "# renovate: datasource=github-releases depName=anthropics/claude-code\\s+ARG CLAUDE_CODE_VERSION=\"(?<currentValue>[^\"]+)\""
+      ],
+      "depNameTemplate": "anthropics/claude-code",
+      "datasourceTemplate": "github-releases",
+      "versioningTemplate": "semver-coerced",
+      "extractVersionTemplate": "^v(?<version>.*)$"
+    }
   ],
   "timezone": "UTC",
   "dockerfile": {
     "managerFilePatterns": [
       "/^Containerfile$/",
+      "/^Containerfile\\.boundary$/",
       "/^Containerfile\\.runner$/",
       "/^ci\\/Containerfile$/"
     ]
@@ -28,6 +55,21 @@
       "matchPackageNames": [
         "/quay.io/konflux-ci//"
       ]
+    },
+    {
+      "description": "Batch zoa-boundary tool ARG updates with other Containerfile deps",
+      "matchManagers": ["custom.regex"],
+      "matchFileNames": ["Containerfile.boundary"],
+      "matchUpdateTypes": ["patch", "minor", "pin", "digest"],
+      "groupName": "dockerfile dependencies"
+    },
+    {
+      "description": "Manual review for major zoa-boundary tool ARG updates",
+      "matchManagers": ["custom.regex"],
+      "matchFileNames": ["Containerfile.boundary"],
+      "matchUpdateTypes": ["major"],
+      "automerge": false,
+      "addLabels": ["major-update", "manual-review-required", "dependencies", "docker"]
     },
     {
       "description": "Batch + automerge patch/minor/digest Containerfile updates when Prow + Konflux pass",

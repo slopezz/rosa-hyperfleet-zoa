@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/config"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/execcreds"
@@ -19,8 +20,9 @@ import (
 // --- Access handler test mocks ---
 
 type mockSessionStoreAccess struct {
-	sessions []*store.Session
-	putErr   error
+	sessions     []*store.Session
+	putErr       error
+	recordExecFn func(ctx context.Context, sessionID, operator, execSessionID string) error
 }
 
 func (m *mockSessionStoreAccess) Put(_ context.Context, s *store.Session) error {
@@ -101,6 +103,15 @@ func (m *mockSessionStoreAccess) ListAll(_ context.Context, filter *store.Sessio
 }
 func (m *mockSessionStoreAccess) ListExpired(_ context.Context) ([]*store.Session, error) {
 	return nil, nil
+}
+func (m *mockSessionStoreAccess) ListActiveBeforeDeadline(_ context.Context) ([]*store.Session, error) {
+	return nil, nil
+}
+func (m *mockSessionStoreAccess) RecordExecSession(ctx context.Context, sessionID, operator, execSessionID string) error {
+	if m.recordExecFn != nil {
+		return m.recordExecFn(ctx, sessionID, operator, execSessionID)
+	}
+	return nil
 }
 
 type mockTargetStoreAccess struct {
@@ -205,6 +216,29 @@ func accessHeaders() map[string]string {
 }
 
 // --- Tests ---
+
+func TestAccessHandler_sessionDurationFromRequest_WhenTimeoutHoursExceedsMax_ItShouldError(t *testing.T) {
+	h := testAccessHandler(&mockSessionStoreAccess{}, &mockTargetStoreAccess{})
+	h.cfg.SessionMaxDurationHours = 4
+
+	_, err := h.sessionDurationFromRequest(8)
+	if err == nil {
+		t.Fatal("expected error for timeout_hours above max")
+	}
+}
+
+func TestAccessHandler_sessionDurationFromRequest_WhenOmitted_ItShouldUseDefaultHours(t *testing.T) {
+	h := testAccessHandler(&mockSessionStoreAccess{}, &mockTargetStoreAccess{})
+	h.cfg.SessionMaxDurationHours = 2
+
+	d, err := h.sessionDurationFromRequest(0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if d != 2*time.Hour {
+		t.Errorf("expected 2h default, got %v", d)
+	}
+}
 
 func TestAccessHandler_WhenHealthCheck_ItShouldReturn200(t *testing.T) {
 	h := testAccessHandler(&mockSessionStoreAccess{}, &mockTargetStoreAccess{})
@@ -504,6 +538,35 @@ func TestAccessHandler_WhenSessionJoinOwnSession_ItShouldReturnConnectionInfo(t 
 	}
 	if resp.ExecCredentials == nil || resp.ExecCredentials.AccessKeyID == "" {
 		t.Error("expected exec_credentials in join response")
+	}
+}
+
+func TestAccessHandler_WhenSessionExecAttached_ItShouldAppendExecSessionID(t *testing.T) {
+	var recorded string
+	sessions := &mockSessionStoreAccess{
+		sessions: []*store.Session{
+			{
+				SessionID: "session-123",
+				Operator:  "slopezma",
+				Status:    store.SessionStatusActive,
+				TaskArn:   "arn:aws:ecs:us-east-1:123:task/cluster/task-abc",
+			},
+		},
+	}
+	sessions.recordExecFn = func(_ context.Context, id, op, execID string) error {
+		recorded = id + "|" + op + "|" + execID
+		return nil
+	}
+	h := testAccessHandler(sessions, &mockTargetStoreAccess{})
+
+	body := sessionExecAttachedRequest{ExecSessionID: "k7zkjuilu2vhsrp76e48ie3ciy"}
+	rr := doAccessRequest(h, "POST", "/api/v0/sessions/exec-attached/session-123", body, accessHeaders())
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if recorded != "session-123|slopezma|k7zkjuilu2vhsrp76e48ie3ciy" {
+		t.Errorf("unexpected record: %q", recorded)
 	}
 }
 

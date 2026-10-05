@@ -9,6 +9,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
+	ssmtypes "github.com/aws/aws-sdk-go-v2/service/ssm/types"
 	"github.com/spf13/cobra"
 
 	"github.com/openshift-online/rosa-hyperfleet-zoa/internal/output"
@@ -103,8 +104,13 @@ func listDeploymentsFromSSM(ctx context.Context) ([]ssmDeployment, error) {
 		return nil, fmt.Errorf("reading SSM %s: %w", ssmDeploymentsPath, err)
 	}
 
+	return parseSSMDeploymentParameters(out.Parameters)
+}
+
+// parseSSMDeploymentParameters decodes deployment JSON blobs from SSM parameters.
+func parseSSMDeploymentParameters(params []ssmtypes.Parameter) ([]ssmDeployment, error) {
 	var deployments []ssmDeployment
-	for _, param := range out.Parameters {
+	for _, param := range params {
 		var d ssmDeployment
 		if err := json.Unmarshal([]byte(aws.ToString(param.Value)), &d); err != nil {
 			return nil, fmt.Errorf("parsing SSM parameter %s: %w", aws.ToString(param.Name), err)

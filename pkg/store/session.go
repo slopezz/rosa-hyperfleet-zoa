@@ -10,6 +10,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/expression"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+
+	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/boundaryexec"
 )
 
 // SessionStatus represents the lifecycle state of a boundary session.
@@ -26,6 +28,7 @@ const (
 const (
 	StopReasonOperatorStop       = "operatorStop"
 	StopReasonDeadlineReaperStop = "deadlineReaperStop"
+	StopReasonIdleReaperStop     = "idleReaperStop"
 	StopReasonProvisionFailed    = "provisionFailed"
 )
 
@@ -46,6 +49,9 @@ type Session struct {
 	StopReason     string        `json:"stop_reason,omitempty" dynamodbav:"stopReason,omitempty"`
 	VpcId          string        `json:"vpc_id,omitempty" dynamodbav:"vpcId,omitempty"`
 	DeploymentName string        `json:"deployment_name,omitempty" dynamodbav:"deploymentName,omitempty"`
+
+	// ECS Exec (SSM) session ids for each join; stream names are ecs-execute-command-<id>.
+	ExecSessionIDs []string `json:"exec_session_ids,omitempty" dynamodbav:"execSessionIds,omitempty"`
 
 	DateBucket string `json:"-" dynamodbav:"dateBucket,omitempty"`
 	TTL        int64  `json:"-" dynamodbav:"ttl,omitempty"`
@@ -81,6 +87,12 @@ type SessionStore interface {
 	UpdateStatus(ctx context.Context, sessionID string, from, to SessionStatus, updates map[string]interface{}) error
 	ListByOperator(ctx context.Context, operator string, limit int) ([]*Session, error)
 	ListExpired(ctx context.Context) ([]*Session, error)
+
+	// ListActiveBeforeDeadline returns active sessions whose deadline is still in the future.
+	ListActiveBeforeDeadline(ctx context.Context) ([]*Session, error)
+
+	// RecordExecSession appends an ECS Exec session id after the CLI runs ExecuteCommand.
+	RecordExecSession(ctx context.Context, sessionID, operator, execSessionID string) error
 }
 
 // DynamoDBSessionStore implements SessionStore backed by DynamoDB.
@@ -478,4 +490,75 @@ func (s *DynamoDBSessionStore) ListExpired(ctx context.Context) ([]*Session, err
 		}
 	}
 	return sessions, nil
+}
+
+// ListActiveBeforeDeadline queries status-deadline-index for active sessions not yet past deadline.
+func (s *DynamoDBSessionStore) ListActiveBeforeDeadline(ctx context.Context) ([]*Session, error) {
+	now := time.Now().Format(time.RFC3339Nano)
+
+	keyCond := expression.KeyAnd(
+		expression.Key("status").Equal(expression.Value(string(SessionStatusActive))),
+		expression.Key("deadline").GreaterThan(expression.Value(now)),
+	)
+
+	expr, err := expression.NewBuilder().WithKeyCondition(keyCond).Build()
+	if err != nil {
+		return nil, fmt.Errorf("building active sessions expression: %w", err)
+	}
+
+	var sessions []*Session
+	var lastKey map[string]types.AttributeValue
+	for {
+		out, err := s.client.Query(ctx, &dynamodb.QueryInput{
+			TableName:                 &s.tableName,
+			IndexName:                 aws.String("status-deadline-index"),
+			KeyConditionExpression:    expr.KeyCondition(),
+			ExpressionAttributeNames:  expr.Names(),
+			ExpressionAttributeValues: expr.Values(),
+			ExclusiveStartKey:         lastKey,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("querying active sessions: %w", err)
+		}
+
+		for _, item := range out.Items {
+			var session Session
+			if err := attributevalue.UnmarshalMap(item, &session); err != nil {
+				return nil, fmt.Errorf("unmarshaling session: %w", err)
+			}
+			sessions = append(sessions, &session)
+		}
+
+		lastKey = out.LastEvaluatedKey
+		if lastKey == nil {
+			break
+		}
+	}
+	return sessions, nil
+}
+
+func (s *DynamoDBSessionStore) RecordExecSession(ctx context.Context, sessionID, operator, execSessionID string) error {
+	streamName := boundaryexec.LogStreamName(execSessionID)
+
+	_, err := s.client.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+		TableName: &s.tableName,
+		Key: map[string]types.AttributeValue{
+			"sessionId": &types.AttributeValueMemberS{Value: sessionID},
+		},
+		UpdateExpression:    aws.String(`SET execSessionIds = list_append(if_not_exists(execSessionIds, :empty), :sid)`),
+		ConditionExpression: aws.String("#st = :active AND operator = :op"),
+		ExpressionAttributeNames: map[string]string{
+			"#st": "status",
+		},
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":empty":  &types.AttributeValueMemberL{Value: []types.AttributeValue{}},
+			":sid":    &types.AttributeValueMemberL{Value: []types.AttributeValue{&types.AttributeValueMemberS{Value: streamName}}},
+			":active": &types.AttributeValueMemberS{Value: string(SessionStatusActive)},
+			":op":     &types.AttributeValueMemberS{Value: operator},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("recording exec session: %w", err)
+	}
+	return nil
 }

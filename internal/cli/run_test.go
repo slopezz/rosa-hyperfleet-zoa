@@ -10,53 +10,54 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openshift-online/rosa-hyperfleet-zoa/internal/cli/parambind"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/internal/client"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/internal/output"
 )
 
 func TestBuildParams_WhenClusterIDSet_ItShouldIncludeClusterID(t *testing.T) {
-	opts := &runOptions{clusterID: "1600392f-9a94-4957-b672-eff8dc2be0bb"}
-	params := buildParams(opts)
+	opts := &runOptions{ta: parambind.RunTAParams{ClusterID: "1600392f-9a94-4957-b672-eff8dc2be0bb"}}
+	params := parambind.ToAPIParams(opts.ta, opts.params)
 	if params["cluster_id"] != "1600392f-9a94-4957-b672-eff8dc2be0bb" {
 		t.Errorf("expected cluster_id, got %q", params["cluster_id"])
 	}
 }
 
 func TestBuildParams_WhenGatherSet_ItShouldIncludeGather(t *testing.T) {
-	opts := &runOptions{gather: "mc,rc"}
-	params := buildParams(opts)
+	opts := &runOptions{ta: parambind.RunTAParams{Gather: "mc,rc"}}
+	params := parambind.ToAPIParams(opts.ta, opts.params)
 	if params["gather"] != "mc,rc" {
 		t.Errorf("expected gather=mc,rc, got %q", params["gather"])
 	}
 }
 
 func TestBuildParams_WhenNamespaceSet_ItShouldIncludeNamespace(t *testing.T) {
-	opts := &runOptions{namespace: "grafana"}
-	params := buildParams(opts)
+	opts := &runOptions{ta: parambind.RunTAParams{Namespace: "grafana"}}
+	params := parambind.ToAPIParams(opts.ta, opts.params)
 	if params["namespace"] != "grafana" {
 		t.Errorf("expected namespace=grafana, got %q", params["namespace"])
 	}
 }
 
 func TestBuildParams_WhenAllNamespacesSet_ItShouldIncludeAllNamespacesTrue(t *testing.T) {
-	opts := &runOptions{allNS: true}
-	params := buildParams(opts)
+	opts := &runOptions{ta: parambind.RunTAParams{AllNamespaces: true}}
+	params := parambind.ToAPIParams(opts.ta, opts.params)
 	if params["all_namespaces"] != "true" {
 		t.Errorf("expected all_namespaces=true, got %q", params["all_namespaces"])
 	}
 }
 
 func TestBuildParams_WhenSelectorSet_ItShouldIncludeLabelSelector(t *testing.T) {
-	opts := &runOptions{selector: "app=nginx"}
-	params := buildParams(opts)
+	opts := &runOptions{ta: parambind.RunTAParams{LabelSelector: "app=nginx"}}
+	params := parambind.ToAPIParams(opts.ta, opts.params)
 	if params["label_selector"] != "app=nginx" {
 		t.Errorf("expected label_selector=app=nginx, got %q", params["label_selector"])
 	}
 }
 
 func TestBuildParams_WhenVerboseSet_ItShouldIncludeVerboseTrue(t *testing.T) {
-	opts := &runOptions{verbose: true}
-	params := buildParams(opts)
+	opts := &runOptions{ta: parambind.RunTAParams{Verbose: true}}
+	params := parambind.ToAPIParams(opts.ta, opts.params)
 	if params["verbose"] != "true" {
 		t.Errorf("expected verbose=true, got %q", params["verbose"])
 	}
@@ -64,10 +65,10 @@ func TestBuildParams_WhenVerboseSet_ItShouldIncludeVerboseTrue(t *testing.T) {
 
 func TestBuildParams_WhenExtraParamsProvided_ItShouldMergeThem(t *testing.T) {
 	opts := &runOptions{
-		namespace: "default",
-		params:    []string{"custom_key=custom_value", "another=val"},
+		ta:     parambind.RunTAParams{Namespace: "default"},
+		params: []string{"custom_key=custom_value", "another=val"},
 	}
-	params := buildParams(opts)
+	params := parambind.ToAPIParams(opts.ta, opts.params)
 	if params["custom_key"] != "custom_value" {
 		t.Errorf("expected custom_key=custom_value, got %q", params["custom_key"])
 	}
@@ -78,10 +79,10 @@ func TestBuildParams_WhenExtraParamsProvided_ItShouldMergeThem(t *testing.T) {
 
 func TestBuildParams_WhenExtraParamConflicts_ItShouldPreferBuiltInFlag(t *testing.T) {
 	opts := &runOptions{
-		namespace: "grafana",
-		params:    []string{"namespace=should-be-ignored"},
+		ta:     parambind.RunTAParams{Namespace: "grafana"},
+		params: []string{"namespace=should-be-ignored"},
 	}
-	params := buildParams(opts)
+	params := parambind.ToAPIParams(opts.ta, opts.params)
 	if params["namespace"] != "grafana" {
 		t.Errorf("expected namespace=grafana (from flag), got %q", params["namespace"])
 	}
@@ -89,7 +90,7 @@ func TestBuildParams_WhenExtraParamConflicts_ItShouldPreferBuiltInFlag(t *testin
 
 func TestBuildParams_WhenNoParamsSet_ItShouldReturnNil(t *testing.T) {
 	opts := &runOptions{}
-	params := buildParams(opts)
+	params := parambind.ToAPIParams(opts.ta, opts.params)
 	if params != nil {
 		t.Errorf("expected nil params, got %v", params)
 	}
@@ -175,8 +176,8 @@ func TestRunAction_WhenSyncSucceeds_ItShouldReturnNilError(t *testing.T) {
 
 	global := newMockGlobalOpts(mock)
 	opts := &runOptions{
-		namespace: "grafana",
-		jira:      "ROSAENG-1234",
+		ta:   parambind.RunTAParams{Namespace: "grafana"},
+		jira: "ROSAENG-1234",
 	}
 	err := runAction(context.Background(), global, opts, "get_pods")
 	if err != nil {
@@ -575,9 +576,11 @@ func TestRunAction_WhenWaitCompletesWithDownloadHint_ItShouldAutoDownload(t *tes
 
 	global := newMockGlobalOpts(mock)
 	opts := &runOptions{
-		jira:        "ROSAENG-1234",
-		clusterID:   "1600392f-9a94-4957-b672-eff8dc2be0bb",
-		gather:      "hcp",
+		jira: "ROSAENG-1234",
+		ta: parambind.RunTAParams{
+			ClusterID: "1600392f-9a94-4957-b672-eff8dc2be0bb",
+			Gather:    "hcp",
+		},
 		wait:        true,
 		waitTimeout: 1 * time.Second,
 	}

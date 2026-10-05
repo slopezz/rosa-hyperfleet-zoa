@@ -16,6 +16,9 @@ type JoinParams struct {
 	ContainerName string
 	Command       string
 	NoWait        bool
+	// OnExecSession runs after ecs:ExecuteCommand succeeds and before session-manager-plugin.
+	// Best-effort only (errors do not block the shell); log warnings inside the callback.
+	OnExecSession func(execSessionID string) error
 }
 
 // defaultExecCommand is only used when the caller omits Command (tests). Production
@@ -67,6 +70,10 @@ func ConnectInteractive(ctx context.Context, cfg aws.Config, p JoinParams) error
 	creds, err := cfg.Credentials.Retrieve(ctx)
 	if err != nil {
 		return fmt.Errorf("retrieve AWS credentials for exec: %w", err)
+	}
+
+	if p.OnExecSession != nil && session != nil {
+		_ = p.OnExecSession(session.SessionID)
 	}
 
 	region := p.Region

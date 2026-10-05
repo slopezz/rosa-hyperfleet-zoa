@@ -62,6 +62,8 @@ For **Trusted Actions** inside a boundary container, set `ZOA_API_URL` to the ta
 
 For **discovery and boundary sessions** (`deployments`, `targets`, `session`), use your normal **Jump/Central** AWS login only (same default credential chain as `aws` CLI). ZOA reads `/zoa/deployments/<name>` from SSM and assumes the Access **invoker** role for the API. ECS Exec uses **scoped credentials** returned on `session join` — not deployment-account admin roles.
 
+**Identity (invoker vs Exec vs task role, identity bridge):** see [Boundary SRE access guide — Identity and SigV4](boundary/sre-access-guide.md#identity-and-sigv4).
+
 ## Commands
 
 | Command | Description |

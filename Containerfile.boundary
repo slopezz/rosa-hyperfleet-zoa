@@ -1,19 +1,22 @@
-# ZOA Boundary — Ephemeral SRE investigation container
+# ZOA Boundary — Ephemeral audited SRE jump box (ECS Fargate, target VPC).
 #
-# Runs as an ECS Fargate task inside the target VPC. SREs connect
-# via ECS Exec (SSM). Contains ZOA CLI, kubectl, AWS CLI v2,
-# jq, and Claude Code for interactive investigation.
+# SREs connect via ECS Exec (SSM). Ships ZOA CLI, kubectl, AWS CLI v2,
+# jq, and Claude Code for Trusted Actions and assisted operational work.
 #
 # SECURITY: No curl, wget, or download tools in the final image —
 # all binaries are COPYed from builder stages. All external downloads
 # are checksum-verified.
 
-ARG BASE_IMAGE=registry.access.redhat.com/ubi9/ubi-minimal:9.8-1790555810
+# Pinned linux/amd64 from ubi-minimal:9.8-1790555810. Mintmaker/Renovate updates digest.
+ARG BASE_IMAGE=registry.access.redhat.com/ubi9/ubi-minimal@sha256:bc2502169d857732c4ba778f69ed4fa2d25c9ef054a9f7839ac8ce65aedd6574
+
+# Pinned linux/amd64 from go-toolset:1.26.7-1790174511. Mintmaker/Renovate updates digest.
+ARG BUILDER_IMAGE=registry.access.redhat.com/ubi9/go-toolset@sha256:0f2be9ed624fabfe8625ffa510d2b243766249006518e551ef9e0b486f195e90
 
 # --------------------------------------------------------------------------
 # builder — Go build (zoa CLI)
 # --------------------------------------------------------------------------
-FROM registry.access.redhat.com/ubi9/go-toolset:1.26.7-1790174511 AS builder
+FROM ${BUILDER_IMAGE} AS builder
 ARG TARGETOS=linux
 ARG TARGETARCH=amd64
 USER 0
@@ -45,6 +48,7 @@ RUN git config --global --add safe.directory /workspace && \
 FROM ${BASE_IMAGE} AS tools
 
 ARG TARGETARCH=amd64
+# renovate: datasource=github-releases depName=kubernetes/kubernetes
 ARG KUBECTL_VERSION="v1.32.0"
 
 # ubi-minimal includes curl-minimal; do not install full curl (package conflict).
@@ -61,20 +65,24 @@ RUN curl --silent --location --fail \
 
 
 # --------------------------------------------------------------------------
-# aws-cli-builder — AWS CLI v2
+# aws-cli-builder — AWS CLI v2 (arch-matched zip, same pattern as kubectl)
 # --------------------------------------------------------------------------
 FROM ${BASE_IMAGE} AS aws-cli-builder
+
+ARG TARGETARCH=amd64
 
 RUN microdnf install --assumeyes --nodocs unzip && microdnf clean all
 
 WORKDIR /aws-dl
 
-RUN curl --silent --location --fail \
-        "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" \
+RUN AWS_ARCH="${TARGETARCH}" \
+    && if [ "${AWS_ARCH}" = "amd64" ]; then AWS_ARCH="x86_64"; fi \
+    && curl --silent --location --fail \
+        "https://awscli.amazonaws.com/awscli-exe-linux-${AWS_ARCH}.zip" \
         --output awscli.zip \
     && unzip -q awscli.zip \
     && ./aws/install --install-dir /opt/aws-cli --bin-dir /opt/aws-bin \
-    && rm -rf aws awscli.zip
+    && rm --recursive --force aws awscli.zip
 
 
 # --------------------------------------------------------------------------
@@ -83,7 +91,9 @@ RUN curl --silent --location --fail \
 FROM ${BASE_IMAGE} AS claude-builder
 
 ARG TARGETARCH=amd64
-ENV CLAUDE_CODE_VERSION="2.1.199"
+# renovate: datasource=github-releases depName=anthropics/claude-code
+ARG CLAUDE_CODE_VERSION="2.1.199"
+ENV CLAUDE_CODE_VERSION="${CLAUDE_CODE_VERSION}"
 
 RUN microdnf install --assumeyes --nodocs tar gzip && microdnf clean all
 
@@ -110,18 +120,25 @@ FROM ${BASE_IMAGE} AS final
 
 ARG VERSION=0.0.1
 ARG RELEASE=1
+ARG VCS_REF=unknown
 
 LABEL name="zoa-boundary" \
       vendor="Red Hat, Inc." \
       version="${VERSION}" \
       release="${RELEASE}" \
-      summary="ZOA Boundary — ephemeral SRE investigation container" \
-      description="ECS Fargate task for audited SRE access to target VPCs" \
+      summary="ZOA Boundary — ephemeral audited SRE jump box" \
+      description="ECS Fargate task for audited SRE access to target VPCs via ECS Exec and ZOA Trusted Actions" \
       io.k8s.display-name="zoa-boundary" \
-      io.k8s.description="ZOA Boundary container with SRE tooling" \
+      io.k8s.description="VPC-local ECS Exec shell for ZOA sessions and Trusted Actions" \
       com.redhat.component="zoa-boundary-container" \
       distribution-scope="private" \
-      url="https://github.com/openshift-online/rosa-hyperfleet-zoa"
+      url="https://github.com/openshift-online/rosa-hyperfleet-zoa" \
+      org.opencontainers.image.title="zoa-boundary" \
+      org.opencontainers.image.description="ECS Fargate jump box for audited ZOA sessions and Trusted Actions" \
+      org.opencontainers.image.vendor="Red Hat, Inc." \
+      org.opencontainers.image.source="https://github.com/openshift-online/rosa-hyperfleet-zoa" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${VCS_REF}"
 
 # util-linux: provides /usr/bin/script — required by ECS Exec for command
 # transcript upload to CloudWatch (AWS ECS Exec logging docs; cat is in coreutils).
@@ -164,6 +181,7 @@ RUN useradd --uid 1000 --create-home --shell /bin/bash sre
 
 # Baked home for the sre user (Claude + shell). Ephemeral per task — no EFS skel copy at runtime.
 COPY --chown=sre:sre boundary/home-sre/ /home/sre/
+COPY boundary/catalog/ /usr/share/zoa/catalog/
 COPY --chmod=755 boundary/zoa-boundary-entrypoint.sh /usr/local/bin/zoa-boundary-entrypoint.sh
 # Claude Code looks for ~/.local/bin/claude first; point at the image binary.
 RUN mkdir --parents /home/sre/.local/bin \
@@ -172,7 +190,6 @@ RUN mkdir --parents /home/sre/.local/bin \
 
 # Claude/Bedrock flags and model ID: ECS task env from Terraform overrides these for Fargate.
 ENV HOME=/home/sre \
-    PS1='[\u@zoa:${ZOA_DEPLOYMENT:-?}/${ZOA_TARGET:-?}] \w \$ ' \
     CLAUDE_CODE_USE_BEDROCK=1 \
     DISABLE_AUTOUPDATER=1
 

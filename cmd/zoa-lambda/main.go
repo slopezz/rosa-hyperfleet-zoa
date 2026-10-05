@@ -25,6 +25,7 @@ import (
 	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/actions"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/api"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/awsecs"
+	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/boundaryexec"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/config"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/execcreds"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/executor"
@@ -199,8 +200,16 @@ func main() {
 		if cfg.SessionsTable != "" {
 			sessionStore := store.NewSessionStore(dynamoClient, cfg.SessionsTable, cfg.DynamoDBTTLDays)
 			ecsClient := awsecs.New(awsCfg)
-			reaper = scheduler.NewReaper(sessionStore, awsecs.NewReaperAdapter(ecsClient), logger, cfg.TargetCluster)
-			logger.Info("reaper enabled", "sessionsTable", cfg.SessionsTable)
+			idleTimeout := time.Duration(cfg.SessionIdleTimeoutSeconds) * time.Second
+			activity := boundaryexec.NewActivityChecker(awsCfg)
+			reaper = scheduler.NewReaper(
+				sessionStore,
+				awsecs.NewReaperAdapter(ecsClient),
+				logger,
+				cfg.TargetCluster,
+				scheduler.WithExecActivity(activity, idleTimeout),
+			)
+			logger.Info("reaper enabled", "sessionsTable", cfg.SessionsTable, "sessionIdleTimeout", idleTimeout)
 		}
 
 		h := handler.New(handler.Deps{

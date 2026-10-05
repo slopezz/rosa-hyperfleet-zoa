@@ -24,6 +24,22 @@ Release-data components `zoa-lambda` and `zoa-runner` are registered in [konflux
 | `zoa-runner-on-pull-request` / `zoa-runner-on-push` | `zoa-runner` | `Containerfile.runner`, `cmd/zoa-runner/**`, `cmd/zoa/**`, shared Go paths |
 | `zoa-boundary-on-pull-request` / `zoa-boundary-on-push` | `zoa-boundary` | Planned — `.tekton/zoa-boundary-*`, `Containerfile.boundary`, shared Go paths |
 
+## Dependency updates (Mintmaker / Renovate)
+
+Konflux **Mintmaker** reads [`renovate.json`](../renovate.json) on a schedule and opens PRs (many **automerge** after Prow + Konflux pass).
+
+| What | How it is updated |
+|------|-------------------|
+| UBI / go-toolset **base digests** | `dockerfile` manager on `Containerfile*` (`ARG BASE_IMAGE`, `BUILDER_IMAGE`, `FROM …`) |
+| **Go modules** | `gomod` manager |
+| **Tekton** refs | `tekton` manager on `.tekton/` |
+| **kubectl** in boundary | `custom.regex` on `Containerfile.boundary` (`KUBECTL_VERSION`) |
+| **Claude Code** in boundary | `custom.regex` on `Containerfile.boundary` (`CLAUDE_CODE_VERSION`, release tags without `v` prefix) |
+| **AWS CLI v2** zip | Not pinned to a version today — always “current” installer URL; bump manually or add a version ARG + regex later |
+| **jq / vim / …** RPMs | Ride along when **ubi-minimal** digest updates |
+
+`zoa-boundary` Konflux pipelines are planned; until `.tekton/zoa-boundary-*` exists, boundary digest/tool PRs still build via `make image-boundary` / local Podman.
+
 ## Merge order
 
 1. [konflux-release-data MR !21897](https://gitlab.cee.redhat.com/releng/konflux-release-data/-/merge_requests/21897) — remove legacy `rosa-hyperfleet-zoa` component; finalize `zoa-lambda` / `zoa-runner`

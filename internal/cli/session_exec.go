@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
@@ -12,7 +13,7 @@ import (
 	"github.com/openshift-online/rosa-hyperfleet-zoa/internal/ecsexec"
 )
 
-func runSessionECSExec(ctx context.Context, _ string, region string, join *client.SessionJoinResponse) error {
+func runSessionECSExec(ctx context.Context, _ string, region string, zoaSessionID string, access APIClient, join *client.SessionJoinResponse) error {
 	if join.TaskArn == "" {
 		return fmt.Errorf("session has no task ARN")
 	}
@@ -33,6 +34,16 @@ func runSessionECSExec(ctx context.Context, _ string, region string, join *clien
 		TaskARN:       join.TaskArn,
 		ContainerName: join.ContainerName,
 		Command:       join.ExecCommand,
+		OnExecSession: func(execSessionID string) error {
+			if access == nil {
+				fmt.Fprintln(os.Stderr, "Warning: exec session not registered (access client not configured); idle reaper still uses AWS exec logs")
+				return nil
+			}
+			if err := access.SessionExecAttached(ctx, zoaSessionID, execSessionID); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: could not register exec session with Access API (%v); continuing to shell (idle reaper still uses AWS exec logs)\n", err)
+			}
+			return nil
+		},
 	})
 }
 

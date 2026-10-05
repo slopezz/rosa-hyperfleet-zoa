@@ -16,6 +16,17 @@
 | [Timeout Tuning](architecture/timeout-tuning.md) | Three-layer timeout architecture, adjustment procedures |
 | [Implementation Details](architecture/implementation.md) | Execution flows, package responsibilities, env vars, safety controls |
 
+## ZOA Boundary
+
+| Document | Description |
+|----------|-------------|
+| [Boundary overview](boundary/README.md) | Index — sessions, container, SRE access |
+| [Boundary architecture](boundary/architecture.md) | Access vs API, SSM, RC/MC |
+| [SRE access guide](boundary/sre-access-guide.md) | **Identity & SigV4**, sessions, Exec scope, workflows |
+| [Container image](boundary/container-image.md) | `Containerfile.boundary`, tools, build, tests |
+| [Session logging](design/boundary-session-logging.md) | CloudWatch groups for Exec vs container |
+| [Epic plan](design/zoa-boundary-epic-plan.md) | Stories and future work |
+
 ## Development
 
 | Document | Description |

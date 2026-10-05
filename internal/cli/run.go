@@ -9,19 +9,13 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/openshift-online/rosa-hyperfleet-zoa/internal/cli/parambind"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/internal/client"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/internal/output"
 )
 
 type runOptions struct {
-	namespace     string
-	clusterID     string
-	gather        string
-	allNS         bool
-	selector      string
-	verbose       bool
-	name          string
-	resource      string
+	ta            parambind.RunTAParams
 	jira          string
 	force         bool
 	dryRun        bool
@@ -82,26 +76,37 @@ On failure, logs are printed to stderr. Use --no-wait to fire and forget.`,
 		},
 	}
 
-	cmd.Flags().StringVarP(&opts.namespace, "namespace", "n", "", "Namespace")
-	cmd.Flags().StringVar(&opts.clusterID, "cluster-id", "", "Hosted cluster UUID (must_gather: required when --gather includes hcp)")
-	cmd.Flags().StringVar(&opts.gather, "gather", "", "must_gather scopes: hcp, mc, rc — required; must match this ZOA endpoint")
-	cmd.Flags().BoolVarP(&opts.allNS, "all-namespaces", "A", false, "All namespaces")
-	cmd.Flags().StringVarP(&opts.selector, "selector", "l", "", "Label selector")
-	cmd.Flags().BoolVarP(&opts.verbose, "verbose", "v", false, "Full JSON output from the action (no compact summary)")
-	cmd.Flags().StringVar(&opts.name, "name", "", "Resource name")
-	cmd.Flags().StringVar(&opts.resource, "resource", "", "Resource type (for generic actions)")
-	cmd.Flags().StringVar(&opts.jira, "jira", "", "Jira ticket (required, e.g. ROSAENG-1234)")
-	cmd.Flags().BoolVar(&opts.force, "force", false, "Bypass write cooldown and concurrency limits")
-	cmd.Flags().BoolVar(&opts.dryRun, "dry-run", false, "Execute dry-run variant of the action")
-	cmd.Flags().BoolVar(&opts.noWait, "no-wait", false, "Return ID immediately, skip output display (sync: skips output fetch; async: already default)")
-	cmd.Flags().BoolVar(&opts.wait, "wait", false, "Poll until async execution completes (no effect on sync — sync returns inline)")
+	parambind.RegisterTAParamFlags(cmd, &opts.ta)
+	cmd.Flags().StringVar(&opts.jira, "jira", "", parambind.RunFlagHelp("jira"))
+	cmd.Flags().BoolVar(&opts.force, "force", false, parambind.RunFlagHelp("force"))
+	cmd.Flags().BoolVar(&opts.dryRun, "dry-run", false, parambind.RunFlagHelp("dry-run"))
+	cmd.Flags().BoolVar(&opts.noWait, "no-wait", false, parambind.RunFlagHelp("no-wait"))
+	cmd.Flags().BoolVar(&opts.wait, "wait", false, parambind.RunFlagHelp("wait"))
 	cmd.Flags().DurationVar(&opts.waitTimeout, "wait-timeout", 5*time.Minute, "Max poll duration when --wait is active")
 	cmd.Flags().DurationVar(&opts.pollInterval, "wait-poll-interval", 30*time.Second, "Poll frequency when --wait is active")
-	cmd.Flags().DurationVar(&opts.timeout, "timeout", 0, "Server-side TA execution timeout (e.g. 60s, 3m; bounded by server max 295s)")
-	cmd.Flags().StringVar(&opts.executionMode, "execution-mode", "", "Override execution class: 'sync' or 'async' (default: TA's declared class)")
-	cmd.Flags().StringArrayVar(&opts.params, "param", nil, "Additional parameters (key=value, repeatable)")
+	cmd.Flags().DurationVar(&opts.timeout, "timeout", 0, parambind.RunFlagHelp("timeout"))
+	cmd.Flags().StringVar(&opts.executionMode, "execution-mode", "", parambind.RunFlagHelp("execution-mode"))
+	cmd.Flags().StringArrayVar(&opts.params, "param", nil, parambind.RunFlagHelp("param"))
 
 	_ = cmd.MarkFlagRequired("jira")
+
+	cmd.ValidArgsFunction = func(_ *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		if len(args) == 0 {
+			return completeActionNames(toComplete), cobra.ShellCompDirectiveNoFileComp
+		}
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+
+	_ = cmd.RegisterFlagCompletionFunc("param", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		action := ""
+		if len(args) > 0 {
+			action = args[0]
+		}
+		if action == "" {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		return actionParameterCompletions(action, toComplete), cobra.ShellCompDirectiveNoSpace
+	})
 
 	return cmd
 }
@@ -112,7 +117,7 @@ func runAction(ctx context.Context, global *GlobalOptions, opts *runOptions, act
 		return err
 	}
 
-	params := buildParams(opts)
+	params := parambind.ToAPIParams(opts.ta, opts.params)
 
 	req := &client.DispatchRequest{
 		Jira:           opts.jira,
@@ -301,49 +306,6 @@ func trySavePartialOutput(ctx context.Context, global *GlobalOptions, exec *clie
 		return
 	}
 	printSavedArtifact("partial output", nbytes, outPath)
-}
-
-func buildParams(opts *runOptions) map[string]string {
-	params := make(map[string]string)
-
-	if opts.namespace != "" {
-		params["namespace"] = opts.namespace
-	}
-	if opts.clusterID != "" {
-		params["cluster_id"] = opts.clusterID
-	}
-	if opts.gather != "" {
-		params["gather"] = opts.gather
-	}
-	if opts.allNS {
-		params["all_namespaces"] = "true"
-	}
-	if opts.selector != "" {
-		params["label_selector"] = opts.selector
-	}
-	if opts.name != "" {
-		params["name"] = opts.name
-	}
-	if opts.resource != "" {
-		params["resource"] = opts.resource
-	}
-	if opts.verbose {
-		params["verbose"] = "true"
-	}
-
-	for _, p := range opts.params {
-		key, val, ok := strings.Cut(p, "=")
-		if ok {
-			if _, exists := params[key]; !exists {
-				params[key] = val
-			}
-		}
-	}
-
-	if len(params) == 0 {
-		return nil
-	}
-	return params
 }
 
 func formatTags(action, executedAction string, force, dryRun bool) string {

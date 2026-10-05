@@ -36,6 +36,10 @@ func (r *rolloutRestart) Metadata() ActionMetadata {
 		TimeoutSeconds:       180,
 		WriteCooldownSeconds: 300,
 		DryRunAction:         "get_resource",
+		Examples: []string{
+			"zoa run rollout_restart --resource deployment -n openshift-ingress --name router-default --jira ROSAENG-1234",
+			"zoa run rollout_restart --resource deployment -n cert-manager --name cert-manager-webhook --jira ROSAENG-1234 --dry-run",
+		},
 		Parameters: []ParameterDef{
 			{Name: "resource", Required: true, Default: "deployment", Description: "Resource type (deployment, daemonset, statefulset)"},
 			{Name: "namespace", Required: true, Description: "Workload namespace"},

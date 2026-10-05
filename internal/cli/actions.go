@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/spf13/cobra"
 
+	"github.com/openshift-online/rosa-hyperfleet-zoa/internal/cli/parambind"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/internal/output"
 )
 
@@ -25,6 +25,12 @@ func newActionsCommand(global *GlobalOptions) *cobra.Command {
   # Output as JSON (for scripting)
   zoa actions -o json`,
 		Args: cobra.MaximumNArgs(1),
+		ValidArgsFunction: func(_ *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) == 0 {
+				return completeActionNames(toComplete), cobra.ShellCompDirectiveNoFileComp
+			}
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 1 {
 				return describeAction(cmd.Context(), global, args[0])
@@ -45,6 +51,12 @@ func newDescribeCommand(global *GlobalOptions) *cobra.Command {
   # Output as JSON
   zoa describe rollout_restart -o json`,
 		Args: cobra.ExactArgs(1),
+		ValidArgsFunction: func(_ *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) == 0 {
+				return completeActionNames(toComplete), cobra.ShellCompDirectiveNoFileComp
+			}
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return describeAction(cmd.Context(), global, args[0])
 		},
@@ -86,45 +98,10 @@ func describeAction(ctx context.Context, global *GlobalOptions, name string) err
 	}
 
 	if global.OutputFormat == output.FormatJSON {
-		return output.JSON(os.Stdout, action)
+		view := parambind.EnrichDescribe(action)
+		return output.JSON(os.Stdout, view)
 	}
 
-	fmt.Printf("NAME:        %s\n", action.Name)
-	fmt.Printf("SCOPE:       %s\n", action.Scope)
-	fmt.Printf("TYPE:        %s\n", action.Type)
-	fmt.Printf("MODE:        %s\n", output.Dash(action.ExecutionMode))
-	fmt.Printf("DESCRIPTION: %s\n", action.Description)
-	fmt.Printf("APPROVAL:    %s\n", output.Dash(action.Authorization.Approval))
-
-	if action.WriteCooldownSeconds > 0 {
-		fmt.Printf("COOLDOWN:    %ds\n", action.WriteCooldownSeconds)
-	}
-	if action.TimeoutSeconds > 0 {
-		fmt.Printf("TIMEOUT:     %ds\n", action.TimeoutSeconds)
-	}
-	if action.DryRunAction != "" {
-		fmt.Printf("DRY-RUN:     %s\n", action.DryRunAction)
-	}
-
-	fmt.Printf("\nREQUIRED FIELDS:\n")
-	fmt.Printf("  jira\n")
-
-	if len(action.Params) > 0 {
-		fmt.Printf("\nPARAMETERS:\n")
-		tw := output.NewTable(os.Stdout)
-		fmt.Fprintf(tw, "  NAME\tREQUIRED\tDEFAULT\tDESCRIPTION\n")
-		for _, p := range action.Params {
-			req := ""
-			if p.Required {
-				req = "*"
-			}
-			fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\n",
-				p.Name, req, output.Dash(p.Default), strings.TrimSpace(p.Description))
-		}
-		tw.Flush()
-	} else {
-		fmt.Printf("\nPARAMETERS:  (none)\n")
-	}
-
+	printDescribeHuman(action, os.Stdout)
 	return nil
 }

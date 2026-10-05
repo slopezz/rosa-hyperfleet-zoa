@@ -26,6 +26,7 @@ type APIClient interface {
 	SessionStart(ctx context.Context, req *client.SessionStartRequest) (*client.SessionStartResponse, error)
 	SessionStop(ctx context.Context, sessionID string) error
 	SessionJoin(ctx context.Context, sessionID string) (*client.SessionJoinResponse, error)
+	SessionExecAttached(ctx context.Context, sessionID, execSessionID string) error
 	ListSessions(ctx context.Context, query url.Values) (*client.SessionList, error)
 }
 

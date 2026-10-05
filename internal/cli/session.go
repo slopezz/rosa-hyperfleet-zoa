@@ -107,7 +107,7 @@ deployment-account admin roles).`,
 					return fmt.Errorf("joining session after start: %w", err)
 				}
 				region := sessionJoinRegion(opts, joinResp)
-				if err := runSessionECSExec(cmd.Context(), deployment, region, joinResp); err != nil {
+				if err := runSessionECSExec(cmd.Context(), deployment, region, resp.SessionID, accessClientForJoin(c), joinResp); err != nil {
 					return fmt.Errorf("ECS Exec: %w", err)
 				}
 				return nil
@@ -217,7 +217,7 @@ ECS Exec and session-manager-plugin using scoped credentials from the join respo
 			}
 
 			region := sessionJoinRegion(opts, resp)
-			if err := runSessionECSExec(cmd.Context(), deployment, region, resp); err != nil {
+			if err := runSessionECSExec(cmd.Context(), deployment, region, rawID, accessClientForJoin(c), resp); err != nil {
 				return fmt.Errorf("ECS Exec: %w", err)
 			}
 			return nil

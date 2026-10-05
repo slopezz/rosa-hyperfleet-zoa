@@ -134,6 +134,14 @@ func (m *mockSessionStore) ListExpired(ctx context.Context) ([]*store.Session, e
 	return nil, nil
 }
 
+func (m *mockSessionStore) ListActiveBeforeDeadline(ctx context.Context) ([]*store.Session, error) {
+	return nil, nil
+}
+
+func (m *mockSessionStore) RecordExecSession(ctx context.Context, sessionID, operator, execSessionID string) error {
+	return nil
+}
+
 func TestResolveIdentity_WhenDirectSREARN_ItShouldReturnUsernameAndEmptySession(t *testing.T) {
 	result, err := ResolveIdentity(
 		context.Background(),

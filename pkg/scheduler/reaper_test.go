@@ -6,12 +6,14 @@ import (
 	"io"
 	"log/slog"
 	"testing"
+	"time"
 
 	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/store"
 )
 
 type mockSessionStoreReaper struct {
 	expired  []*store.Session
+	active   []*store.Session
 	listErr  error
 	updated  map[string]store.SessionStatus
 	updateFn func(id string, from, to store.SessionStatus) error
@@ -48,6 +50,12 @@ func (m *mockSessionStoreReaper) ListExpired(_ context.Context) ([]*store.Sessio
 		return nil, m.listErr
 	}
 	return m.expired, nil
+}
+func (m *mockSessionStoreReaper) ListActiveBeforeDeadline(_ context.Context) ([]*store.Session, error) {
+	return m.active, nil
+}
+func (m *mockSessionStoreReaper) RecordExecSession(_ context.Context, _ string, _ string, _ string) error {
+	return nil
 }
 
 type mockECSReaper struct {
@@ -170,6 +178,77 @@ func TestReaper_Run_WhenTargetClusterSet_ItShouldSkipOtherClusters(t *testing.T)
 	if len(ecs.stopped) != 1 || ecs.stopped[0] != "task-rc" {
 		t.Errorf("expected only rc task stopped, got %v", ecs.stopped)
 	}
+}
+
+func TestReaper_Run_WhenTaskNeverJoinedAndNoExecAtAWS_ItShouldTerminateIdle(t *testing.T) {
+	ss := &mockSessionStoreReaper{
+		active: []*store.Session{
+			{
+				SessionID:     "s-never-join",
+				TargetCluster: "mc01",
+				Status:        store.SessionStatusActive,
+				TaskID:        "task-orphan",
+				TaskArn:       "arn:aws:ecs:us-east-1:123:task/c/task-orphan",
+				EcsCluster:    "cluster",
+				CreatedAt:     time.Now().Add(-3 * time.Hour).Format(time.RFC3339Nano),
+			},
+		},
+	}
+	ecs := &mockECSReaper{}
+	activity := &mockExecActivity{found: false}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	r := NewReaper(ss, ecs, logger, "mc01", WithExecActivity(activity, time.Hour))
+
+	if err := r.Run(context.Background()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(ecs.stopped) != 1 {
+		t.Fatalf("expected ECS stop for unused task, got %v", ecs.stopped)
+	}
+}
+
+func TestReaper_Run_WhenIdleSession_ItShouldTerminateWithIdleReason(t *testing.T) {
+	oldActivity := time.Now().Add(-2 * time.Hour)
+	ss := &mockSessionStoreReaper{
+		active: []*store.Session{
+			{
+				SessionID:      "s-idle",
+				TargetCluster:  "mc01",
+				Status:         store.SessionStatusActive,
+				TaskID:         "task-1",
+				TaskArn:        "arn:aws:ecs:us-east-1:123:task/c/task-1",
+				EcsCluster:     "cluster",
+				ExecSessionIDs: []string{"ecs-execute-command-k7zkjuilu2vhsrp76e48ie3ciy"},
+			},
+		},
+	}
+	ecs := &mockECSReaper{}
+	activity := &mockExecActivity{last: oldActivity, found: true}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	r := NewReaper(ss, ecs, logger, "mc01", WithExecActivity(activity, time.Hour))
+
+	if err := r.Run(context.Background()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(ecs.stopped) != 1 {
+		t.Fatalf("expected ECS stop, got %v", ecs.stopped)
+	}
+	if ss.updated["s-idle"] != store.SessionStatusTerminated {
+		t.Errorf("expected terminated, got %v", ss.updated)
+	}
+}
+
+type mockExecActivity struct {
+	last  time.Time
+	found bool
+	err   error
+}
+
+func (m *mockExecActivity) LastTerminalActivity(_ context.Context, _ string, _ string, _ []string) (time.Time, bool, error) {
+	if m.err != nil {
+		return time.Time{}, false, m.err
+	}
+	return m.last, m.found, nil
 }
 
 func TestReaper_Run_WhenNoEcsTask_ItShouldStillUpdateStatus(t *testing.T) {

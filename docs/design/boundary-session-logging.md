@@ -4,10 +4,10 @@
 
 ZOA boundary uses **two CloudWatch log groups** encrypted with the **same CMK** (shared ZOA key on RC; per-cluster key on MC when no `kms_key_arn`).
 
-| Purpose | Log group | Stream naming | What it captures |
-| -------- | --------- | -------------- | ---------------- |
-| **Container stdout** | `/ecs/<cluster_id>/zoa-boundary` | `container/zoa-boundary/<task-id>` | Task startup script only (banner, tool check, “ready for connections”). |
-| **ECS Exec sessions** | `/ecs/<cluster_id>/zoa-boundary/ssm-sessions` | `ecs-execute-command-<session-id>` | Interactive shell I/O after `zoa session join` — bash, `zoa run`, etc. |
+| Purpose               | Log group                                     | Stream naming                      | What it captures                                                        |
+| --------------------- | --------------------------------------------- | ---------------------------------- | ----------------------------------------------------------------------- |
+| **Container stdout**  | `/ecs/<cluster_id>/zoa-boundary`              | `container/zoa-boundary/<task-id>` | Task startup script only (banner, tool check, “ready for connections”). |
+| **ECS Exec sessions** | `/ecs/<cluster_id>/zoa-boundary/ssm-sessions` | `ecs-execute-command-<session-id>` | Interactive shell I/O after `zoa session join` — bash, `zoa run`, etc.  |
 
 `<cluster_id>` is the HyperFleet cluster id (`regional_id` on RC, `management_id` on MC).
 
@@ -70,3 +70,7 @@ aws logs tail "/ecs/<cluster_id>/zoa-boundary" --since 1h
 ## ZOA TA audit (separate)
 
 `zoa run` is recorded in **ZOA DynamoDB audit** regardless of CloudWatch exec logging. Use exec logs for shell forensics; use ZOA audit for TA proof.
+
+## DynamoDB `execSessionIds` (forensics)
+
+After each successful `ExecuteCommand`, the laptop CLI calls Access **`POST /api/v0/sessions/exec-attached/{session-id}`** to append the SSM session id (CloudWatch stream name). This is **optional for reaper idle logic** — the Worker correlates activity via SSM and CloudWatch directly. See [session reaper](boundary-session-reaper.md).

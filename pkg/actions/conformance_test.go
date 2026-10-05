@@ -59,6 +59,17 @@ func TestAllRegisteredActions_Conformance(t *testing.T) {
 			if meta.Description == "" {
 				t.Error("Description must not be empty — explain what the TA does")
 			}
+			if len(meta.Examples) == 0 {
+				t.Error("Examples must include at least one zoa run command with --jira")
+			}
+			for i, ex := range meta.Examples {
+				if !strings.Contains(ex, "--jira") {
+					t.Errorf("Examples[%d] must include --jira: %q", i, ex)
+				}
+				if !strings.HasPrefix(ex, "zoa run ") {
+					t.Errorf("Examples[%d] must start with 'zoa run ': %q", i, ex)
+				}
+			}
 			if !validApprovals[meta.Authorization.Approval] {
 				t.Errorf("Authorization.Approval must be 'none', 'auto', or 'manual', got %q", meta.Authorization.Approval)
 			}

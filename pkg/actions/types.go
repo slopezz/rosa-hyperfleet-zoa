@@ -34,6 +34,7 @@ type ActionMetadata struct {
 	// DisallowExecutionModeOverride rejects API/CLI execution_mode overrides.
 	DisallowExecutionModeOverride bool                `json:"disallow_execution_mode_override,omitempty"`
 	Description                   string              `json:"description"`
+	Examples                      []string            `json:"examples,omitempty"`
 	Parameters                    []ParameterDef      `json:"parameters"`
 	Authorization                 AuthorizationConfig `json:"authorization"`
 	TimeoutSeconds                int                 `json:"timeout_seconds"`

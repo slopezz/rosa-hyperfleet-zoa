@@ -117,6 +117,7 @@ type Action struct {
 	Type                 string              `json:"type"`
 	ExecutionMode        string              `json:"execution_mode,omitempty"`
 	Description          string              `json:"description"`
+	Examples             []string            `json:"examples,omitempty"`
 	Params               []ActionParam       `json:"parameters,omitempty"`
 	Authorization        ActionAuthorization `json:"authorization,omitempty"`
 	DryRunAction         string              `json:"dry_run_action,omitempty"`
@@ -267,17 +268,18 @@ type TargetList struct {
 }
 
 type Session struct {
-	SessionID   string `json:"session_id"`
-	Operator    string `json:"operator"`
-	Target      string `json:"target_cluster"`
-	Status      string `json:"status"`
-	Region      string `json:"region,omitempty"`
-	EcsCluster  string `json:"ecs_cluster,omitempty"`
-	TaskArn     string `json:"task_arn,omitempty"`
-	CreatedAt   string `json:"created_at,omitempty"`
-	Deadline    string `json:"deadline,omitempty"`
-	CompletedAt string `json:"terminated_at,omitempty"`
-	StopReason  string `json:"stop_reason,omitempty"`
+	SessionID      string   `json:"session_id"`
+	Operator       string   `json:"operator"`
+	Target         string   `json:"target_cluster"`
+	Status         string   `json:"status"`
+	Region         string   `json:"region,omitempty"`
+	EcsCluster     string   `json:"ecs_cluster,omitempty"`
+	TaskArn        string   `json:"task_arn,omitempty"`
+	CreatedAt      string   `json:"created_at,omitempty"`
+	Deadline       string   `json:"deadline,omitempty"`
+	CompletedAt    string   `json:"terminated_at,omitempty"`
+	StopReason     string   `json:"stop_reason,omitempty"`
+	ExecSessionIDs []string `json:"exec_session_ids,omitempty"`
 }
 
 type SessionList struct {

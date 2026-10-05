@@ -117,6 +117,10 @@ func (m *mockClient) SessionJoin(ctx context.Context, sessionID string) (*client
 	return nil, fmt.Errorf("SessionJoin not mocked")
 }
 
+func (m *mockClient) SessionExecAttached(ctx context.Context, sessionID, execSessionID string) error {
+	return nil
+}
+
 func (m *mockClient) ListSessions(ctx context.Context, query url.Values) (*client.SessionList, error) {
 	if m.listSessionsFn != nil {
 		return m.listSessionsFn(ctx, query)

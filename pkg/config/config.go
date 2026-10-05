@@ -113,6 +113,12 @@ type Config struct {
 
 	// ExecCredentialDurationSeconds is the lifetime of vended exec credentials (default 3600).
 	ExecCredentialDurationSeconds int
+
+	// SessionIdleTimeoutSeconds is terminal inactivity before the reaper stops an active session (default 3600).
+	SessionIdleTimeoutSeconds int
+
+	// SessionMaxDurationHours is the default session length and the max timeout_hours clients may request (default 4).
+	SessionMaxDurationHours int
 }
 
 func Load() (*Config, error) {
@@ -151,6 +157,8 @@ func Load() (*Config, error) {
 		BoundaryECSExecCommand:         getEnv("ZOA_ECS_EXEC_COMMAND", "runuser -u sre -- /bin/bash -l"),
 		ExecScopedRoleARN:              getEnv("EXEC_SCOPED_ROLE_ARN", ""),
 		ExecCredentialDurationSeconds:  getEnvInt("EXEC_CREDENTIAL_DURATION_SECONDS", 3600),
+		SessionIdleTimeoutSeconds:      getEnvInt("SESSION_IDLE_TIMEOUT_SECONDS", 3600),
+		SessionMaxDurationHours:        getEnvInt("SESSION_MAX_DURATION_HOURS", 4),
 	}
 
 	validModes := map[string]bool{"api": true, "worker": true, "access": true}
