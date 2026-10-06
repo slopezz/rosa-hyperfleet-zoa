@@ -42,8 +42,6 @@ tmp/
 .cache/
 test-results/
 
-# golangci-lint cache (when run with --cache-dir .cache/golangci-lint)
-
 # ZOA CLI downloaded artifacts (auto-named by zoa download / zoa run --wait)
 zoa-*-output.*
 zoa-*-output/

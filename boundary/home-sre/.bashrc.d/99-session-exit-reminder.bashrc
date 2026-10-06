@@ -3,17 +3,20 @@
 
 zoa_boundary_print_session_stop_hint() {
   local deployment="${ZOA_DEPLOYMENT:-<deployment>}"
-  local session_id="${ZOA_SESSION_ID:-}"
+  local compound
+  compound="$(zoa_compound_session_id)"
 
-  if [[ -z "${session_id}" ]]; then
+  if [[ -z "${compound}" ]]; then
     return 0
   fi
 
   printf '%s\n' '' '--- ZOA boundary ---' \
-    'ECS Exec ended; the boundary task is still running.' \
-    'On your laptop:' \
-    "  zoa session stop ${deployment}/${session_id}" \
-    "  zoa session list -d ${deployment}" \
+    'ECS Exec ended; the ZOA boundary task is still running.' \
+    'Possible next steps on your laptop:' \
+    "  Stop session:    zoa session stop ${compound}" \
+    "  Re-join session: zoa session join ${compound}" \
+    "  Your sessions:            zoa session list ${deployment}" \
+    "  All operators sessions:   zoa session history ${deployment}" \
     '---'
 }
 

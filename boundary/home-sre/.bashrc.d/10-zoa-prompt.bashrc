@@ -2,11 +2,7 @@
 # Env vars are set at RunTask (ZOA_SESSION_ID, ZOA_OPERATOR) and in the task definition.
 
 zoa_prompt_primary() {
-  local sid="${ZOA_SESSION_ID:-session:unknown}"
-  if [[ "${sid}" != session:* ]]; then
-    sid="session:${sid}"
-  fi
-  printf '%s' "${sid}"
+  zoa_prompt_session_line
 }
 
 zoa_prompt_secondary() {
