@@ -140,10 +140,10 @@ Opens ECS Exec into the boundary container as user **`sre`**.
 
 The shell uses a **two-line prompt**:
 
-- Line 1: `session:<deployment>/<uuid>` — copy this for `zoa session stop`.
+- Line 1: `sessionId:<deployment>/<uuid>` — copy this for `zoa session stop`.
 - Line 2: `<operator>@zoa:<deployment>/<target>` — who and where.
 
-Session facts and a **build-time TA catalog** (filtered by `ZOA_DEPLOYMENT_TARGET`, `rc` or `mc`) are copied at task start to `/home/sre/.claude/ZOA_SESSION.md` and `/home/sre/.claude/ZOA_ACTIONS.md`. Use `zoa describe <action>` for the live API view (`-o json` includes CLI bindings and examples).
+Session facts and **`ZOA_ACTIONS.md`** (rendered at task start via `zoa actions --offline -o markdown`, filtered by **`ZOA_TARGET_TYPE` / TYPE in `zoa targets`**) live under `/home/sre/.claude/` with **`CLAUDE.md`**. The embedded offline catalog is a hint; the **live API** is authoritative when connected (`zoa actions`, `zoa describe` without `--offline`).
 
 ## Work inside the boundary
 
@@ -162,7 +162,7 @@ Read [Trusted Actions guide](../trusted-actions.md) for authoring; [CLAUDE.md](h
 From your **laptop** (not required from inside the container):
 
 ```bash
-zoa session list -d <deployment>    # if you lost the id
+zoa session list <deployment>    # if you lost the id
 zoa session stop <deployment>/<session-id>
 ```
 

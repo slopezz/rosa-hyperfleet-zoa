@@ -74,7 +74,8 @@ For **discovery and boundary sessions** (`deployments`, `targets`, `session`), u
 | `output <id>` | Show execution output |
 | `logs <id>` | Show execution logs |
 | `download <id>` | Download output to a local file |
-| `actions` | List all available Trusted Actions |
+| `actions` | List Trusted Actions (API by default; **`--offline`** uses embedded registry) |
+| `catalog` | Alias for **`actions`** |
 | `describe <action>` | Show TA details (params, scope, timeout) |
 | `audit` | View audit trail |
 | `version` | Print client and server version |
@@ -90,9 +91,14 @@ For **discovery and boundary sessions** (`deployments`, `targets`, `session`), u
 ## Examples
 
 ```bash
-# Discover
+# Discover (live API — authoritative when connected)
 zoa actions
 zoa describe get_resource
+
+# Offline catalog (no ZOA_API_URL; same TYPE as `zoa targets`)
+zoa actions --offline --target-type rc
+zoa actions --offline -o markdown   # boundary / Claude; uses ZOA_TARGET_TYPE when set
+zoa catalog --offline --target-type mc
 
 # Read resources (sync, default)
 zoa run get_resource --jira OSD-123 --namespace kube-system --resource pods

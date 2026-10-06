@@ -3,11 +3,14 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 
 	"github.com/google/uuid"
 
@@ -258,12 +261,12 @@ func (h *AccessHandler) ensureBoundaryTask(ctx context.Context, session *store.S
 		Subnets:        subnets,
 		SecurityGroup:  target.SecurityGroupId,
 		Environment: map[string]string{
-			"ZOA_API_URL":           target.FunctionUrl,
-			"ZOA_TARGET":            session.TargetCluster,
-			"ZOA_DEPLOYMENT":        session.DeploymentName,
-			"ZOA_DEPLOYMENT_TARGET": strings.ToLower(target.TargetType),
-			"ZOA_SESSION_ID":        session.SessionID,
-			"ZOA_OPERATOR":          session.Operator,
+			"ZOA_API_URL":     target.FunctionUrl,
+			"ZOA_TARGET":      session.TargetCluster,
+			"ZOA_DEPLOYMENT":  session.DeploymentName,
+			"ZOA_TARGET_TYPE": strings.ToLower(target.TargetType),
+			"ZOA_SESSION_ID":  session.SessionID,
+			"ZOA_OPERATOR":    session.Operator,
 		},
 		Tags: map[string]string{
 			"Component":  "zoa",
@@ -578,8 +581,15 @@ func (h *AccessHandler) handleSessionExecAttached(w http.ResponseWriter, r *http
 	}
 
 	if err := h.sessionStore.RecordExecSession(ctx, sessionID, username, req.ExecSessionID); err != nil {
-		h.logger.Error("failed to record exec session", "session_id", sessionID, "error", err)
-		writeError(w, http.StatusInternalServerError, "internal_error", "failed to record exec session")
+		h.logger.Error("failed to record exec session", "session_id", sessionID, "operator", username, "error", err)
+		var condFail *types.ConditionalCheckFailedException
+		if errors.As(err, &condFail) {
+			writeError(w, http.StatusConflict, "exec_session_not_recorded",
+				fmt.Sprintf("session row rejected update (status or operator mismatch): %v", err))
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "exec_session_not_recorded",
+			fmt.Sprintf("failed to record exec session: %v", err))
 		return
 	}
 

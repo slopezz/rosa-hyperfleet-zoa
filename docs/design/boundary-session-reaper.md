@@ -49,11 +49,11 @@ Access injects at `RunTask` (in addition to task-definition defaults):
 
 | Env                                           | Purpose                                                                        |
 | --------------------------------------------- | ------------------------------------------------------------------------------ |
-| `ZOA_DEPLOYMENT_TARGET`                       | `rc` or `mc` (lowercased from target metadata) — selects baked TA catalog file |
+| `ZOA_TARGET_TYPE`                       | `rc` or `mc` (lowercased from target metadata) — TA registry filter; legacy `ZOA_DEPLOYMENT_TARGET` |
 | `ZOA_SESSION_ID` / `ZOA_OPERATOR`             | Session facts in `ZOA_SESSION.md`                                              |
 | `ZOA_API_URL`, `ZOA_TARGET`, `ZOA_DEPLOYMENT` | Existing boundary wiring                                                       |
 
-Entrypoint copies `/usr/share/zoa/catalog/ZOA_ACTIONS.{rc|mc}.md` → `/home/sre/.claude/ZOA_ACTIONS.md`. Regenerate catalogs with `go run ./hack/generate-boundary-catalog/` after TA metadata changes.
+Entrypoint copies runtime **`ZOA_ACTIONS.md`** via `zoa actions --offline -o markdown` (embedded CLI registry; **`ZOA_TARGET_TYPE`**).
 
 ## Terraform / IAM (rosa-hyperfleet)
 
