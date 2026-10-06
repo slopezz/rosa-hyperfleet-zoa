@@ -546,9 +546,10 @@ func (s *DynamoDBSessionStore) RecordExecSession(ctx context.Context, sessionID,
 			"sessionId": &types.AttributeValueMemberS{Value: sessionID},
 		},
 		UpdateExpression:    aws.String(`SET execSessionIds = list_append(if_not_exists(execSessionIds, :empty), :sid)`),
-		ConditionExpression: aws.String("#st = :active AND operator = :op"),
+		ConditionExpression: aws.String("#st = :active AND #operator = :op"),
 		ExpressionAttributeNames: map[string]string{
-			"#st": "status",
+			"#st":       "status",
+			"#operator": "operator",
 		},
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":empty":  &types.AttributeValueMemberL{Value: []types.AttributeValue{}},

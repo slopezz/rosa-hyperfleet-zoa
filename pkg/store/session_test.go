@@ -244,3 +244,32 @@ func TestSessionStatus_WhenValues_ItShouldMatchExpected(t *testing.T) {
 		t.Errorf("expected 'failed', got %q", SessionStatusFailed)
 	}
 }
+
+func TestDynamoDBSessionStore_RecordExecSession_WhenSuccess_ItShouldEscapeOperatorReservedKeyword(t *testing.T) {
+	var capturedInput *dynamodb.UpdateItemInput
+	mock := &mockDynamoDBAPI{
+		updateItemFn: func(_ context.Context, params *dynamodb.UpdateItemInput, _ ...func(*dynamodb.Options)) (*dynamodb.UpdateItemOutput, error) {
+			capturedInput = params
+			return &dynamodb.UpdateItemOutput{}, nil
+		},
+	}
+
+	s := NewSessionStore(mock, "test-sessions", 30)
+	err := s.RecordExecSession(context.Background(), "4033d11e-2b15-4da4-8b20-3d7b558260c3", "slopezma", "ecs-execute-command-vciif3zr6rblyj3fi48gi6fcvu")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if capturedInput == nil {
+		t.Fatal("UpdateItem was not called")
+	}
+	if capturedInput.ConditionExpression == nil {
+		t.Fatal("expected ConditionExpression")
+	}
+	cond := *capturedInput.ConditionExpression
+	if cond != "#st = :active AND #operator = :op" {
+		t.Errorf("unexpected condition: %q", cond)
+	}
+	if capturedInput.ExpressionAttributeNames["#operator"] != "operator" {
+		t.Errorf("expected #operator -> operator, got %q", capturedInput.ExpressionAttributeNames["#operator"])
+	}
+}
