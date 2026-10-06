@@ -46,6 +46,7 @@ zoa_boundary_print_motd() {
     fi
   fi
 
+  echo ""
   zoa_boundary_ascii_art
   echo ""
   printf 'Hello, %s\n' "${operator}"
