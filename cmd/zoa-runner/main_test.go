@@ -37,7 +37,7 @@ func TestParseParams_WhenInvalidJSON_ItShouldReturnEmptyMap(t *testing.T) {
 }
 
 func TestParseParamsWithApplyDefaults_WhenMustGatherPartialParams_ItShouldFillNonGatherDefaults(t *testing.T) {
-	t.Setenv("ZOA_DEPLOYMENT_TARGET", "mc")
+	t.Setenv("ZOA_TARGET_TYPE", "mc")
 	actions.SetDeploymentTarget("mc")
 
 	action, ok := actions.GetCatalog("must_gather")

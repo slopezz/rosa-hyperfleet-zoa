@@ -12,9 +12,9 @@ var (
 	runtimeDeploymentTarget string
 )
 
-// SetDeploymentTarget configures which ZOA deployment (rc or mc) this process serves.
-// Must be called once at startup from ZOA_DEPLOYMENT_TARGET. When empty, all registered
-// TAs remain visible (used in unit tests).
+// SetDeploymentTarget configures which ZOA target type (rc or mc) this process serves.
+// Must be called once at startup from ZOA_TARGET_TYPE (or legacy ZOA_DEPLOYMENT_TARGET).
+// When empty, all registered TAs remain visible (used in unit tests).
 func SetDeploymentTarget(target string) {
 	mu.Lock()
 	defer mu.Unlock()

@@ -13,7 +13,7 @@ func setRequiredEnv(t *testing.T) {
 	t.Setenv("EKS_CLUSTER_CA", "LS0tLS1CRUdJTi...")
 	t.Setenv("EKS_CLUSTER_NAME", "eph-test-rc")
 	t.Setenv("TARGET_CLUSTER", "eph-test-rc")
-	t.Setenv("ZOA_DEPLOYMENT_TARGET", "rc")
+	t.Setenv("ZOA_TARGET_TYPE", "rc")
 	t.Setenv("AUDIT_TABLE", "zoa-audit")
 	t.Setenv("UPLOADER_ROLE_ARN", "arn:aws:iam::123456:role/zoa-uploader")
 	t.Setenv("JOB_IMAGE", "123456.dkr.ecr.us-east-1.amazonaws.com/zoa-runner:latest")
@@ -135,6 +135,7 @@ func TestLoad_WhenAccessModeDoesNotRequireEKS_ItShouldSucceed(t *testing.T) {
 	t.Setenv("EKS_CLUSTER_NAME", "")
 	t.Setenv("EXECUTION_TABLE", "")
 	t.Setenv("ARTIFACT_BUCKET", "")
+	t.Setenv("ZOA_TARGET_TYPE", "")
 	t.Setenv("ZOA_DEPLOYMENT_TARGET", "")
 
 	cfg, err := Load()
@@ -253,21 +254,36 @@ func TestLoad_WhenWorkerMissingJobImage_ItShouldReturnError(t *testing.T) {
 
 func TestLoad_WhenMissingDeploymentTarget_ItShouldReturnError(t *testing.T) {
 	setRequiredEnv(t)
+	t.Setenv("ZOA_TARGET_TYPE", "")
 	t.Setenv("ZOA_DEPLOYMENT_TARGET", "")
 
 	_, err := Load()
 	if err == nil {
-		t.Fatal("expected error when ZOA_DEPLOYMENT_TARGET is empty")
+		t.Fatal("expected error when ZOA_TARGET_TYPE is empty")
+	}
+}
+
+func TestLoad_WhenLegacyDeploymentTargetEnv_ItShouldAccept(t *testing.T) {
+	setRequiredEnv(t)
+	t.Setenv("ZOA_TARGET_TYPE", "")
+	t.Setenv("ZOA_DEPLOYMENT_TARGET", "rc")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.DeploymentTarget != "rc" {
+		t.Fatalf("got %q, want rc", cfg.DeploymentTarget)
 	}
 }
 
 func TestLoad_WhenInvalidDeploymentTarget_ItShouldReturnError(t *testing.T) {
 	setRequiredEnv(t)
-	t.Setenv("ZOA_DEPLOYMENT_TARGET", "hcp")
+	t.Setenv("ZOA_TARGET_TYPE", "hcp")
 
 	_, err := Load()
 	if err == nil {
-		t.Fatal("expected error for invalid ZOA_DEPLOYMENT_TARGET")
+		t.Fatal("expected error for invalid ZOA_TARGET_TYPE")
 	}
 }
 

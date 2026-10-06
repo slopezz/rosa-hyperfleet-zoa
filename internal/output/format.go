@@ -13,9 +13,10 @@ import (
 type Format string
 
 const (
-	FormatTable Format = "table"
-	FormatWide  Format = "wide"
-	FormatJSON  Format = "json"
+	FormatTable    Format = "table"
+	FormatWide     Format = "wide"
+	FormatJSON     Format = "json"
+	FormatMarkdown Format = "markdown"
 )
 
 func ParseFormat(s string) Format {
@@ -24,6 +25,8 @@ func ParseFormat(s string) Format {
 		return FormatJSON
 	case "wide":
 		return FormatWide
+	case "markdown", "md":
+		return FormatMarkdown
 	default:
 		return FormatTable
 	}

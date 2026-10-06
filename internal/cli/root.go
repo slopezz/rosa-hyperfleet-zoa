@@ -74,6 +74,9 @@ All requests start from your default AWS credential chain (SigV4).`,
 			if cmd.CalledAs() == "__complete" || cmd.CalledAs() == "__completeNoDesc" {
 				return nil
 			}
+			if catalogCommandUsesOffline(cmd) {
+				return nil
+			}
 			// `zoa deployments` reads SSM directly — no API URL needed.
 			if name == "deployments" {
 				return nil

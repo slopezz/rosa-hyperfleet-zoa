@@ -7,11 +7,13 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"strconv"
 
 	"github.com/spf13/cobra"
 
 	"github.com/openshift-online/rosa-hyperfleet-zoa/internal/client"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/internal/output"
+	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/boundaryexec"
 )
 
 func newSessionCommand(opts *GlobalOptions) *cobra.Command {
@@ -350,6 +352,18 @@ Defaults to last 24 hours.`,
 	return cmd
 }
 
+// formatExecSessionsForTable renders ECS Exec (SSM) join ids for session list/history.
+// Full stream names are in JSON (-o json) as exec_session_ids; table view stays compact.
+func formatExecSessionsForTable(ids []string) string {
+	if len(ids) == 0 {
+		return output.Dash("")
+	}
+	if len(ids) == 1 {
+		return output.Truncate(boundaryexec.NormalizeExecSessionID(ids[0]), 28)
+	}
+	return strconv.Itoa(len(ids)) + " joins"
+}
+
 func printSessionTable(w io.Writer, opts *GlobalOptions, deployment string, list *client.SessionList, history bool) error {
 	if opts.OutputFormat == output.FormatJSON {
 		enc := json.NewEncoder(w)
@@ -364,23 +378,25 @@ func printSessionTable(w io.Writer, opts *GlobalOptions, deployment string, list
 
 	tw := output.NewTable(w)
 	if history {
-		fmt.Fprintln(tw, "SESSION ID\tOPERATOR\tTARGET\tSTATUS\tSTOP REASON\tCREATED\tENDED\tDEADLINE")
-		for _, s := range list.Items {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-				FormatSessionID(deployment, s.SessionID),
-				s.Operator, s.Target, s.Status,
-				output.Dash(s.StopReason),
-				output.Dash(s.CreatedAt),
-				output.Dash(s.CompletedAt),
-				output.Dash(s.Deadline))
-		}
+		fmt.Fprintln(tw, "SESSION ID\tOPERATOR\tTARGET\tSTATUS\tSTOP REASON\tEXEC SESSIONS\tCREATED\tENDED\tDEADLINE")
 	} else {
-		fmt.Fprintln(tw, "SESSION ID\tTARGET\tSTATUS\tCREATED\tDEADLINE")
-		for _, s := range list.Items {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
-				FormatSessionID(deployment, s.SessionID),
-				s.Target, s.Status,
-				output.Dash(s.CreatedAt), output.Dash(s.Deadline))
+		fmt.Fprintln(tw, "SESSION ID\tTARGET\tSTATUS\tSTOP REASON\tEXEC SESSIONS\tCREATED\tENDED\tDEADLINE")
+	}
+	for _, s := range list.Items {
+		sessionID := FormatSessionID(deployment, s.SessionID)
+		stopReason := output.Dash(s.StopReason)
+		execSessions := formatExecSessionsForTable(s.ExecSessionIDs)
+		created := output.Dash(s.CreatedAt)
+		ended := output.Dash(s.CompletedAt)
+		deadline := output.Dash(s.Deadline)
+		if history {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+				sessionID, s.Operator, s.Target, s.Status,
+				stopReason, execSessions, created, ended, deadline)
+		} else {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+				sessionID, s.Target, s.Status,
+				stopReason, execSessions, created, ended, deadline)
 		}
 	}
 	return tw.Flush()

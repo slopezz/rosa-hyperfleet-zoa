@@ -1,8 +1,86 @@
 package cli
 
 import (
+	"bytes"
+	"strings"
 	"testing"
+
+	"github.com/openshift-online/rosa-hyperfleet-zoa/internal/client"
+	"github.com/openshift-online/rosa-hyperfleet-zoa/internal/output"
 )
+
+func TestFormatExecSessionsForTable(t *testing.T) {
+	tests := []struct {
+		name string
+		ids  []string
+		want string
+	}{
+		{
+			name: "When no exec sessions it should dash",
+			ids:  nil,
+			want: "-",
+		},
+		{
+			name: "When one exec session it should show short id",
+			ids:  []string{"ecs-execute-command-k7zkjuilu2vhsrp76e48ie3ciy"},
+			want: "k7zkjuilu2vhsrp76e48ie3ciy",
+		},
+		{
+			name: "When multiple exec sessions it should show join count",
+			ids:  []string{"ecs-execute-command-a", "ecs-execute-command-b"},
+			want: "2 joins",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := formatExecSessionsForTable(tt.ids)
+			if got != tt.want {
+				t.Errorf("got %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestPrintSessionTable_WhenListMode_ItShouldIncludeStopReasonAndEnded(t *testing.T) {
+	list := &client.SessionList{
+		Items: []client.Session{
+			{
+				SessionID:      "7840ac64-65f7-4198-b9da-8e38fc985d42",
+				Target:         "eph-regional",
+				Status:         "terminated",
+				StopReason:     "idleReaperStop",
+				ExecSessionIDs: []string{"ecs-execute-command-k7zkjuilu2vhsrp76e48ie3ciy"},
+				CreatedAt:      "2026-10-05T19:46:42.79550334Z",
+				CompletedAt:    "2026-10-05T21:24:40.967512578Z",
+				Deadline:       "2026-10-05T23:46:42.79550334Z",
+			},
+		},
+		Count: 1,
+	}
+
+	var buf bytes.Buffer
+	opts := &GlobalOptions{OutputFormat: output.FormatTable}
+	if err := printSessionTable(&buf, opts, "us-east-1-eph", list, false); err != nil {
+		t.Fatalf("printSessionTable: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "STOP REASON") || !strings.Contains(out, "ENDED") {
+		t.Fatalf("expected STOP REASON and ENDED columns, got:\n%s", out)
+	}
+	if !strings.Contains(out, "EXEC SESSIONS") {
+		t.Fatalf("expected EXEC SESSIONS column, got:\n%s", out)
+	}
+	if !strings.Contains(out, "idleReaperStop") {
+		t.Fatalf("expected stop reason in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "k7zkjuilu2vhsrp76e48ie3ciy") {
+		t.Fatalf("expected exec session id in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "2026-10-05T21:24:40.967512578Z") {
+		t.Fatalf("expected ended timestamp in output, got:\n%s", out)
+	}
+}
 
 func TestResolveDeploymentTarget(t *testing.T) {
 	tests := []struct {

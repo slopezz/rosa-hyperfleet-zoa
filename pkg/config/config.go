@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 )
 
 type Config struct {
@@ -128,7 +129,7 @@ func Load() (*Config, error) {
 		AuditTable:                     getEnv("AUDIT_TABLE", ""),
 		ArtifactBucket:                 getEnv("ARTIFACT_BUCKET", ""),
 		TargetCluster:                  getEnv("TARGET_CLUSTER", ""),
-		DeploymentTarget:               getEnv("ZOA_DEPLOYMENT_TARGET", ""),
+		DeploymentTarget:               targetTypeFromEnv(),
 		Region:                         getEnv("AWS_REGION", "us-east-1"),
 		JobImage:                       getEnv("JOB_IMAGE", ""),
 		WriteCooldownSeconds:           getEnvInt("WRITE_COOLDOWN_SECONDS", 300),
@@ -206,10 +207,10 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("EKS_CLUSTER_NAME is required (used for EKS token generation)")
 	}
 	if cfg.DeploymentTarget == "" {
-		return nil, fmt.Errorf("ZOA_DEPLOYMENT_TARGET is required (rc or mc)")
+		return nil, fmt.Errorf("%s is required (rc or mc)", targetTypeEnvPrimary)
 	}
 	if cfg.DeploymentTarget != "rc" && cfg.DeploymentTarget != "mc" {
-		return nil, fmt.Errorf("invalid ZOA_DEPLOYMENT_TARGET %q: must be rc or mc", cfg.DeploymentTarget)
+		return nil, fmt.Errorf("invalid %s %q: must be rc or mc", targetTypeEnvPrimary, cfg.DeploymentTarget)
 	}
 
 	if cfg.HandlerMode == "api" {
@@ -274,4 +275,29 @@ func getEnvInt(key string, fallback int) int {
 		return fallback
 	}
 	return i
+}
+
+const (
+	targetTypeEnvPrimary = "ZOA_TARGET_TYPE"
+	targetTypeEnvLegacy  = "ZOA_DEPLOYMENT_TARGET"
+)
+
+func targetTypeFromEnv() string {
+	return TargetTypeFromEnv()
+}
+
+// TargetTypeFromEnv reads ZOA_TARGET_TYPE, then legacy ZOA_DEPLOYMENT_TARGET.
+func TargetTypeFromEnv() string {
+	if v := normalizeTargetType(os.Getenv(targetTypeEnvPrimary)); v != "" {
+		return v
+	}
+	return normalizeTargetType(os.Getenv(targetTypeEnvLegacy))
+}
+
+func normalizeTargetType(s string) string {
+	s = strings.TrimSpace(strings.ToLower(s))
+	if s == "rc" || s == "mc" {
+		return s
+	}
+	return ""
 }

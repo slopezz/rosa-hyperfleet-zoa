@@ -21,7 +21,7 @@ func TestListActions_WhenActionsExist_ItShouldReturnNilError(t *testing.T) {
 	}
 
 	global := newMockGlobalOpts(mock)
-	err := listActions(context.Background(), global)
+	err := listActions(context.Background(), global, &catalogOptions{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -40,7 +40,7 @@ func TestListActions_WhenJSONFormat_ItShouldReturnNilError(t *testing.T) {
 
 	global := newMockGlobalOpts(mock)
 	global.OutputFormat = output.FormatJSON
-	err := listActions(context.Background(), global)
+	err := listActions(context.Background(), global, &catalogOptions{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -54,7 +54,7 @@ func TestListActions_WhenClientReturnsError_ItShouldPropagateError(t *testing.T)
 	}
 
 	global := newMockGlobalOpts(mock)
-	err := listActions(context.Background(), global)
+	err := listActions(context.Background(), global, &catalogOptions{})
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -81,7 +81,7 @@ func TestDescribeAction_WhenActionExists_ItShouldReturnNilError(t *testing.T) {
 	}
 
 	global := newMockGlobalOpts(mock)
-	err := describeAction(context.Background(), global, "get_pods")
+	err := describeAction(context.Background(), global, &catalogOptions{}, "get_pods")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -106,7 +106,7 @@ func TestDescribeAction_WhenActionHasCooldown_ItShouldReturnNilError(t *testing.
 	}
 
 	global := newMockGlobalOpts(mock)
-	err := describeAction(context.Background(), global, "delete_pod")
+	err := describeAction(context.Background(), global, &catalogOptions{}, "delete_pod")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -120,7 +120,7 @@ func TestDescribeAction_WhenClientReturnsError_ItShouldPropagateError(t *testing
 	}
 
 	global := newMockGlobalOpts(mock)
-	err := describeAction(context.Background(), global, "nonexistent")
+	err := describeAction(context.Background(), global, &catalogOptions{}, "nonexistent")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}

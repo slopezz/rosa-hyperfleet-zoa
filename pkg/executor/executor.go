@@ -418,7 +418,7 @@ func (e *Executor) DispatchAsync(ctx context.Context, exec *store.Execution, act
 								{Name: "S3_PREFIX", Value: fmt.Sprintf("executions/%s", exec.ID)},
 								{Name: "PARAMS", Value: marshalParamsEnv(exec.Params)},
 								{Name: "OPERATOR", Value: exec.Operator},
-								{Name: "ZOA_DEPLOYMENT_TARGET", Value: e.deploymentTarget},
+								{Name: "ZOA_TARGET_TYPE", Value: e.deploymentTarget},
 							},
 							// S3 credentials from STS-scoped Secret (mounted as env vars)
 							EnvFrom: []corev1.EnvFromSource{

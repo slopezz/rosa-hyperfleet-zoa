@@ -24,6 +24,7 @@ import (
 	"k8s.io/client-go/rest"
 
 	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/actions"
+	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/config"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/executor"
 )
 
@@ -57,7 +58,7 @@ func main() {
 	logger = logger.With("execution_id", executionID, "action", actionName)
 	logger.Info("zoa-runner starting")
 
-	actions.SetDeploymentTarget(os.Getenv("ZOA_DEPLOYMENT_TARGET"))
+	actions.SetDeploymentTarget(config.TargetTypeFromEnv())
 
 	action, ok := actions.Get(actionName)
 	if !ok {
@@ -98,7 +99,7 @@ func main() {
 	execParams := &actions.ExecutionParams{
 		Params:           params,
 		ExecutionID:      executionID,
-		DeploymentTarget: os.Getenv("ZOA_DEPLOYMENT_TARGET"),
+		DeploymentTarget: config.TargetTypeFromEnv(),
 		Logger:           execLogger,
 	}
 

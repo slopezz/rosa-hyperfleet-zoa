@@ -4,14 +4,23 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/openshift-online/rosa-hyperfleet-zoa/internal/cli/targettype"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/actions"
 )
 
 func registeredActionNames() []string {
-	all := actions.ListCatalog()
-	names := make([]string, 0, len(all))
-	for _, a := range all {
-		names = append(names, a.Metadata().Name)
+	targetType := targettype.ResolveOptional("")
+	var names []string
+	if targetType != "" {
+		actions.SetDeploymentTarget(targetType)
+		defer actions.SetDeploymentTarget("")
+		for _, a := range actions.List() {
+			names = append(names, a.Metadata().Name)
+		}
+	} else {
+		for _, a := range actions.ListCatalog() {
+			names = append(names, a.Metadata().Name)
+		}
 	}
 	sort.Strings(names)
 	return names
