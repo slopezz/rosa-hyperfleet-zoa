@@ -7,6 +7,14 @@ set -euo pipefail
 
 export PATH="/usr/local/bin:/usr/local/aws-cli/v2/current/bin:/usr/bin:/bin"
 
+_zoa_boundary_banner_path="${ZOA_BOUNDARY_BANNER_PATH:-/etc/zoa-boundary/banner.sh}"
+if [[ ! -f "${_zoa_boundary_banner_path}" ]]; then
+  echo "FATAL: missing ZOA boundary banner at ${_zoa_boundary_banner_path}" >&2
+  exit 1
+fi
+# shellcheck source=/dev/null
+source "${_zoa_boundary_banner_path}"
+
 zoa_session_md_path() {
   echo "/home/sre/.claude/ZOA_SESSION.md"
 }
@@ -78,43 +86,7 @@ require_ecs_exec_logging_bins() {
 }
 
 print_startup_banner() {
-  local target_type
-  target_type="$(zoa_target_type)"
-  echo "=== ZOA Boundary Session ==="
-  echo "Started at $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-  echo "Session:    ${ZOA_SESSION_ID:-unknown}"
-  echo "Operator:   ${ZOA_OPERATOR:-unknown}"
-  echo "Deployment: ${ZOA_DEPLOYMENT:-unknown}"
-  echo "Target:     ${ZOA_TARGET:-unknown}"
-  echo "Target type: ${target_type} (rc|mc; TYPE in zoa targets)"
-  echo "Unix user:  $(id -un) (uid=$(id -u))"
-  echo ""
-
-  echo "Available tools:"
-  local tool
-  for tool in zoa kubectl jq claude script; do
-    if command -v "${tool}" &>/dev/null; then
-      echo "  - ${tool}"
-    else
-      echo "  - ${tool} (not found)"
-    fi
-  done
-  if /usr/local/bin/aws --version &>/dev/null; then
-    echo "  - aws"
-  else
-    echo "  - aws (not found at /usr/local/bin/aws)"
-  fi
-  echo ""
-
-  echo "=== Boundary ready for connections ==="
-  echo "Session facts: $(zoa_session_md_path)"
-  echo "TA catalog:    $(zoa_actions_catalog_path)"
-  echo "Execute TAs:   zoa run <action> ... --jira ROSAENG-1234"
-  echo "List actions:  zoa actions  |  zoa catalog --offline  |  zoa describe <action>"
-  echo ""
-  echo "Boundary is ready. Waiting for ECS Exec connections..."
-  echo "Container will stay running until the task is stopped."
-  echo ""
+  zoa_boundary_print_container_startup_banner
 }
 
 main() {

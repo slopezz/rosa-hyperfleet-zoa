@@ -14,13 +14,13 @@ Child stories were defined in this document before Jira subtasks existed. Create
 
 | #   | Title (Jira summary)                                                                | Primary repo                             | Jira key                                                                                                 |
 | --- | ----------------------------------------------------------------------------------- | ---------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| 1   | ZOA Boundary Core — Access Lambda, boundary container, CLI, identity bridge, reaper | `rosa-hyperfleet-zoa`                    | _create / link_                                                                                          |
-| 2   | ZOA Boundary Infrastructure — Terraform modules, SSM autodiscovery, DynamoDB, IAM   | `rosa-hyperfleet`                        | _create / link_                                                                                          |
-| 3   | Konflux Pipeline — ZOA Boundary Image                                               | `rosa-hyperfleet-zoa`                    | _create / link_                                                                                          |
-| 4   | Observability — ZOA Access Lambda + Boundary Sessions                               | `configuration` + hyperfleet             | _create / link_                                                                                          |
-| 5   | E2E Testing — boundary session lifecycle                                            | `rosa-hyperfleet`                        | _create / link_                                                                                          |
-| 6   | ZOA Boundary Documentation — architecture, CLI reference, SRE runbook               | both                                     | _create / link_                                                                                          |
-| 7   | App-interface: Central Account SAML role for ZOA Access invoker (dev, int, stage)   | app-interface + `rosa-hyperfleet` config | **ROSAENG-TBD** — see [Story 7](#7-app-interface-central-account-saml-role-for-zoa-access-dev-int-stage) |
+| 1   | ZOA Boundary Core — Access Lambda, boundary container, CLI, identity bridge, reaper | `rosa-hyperfleet-zoa`                    | [ROSAENG-68805](https://redhat.atlassian.net/browse/ROSAENG-68805)                                       |
+| 2   | ZOA Boundary Infrastructure — Terraform modules, SSM autodiscovery, DynamoDB, IAM   | `rosa-hyperfleet`                        | [ROSAENG-68806](https://redhat.atlassian.net/browse/ROSAENG-68806)                                       |
+| 3   | Konflux Pipeline — ZOA Boundary Image                                               | `rosa-hyperfleet-zoa`                    | [ROSAENG-68807](https://redhat.atlassian.net/browse/ROSAENG-68807)                                       |
+| 4   | Observability — ZOA Access Lambda + Boundary Sessions                               | `configuration` + hyperfleet             | [ROSAENG-68808](https://redhat.atlassian.net/browse/ROSAENG-68808)                                       |
+| 5   | E2E Testing — boundary session lifecycle                                            | `rosa-hyperfleet`                        | [ROSAENG-68809](https://redhat.atlassian.net/browse/ROSAENG-68809)                                       |
+| 6   | ZOA Boundary Documentation — architecture, CLI reference, SRE runbook               | both                                     | [ROSAENG-68810](https://redhat.atlassian.net/browse/ROSAENG-68810)                                       |
+| 7   | App-interface: Central Account SAML role for ZOA Access invoker (dev, int, stage)   | app-interface + `rosa-hyperfleet` config | [ROSAENG-68811](https://redhat.atlassian.net/browse/ROSAENG-68811)                                       |
 
 ### Implementation status (2026-10-06)
 

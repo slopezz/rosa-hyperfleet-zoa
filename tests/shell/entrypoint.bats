@@ -4,6 +4,7 @@ setup() {
   REPO_ROOT="$(cd "${BATS_TEST_DIRNAME}/../.." && pwd)"
   ENTRYPOINT="${REPO_ROOT}/boundary/zoa-boundary-entrypoint.sh"
   ZOA_BIN="${REPO_ROOT}/bin/zoa"
+  export ZOA_BOUNDARY_BANNER_PATH="${REPO_ROOT}/boundary/zoa-boundary-banner.sh"
 }
 
 @test "entrypoint is safely sourceable" {
@@ -170,7 +171,7 @@ setup() {
     ' bash "${ENTRYPOINT}"
 
   [ "${status}" -eq 0 ]
-  [[ "${output}" == *"=== ZOA Boundary Session ==="* ]]
+  [[ "${output}" == *"=== ZOA Boundary Session (container startup) ==="* ]]
   [[ "${output}" == *"sess-banner"* ]]
   [[ "${output}" == *"Target type: rc"* ]]
   [[ "${output}" == *"/home/sre/.claude/ZOA_SESSION.md"* ]]

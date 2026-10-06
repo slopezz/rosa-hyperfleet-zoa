@@ -138,7 +138,7 @@ Opens ECS Exec into the boundary container as user **`sre`**.
 
 ### Prompt and session id
 
-The shell uses a **two-line prompt**:
+On **ECS Exec login**, a plain-text MOTD prints once (Unicode **ZOA** banner, `Hello, <operator>`, session fields, and pointers to **`~/.claude/CLAUDE.md`**, **`ZOA_SESSION.md`**, **`ZOA_ACTIONS.md`**). Requires a UTF-8 terminal (standard for modern SSH/ECS Exec). The shell then uses a **two-line prompt**:
 
 - Line 1: `sessionId:<deployment>/<uuid>` — copy this for `zoa session stop`.
 - Line 2: `<operator>@zoa:<deployment>/<target>` — who and where.
@@ -173,7 +173,7 @@ Exiting the Exec shell (`exit` or Ctrl+D) **does not** stop the ECS task or clos
 
 Details: [Session reaper](../design/boundary-session-reaper.md).
 
-When you leave the shell, the boundary prints a short reminder with the exact `zoa session stop <deployment>/<session-id>` command for your laptop.
+When you leave the shell, the boundary prints **`==>`** hints with the exact `zoa session stop`, `join`, `list`, and `history` commands for your laptop.
 
 There is **no** `session stop --current` with local state — you may run **multiple sessions** in parallel; use `session list` and the prompt’s session line.
 

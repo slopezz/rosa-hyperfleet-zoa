@@ -182,6 +182,8 @@ RUN useradd --uid 1000 --create-home --shell /bin/bash sre
 # Baked home for the sre user (Claude + shell). Ephemeral per task — no EFS skel copy at runtime.
 COPY --chown=sre:sre boundary/home-sre/ /home/sre/
 COPY --chmod=755 boundary/zoa-boundary-entrypoint.sh /usr/local/bin/zoa-boundary-entrypoint.sh
+RUN mkdir --parents /etc/zoa-boundary
+COPY --chmod=644 boundary/zoa-boundary-banner.sh /etc/zoa-boundary/banner.sh
 # Claude Code looks for ~/.local/bin/claude first; point at the image binary.
 RUN mkdir --parents /home/sre/.local/bin \
     && ln --symbolic /usr/local/bin/claude /home/sre/.local/bin/claude \
