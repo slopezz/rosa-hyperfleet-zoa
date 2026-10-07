@@ -44,7 +44,7 @@ type runFlagDoc struct {
 }
 
 var runFlagDocs = []runFlagDoc{
-	{name: "jira", display: "--jira", description: "Jira ticket (required on every run, e.g. ROSAENG-1234)", required: true},
+	{name: "jira", display: "--jira", description: "Jira ticket (required unless env ZOA_JIRA is set)", required: true},
 	{name: "force", display: "--force", description: "Bypass write cooldown and concurrency limits (write TAs)"},
 	{name: "dry-run", display: "--dry-run", description: "Run the TA's dry_run_action instead of the write TA"},
 	{name: "no-wait", display: "--no-wait", description: "Print execution id and exit without TA output (sync: fire-and-forget; async: default unless --wait)"},

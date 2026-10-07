@@ -51,6 +51,13 @@ write_zoa_session_md() {
     echo "| Target type | ${target_type} |"
     echo "| AWS region | ${AWS_REGION:-unknown} |"
     echo "| ZOA API | ${ZOA_API_URL:-unknown} |"
+    echo "| Jira | *(not set)* |"
+    if [[ -n "${ZOA_SESSION_DEADLINE:-}" ]]; then
+      echo "| Session deadline (UTC) | ${ZOA_SESSION_DEADLINE} |"
+    fi
+    if [[ -n "${ZOA_SESSION_IDLE_TIMEOUT_SECONDS:-}" ]]; then
+      echo "| Idle stop (no Exec activity) | $(zoa_boundary_format_idle_timeout "${ZOA_SESSION_IDLE_TIMEOUT_SECONDS}") |"
+    fi
     echo ""
     echo "**Target type \`${target_type}\`** matches **TYPE** in \`zoa targets\` — \`rc\` = Regional Cluster EKS (one per region); \`mc\` = Management Cluster EKS (HyperShift; may be several per region). kube-api TAs use this cluster; aws-api TAs use this cluster's AWS account/region."
     echo ""

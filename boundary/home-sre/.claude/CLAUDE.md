@@ -4,11 +4,11 @@ You are running inside a **ZOA Boundary** container: a time-boxed, audited ECS F
 
 **Read these files first (updated every task start):**
 
-| File | Purpose |
-|------|---------|
-| `/home/sre/.claude/ZOA_SESSION.md` | Session ID, operator, deployment, target, API URL |
+| File                               | Purpose                                                                                                 |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `/home/sre/.claude/ZOA_SESSION.md` | Session ID, operator, deployment, target, API URL                                                       |
 | `/home/sre/.claude/ZOA_ACTIONS.md` | **Baked TA catalog** for this deployment target (`rc` or `mc`); use `zoa describe` for live API details |
-| This `CLAUDE.md` | **Agent essentials** table, rules, RC/MC platform, observability, control plane, ZOA execution |
+| This `CLAUDE.md`                   | **Agent essentials** table, rules, RC/MC platform, observability, control plane, ZOA execution          |
 
 The shell prompt is two lines: **`sessionId:<deployment>/<uuid>`** (audit handle — copy for `zoa session stop`) and **`operator@zoa:deployment/target`**. Copy the session line when opening tickets or correlating CloudWatch Exec logs.
 
@@ -16,16 +16,16 @@ The shell prompt is two lines: **`sessionId:<deployment>/<uuid>`** (audit handle
 
 Quick map of what matters in this environment — details in the sections below.
 
-| Topic | Why you need it |
-|-------|-----------------|
-| **Control-plane map** | Routes “Platform API” vs “operator / RDS / Dynamo” vs “kube-applier / HCP” without guessing namespaces. → [HyperFleet control plane](#hyperfleet-control-plane-where-problems-land) |
-| **Platform workloads (RC vs MC)** | Typical **`platform-api`**, **`hyperfleet`**, **`monitoring`**, **`thanos`**, **`loki`**, **`vector`**, **`hypershift`**, **`kube-applier`**, **`cluster-*`**. → [Platform workloads](#platform-workloads-what-runs-on-rc-vs-mc) |
-| **Observability** | Local Prometheus on RC+MC; Thanos + Grafana + Loki on RC; MC metrics/logs via sigv4-proxy → RHOBS API Gateway. → [Observability](#observability-metrics-and-logs) |
-| **How `zoa run` works** | Boundary → **API Lambda** → impersonation or AWS role — **not** in-shell **`kubectl`**. → [How zoa run works](#how-zoa-run-works-from-this-container) |
-| **Identity bridge** | **`ZOA_OPERATOR`** / prompt env is **UX only**; TA audit uses SigV4 task ARN → DynamoDB session → human **operator**. Do not treat env as audit truth. → same section |
-| **TA read / write / cooldown / dry-run / async** | Safer change suggestions; write TAs need cooldown; use **`--dry-run`** / **`--force`** per **`zoa describe`**. → [Trusted Action safety](#trusted-action-safety-read-vs-write) |
-| **Session lifecycle** | **Exit Exec ≠ stop task**; stop from **laptop** with **`zoa session stop <deployment>/<uuid>`**. Two audits: CloudWatch Exec transcript vs **`zoa runs`** / audit. → [Session lifecycle](#session-lifecycle-boundary) |
-| **Break-glass** | **`kubectl`** / **`aws`** in the image have **no creds** today — not production; use **`zoa run`** only. → [How zoa run works](#how-zoa-run-works-from-this-container) |
+| Topic                                            | Why you need it                                                                                                                                                                                                                  |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Control-plane map**                            | Routes “Platform API” vs “operator / RDS / Dynamo” vs “kube-applier / HCP” without guessing namespaces. → [HyperFleet control plane](#hyperfleet-control-plane-where-problems-land)                                              |
+| **Platform workloads (RC vs MC)**                | Typical **`platform-api`**, **`hyperfleet`**, **`monitoring`**, **`thanos`**, **`loki`**, **`vector`**, **`hypershift`**, **`kube-applier`**, **`cluster-*`**. → [Platform workloads](#platform-workloads-what-runs-on-rc-vs-mc) |
+| **Observability**                                | Local Prometheus on RC+MC; Thanos + Grafana + Loki on RC; MC metrics/logs via sigv4-proxy → RHOBS API Gateway. → [Observability](#observability-metrics-and-logs)                                                                |
+| **How `zoa run` works**                          | Boundary → **API Lambda** → impersonation or AWS role — **not** in-shell **`kubectl`**. → [How zoa run works](#how-zoa-run-works-from-this-container)                                                                            |
+| **Identity bridge**                              | **`ZOA_OPERATOR`** / prompt env is **UX only**; TA audit uses SigV4 task ARN → DynamoDB session → human **operator**. Do not treat env as audit truth. → same section                                                            |
+| **TA read / write / cooldown / dry-run / async** | Safer change suggestions; write TAs need cooldown; use **`--dry-run`** / **`--force`** per **`zoa describe`**. → [Trusted Action safety](#trusted-action-safety-read-vs-write)                                                   |
+| **Session lifecycle**                            | **Exit Exec ≠ stop task**; stop from **laptop** with **`zoa session stop <deployment>/<uuid>`**. Two audits: CloudWatch Exec transcript vs **`zoa runs`** / audit. → [Session lifecycle](#session-lifecycle-boundary)            |
+| **Break-glass**                                  | **`kubectl`** / **`aws`** in the image have **no creds** today — not production; use **`zoa run`** only. → [How zoa run works](#how-zoa-run-works-from-this-container)                                                           |
 
 **Laptop vs boundary:** `zoa session list <deployment>` = **your** sessions; `zoa session history <deployment>` = **all operators** (audit). Not available inside the container.
 
@@ -33,10 +33,10 @@ Quick map of what matters in this environment — details in the sections below.
 
 This is **ROSA HyperFleet**: **Amazon EKS** clusters running platform software — **not** OpenShift-on-cluster for the RC/MC control planes. Do **not** assume `openshift-*` namespaces, in-cluster API servers, or classic ROSA “classic” architecture unless you see them in live discovery output.
 
-| Concept | Meaning |
-|---------|---------|
-| **Deployment** (`ZOA_DEPLOYMENT`) | HyperFleet environment name (e.g. `us-east-1-eph-046f5f15`, integration, stage). |
-| **Target** (`ZOA_TARGET`) | Which cluster this session attaches to (e.g. `eph-046f5f15-regional`, `eph-046f5f15-mc01`). |
+| Concept                             | Meaning                                                                                                                                            |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Deployment** (`ZOA_DEPLOYMENT`)   | HyperFleet environment name (e.g. `us-east-1-eph-046f5f15`, integration, stage).                                                                   |
+| **Target** (`ZOA_TARGET`)           | Which cluster this session attaches to (e.g. `eph-046f5f15-regional`, `eph-046f5f15-mc01`).                                                        |
 | **Target type** (`ZOA_TARGET_TYPE`) | **`rc`** = Regional Cluster, or **`mc`** = Management Cluster — same as **TYPE** in `zoa targets`; filters offline catalog and Lambda TA registry. |
 
 **Regional Cluster (RC)** — typically **one per AWS region** per environment. EKS runs regional platform services (e.g. Platform API, hyperfleet-operator, kube-applier controller on RC if deployed, Argo CD, observability stack).
@@ -56,33 +56,33 @@ HyperFleet ships platform software with **Argo CD** on each EKS cluster. Chart d
 
 ### Regional Cluster (RC) — typical namespaces
 
-| Namespace | Role |
-|-----------|------|
-| **`argocd`** | GitOps controller; Argo CD UI/API |
-| **`platform-api`** | Customer-facing regional Platform API (SigV4, rate limits, authz) |
-| **`hyperfleet`** | **hyperfleet-operator** (cluster lifecycle; talks to RDS / DynamoDB) |
-| **`monitoring`** | **Prometheus (HA)** + Alertmanager (kube-prometheus-stack); scrapes platform + HCP-related ServiceMonitors on RC |
-| **`thanos`** | **Thanos** Receive / Query / Store / Compactor / Ruler — long-term metrics on S3; federates RC + MC series |
-| **`grafana`** | Dashboards; PromQL via Thanos Query Frontend; LogQL via Loki |
-| **`loki`** | **Loki (distributed)** — regional log store (S3-backed); only on RC |
-| **`vector`** | **Vector** DaemonSet — collects container logs on RC nodes |
-| **`cloudwatch-exporter`** | **YACE** — AWS CloudWatch → Prometheus metrics (RDS, API GW, DynamoDB, Lambda/ZOA EMF, etc.) |
-| **`cert-manager`**, **`external-secrets`**, **`aws-load-balancer-controller`** | TLS, secrets sync, ALB/NLB integration (when enabled) |
-| **`alerting-rules`**, **`thanos-operator`** | PrometheusRule bundles; Thanos operator helpers on RC |
+| Namespace                                                                      | Role                                                                                                             |
+| ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| **`argocd`**                                                                   | GitOps controller; Argo CD UI/API                                                                                |
+| **`platform-api`**                                                             | Customer-facing regional Platform API (SigV4, rate limits, authz)                                                |
+| **`hyperfleet`**                                                               | **hyperfleet-operator** (cluster lifecycle; talks to RDS / DynamoDB)                                             |
+| **`monitoring`**                                                               | **Prometheus (HA)** + Alertmanager (kube-prometheus-stack); scrapes platform + HCP-related ServiceMonitors on RC |
+| **`thanos`**                                                                   | **Thanos** Receive / Query / Store / Compactor / Ruler — long-term metrics on S3; federates RC + MC series       |
+| **`grafana`**                                                                  | Dashboards; PromQL via Thanos Query Frontend; LogQL via Loki                                                     |
+| **`loki`**                                                                     | **Loki (distributed)** — regional log store (S3-backed); only on RC                                              |
+| **`vector`**                                                                   | **Vector** DaemonSet — collects container logs on RC nodes                                                       |
+| **`cloudwatch-exporter`**                                                      | **YACE** — AWS CloudWatch → Prometheus metrics (RDS, API GW, DynamoDB, Lambda/ZOA EMF, etc.)                     |
+| **`cert-manager`**, **`external-secrets`**, **`aws-load-balancer-controller`** | TLS, secrets sync, ALB/NLB integration (when enabled)                                                            |
+| **`alerting-rules`**, **`thanos-operator`**                                    | PrometheusRule bundles; Thanos operator helpers on RC                                                            |
 
 **Not in-cluster:** Tekton/pipeline infra, RDS (**hyperfleet-db**), API Gateway, ZOA **Lambda** (API/worker/access), and **ZOA Boundary** (this ECS task) live in **AWS** — use **`aws-api`** TAs or AWS console patterns, not namespace search.
 
 ### Management Cluster (MC) — typical namespaces
 
-| Namespace | Role |
-|-----------|------|
-| **`hypershift`**, **`hypershift-install`** | HyperShift operator/runtime and install/bootstrap jobs |
-| **`cluster-*`** | One namespace per **hosted control plane** (customer HCP); HyperShift control-plane pods |
-| **`kube-applier`** | Applies desire documents from DynamoDB onto this MC |
-| **`monitoring`** | **Prometheus (HA)** (no Grafana/Alertmanager); **`sigv4-proxy`** for metrics remote_write |
-| **`vector`** | **Vector** DaemonSet + **`sigv4-proxy-logs`** for log push to RC |
-| **`cloudwatch-exporter`** | YACE (EKS + ZOA Lambda/SQS EMF, etc.) |
-| **`cert-manager`**, **`external-secrets`** | TLS and secret sync (when enabled) |
+| Namespace                                  | Role                                                                                      |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| **`hypershift`**, **`hypershift-install`** | HyperShift operator/runtime and install/bootstrap jobs                                    |
+| **`cluster-*`**                            | One namespace per **hosted control plane** (customer HCP); HyperShift control-plane pods  |
+| **`kube-applier`**                         | Applies desire documents from DynamoDB onto this MC                                       |
+| **`monitoring`**                           | **Prometheus (HA)** (no Grafana/Alertmanager); **`sigv4-proxy`** for metrics remote_write |
+| **`vector`**                               | **Vector** DaemonSet + **`sigv4-proxy-logs`** for log push to RC                          |
+| **`cloudwatch-exporter`**                  | YACE (EKS + ZOA Lambda/SQS EMF, etc.)                                                     |
+| **`cert-manager`**, **`external-secrets`** | TLS and secret sync (when enabled)                                                        |
 
 ## Observability (metrics and logs)
 
@@ -141,11 +141,11 @@ When debugging “no metrics/logs from MC in Grafana”, check **`monitoring`** 
 
 Three layers — know which to inspect before guessing namespaces:
 
-| Layer | Where it runs | Typical symptoms | Discovery / TAs |
-|-------|----------------|------------------|-----------------|
-| **Regional platform** | RC EKS + AWS in region | API errors, rate limits, authz, regional provisioning | **`platform-api`** ns; **`aws-api`** for API Gateway / ALB / Valkey (ElastiCache) if exposed |
-| **Fleet state** | RC **`hyperfleet`** operator + **RDS** (`hyperfleet-db`) + **DynamoDB** (desires, auth tables) | Cluster/NodePool stuck, placement, MC assignment | Operator pods on RC; **`aws-api`** RDS/DynamoDB describe/list TAs when enabled |
-| **MC apply + HCP** | MC **`kube-applier`** + **`hypershift`** + **`cluster-*`** | Desire not applied on MC; HCP pod failures | **`kube-applier`** / **`hypershift`** ns; HCP in **`cluster-<id>`** (platform TAs; **`get_secret`** blocked there) |
+| Layer                 | Where it runs                                                                                  | Typical symptoms                                      | Discovery / TAs                                                                                                    |
+| --------------------- | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| **Regional platform** | RC EKS + AWS in region                                                                         | API errors, rate limits, authz, regional provisioning | **`platform-api`** ns; **`aws-api`** for API Gateway / ALB / Valkey (ElastiCache) if exposed                       |
+| **Fleet state**       | RC **`hyperfleet`** operator + **RDS** (`hyperfleet-db`) + **DynamoDB** (desires, auth tables) | Cluster/NodePool stuck, placement, MC assignment      | Operator pods on RC; **`aws-api`** RDS/DynamoDB describe/list TAs when enabled                                     |
+| **MC apply + HCP**    | MC **`kube-applier`** + **`hypershift`** + **`cluster-*`**                                     | Desire not applied on MC; HCP pod failures            | **`kube-applier`** / **`hypershift`** ns; HCP in **`cluster-<id>`** (platform TAs; **`get_secret`** blocked there) |
 
 **RC vs MC boundary session:** You see **one** EKS cluster at a time. RC issues need an **RC** session (`ZOA_TARGET_TYPE=rc`); MC / HCP issues need an **MC** session. Cross-cluster questions (e.g. “MC metrics in Grafana”) often need **MC** kube discovery **and** understanding that consolidation happens on **RC** observability (see above).
 
@@ -164,11 +164,11 @@ Per-VPC **Worker Lambda** handles async jobs, reconciler, and GC — not your in
 
 ## Trusted Action safety (read vs write)
 
-| | **read** | **write** |
-|---|----------|-----------|
-| Cooldown | None | Required between repeats (per action) |
-| Dry run | N/A | Many support **`--dry-run`** — prefer before destructive changes |
-| Force | N/A | Some require **`--force`** after dry-run or for guarded ops |
+|          | **read** | **write**                                                        |
+| -------- | -------- | ---------------------------------------------------------------- |
+| Cooldown | None     | Required between repeats (per action)                            |
+| Dry run  | N/A      | Many support **`--dry-run`** — prefer before destructive changes |
+| Force    | N/A      | Some require **`--force`** after dry-run or for guarded ops      |
 
 Always **`zoa describe <action>`** for modifiers. If a write fails with cooldown, wait or pick a different approach — do not spam retries.
 
@@ -189,15 +189,14 @@ Always **`zoa describe <action>`** for modifiers. If a write fails with cooldown
 
 Do **not** store long-lived credentials, kubeconfig with static tokens, or customer secrets in this home directory.
 
-## Jira ticket (required on every `zoa run`)
+## Jira ticket (every `zoa run`)
 
-**`--jira` is mandatory** for `zoa run`. The CLI rejects runs without it.
+- **`zoa run`** resolves Jira like other required fields: **`--jira`** first, else **`ZOA_JIRA`** env, else the CLI errors (API also requires `jira` on dispatch).
+- In boundary, login or **`jira TICKET`** sets **`export ZOA_JIRA=...`** and updates the **Jira** row in **`ZOA_SESSION.md`** (for you and Claude — the CLI does not read that file).
+- On rejoin, the shell reloads **`ZOA_JIRA`** from **`ZOA_SESSION.md`** before the prompt.
+- Override one run with **`zoa run ... --jira OTHER`**.
 
-- Format: project key + hyphen + number, e.g. **`ROSAENG-1234`**, **`HPSTRAT-62`**, **`OCM-12345`**.
-- Use the **real ticket** for the incident or change request you are working — not placeholders like `TEST-1` unless your environment explicitly allows it.
-- Example: `zoa run get_resource --resource pods -n platform-api --jira ROSAENG-5678`
-
-If you are unsure which action to run, read **`ZOA_ACTIONS.md`** or run **`zoa describe <action>`** before **`zoa run`**.
+Session **deadline** and **idle stop** are in **`ZOA_SESSION.md`** and the login MOTD.
 
 ## ZOA CLI (inside the boundary)
 
@@ -205,16 +204,16 @@ If you are unsure which action to run, read **`ZOA_ACTIONS.md`** or run **`zoa d
 
 You do **not** need `zoa deployments`, `zoa targets`, or `zoa session *` here — those are for starting/joining sessions from a laptop.
 
-| Command | Purpose |
-|---------|---------|
-| **`zoa actions`** | List TAs for **this** environment (also in `ZOA_ACTIONS.md`). |
-| **`zoa describe <action>`** | Param → CLI flag mapping, run modifiers (`--force`, `--dry-run`, …), examples; `-o json` for automation. |
-| **`zoa run <action> … --jira TICKET`** | **Primary path.** Sync mode waits and prints output. **`--no-wait`** for async → then **`zoa get`** / **`output`** / **`download`**. |
-| **`zoa runs`** | List TA executions (`--since`, `--until`, `-o json`). |
-| **`zoa get <exec-id>`** | Status/metadata; **`--include-output`** for payload. |
-| **`zoa output` / `zoa logs` / `zoa download`** | Re-fetch or save artifacts from S3. |
-| **`zoa audit`** | ZOA API audit trail (broader than TAs alone). |
-| **`zoa version`** | Client and API version. |
+| Command                                        | Purpose                                                                                                                              |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| **`zoa actions`**                              | List TAs for **this** environment (also in `ZOA_ACTIONS.md`).                                                                        |
+| **`zoa describe <action>`**                    | Param → CLI flag mapping, run modifiers (`--force`, `--dry-run`, …), examples; `-o json` for automation.                             |
+| **`zoa run <action> … --jira TICKET`**         | **Primary path.** Sync mode waits and prints output. **`--no-wait`** for async → then **`zoa get`** / **`output`** / **`download`**. |
+| **`zoa runs`**                                 | List TA executions (`--since`, `--until`, `-o json`).                                                                                |
+| **`zoa get <exec-id>`**                        | Status/metadata; **`--include-output`** for payload.                                                                                 |
+| **`zoa output` / `zoa logs` / `zoa download`** | Re-fetch or save artifacts from S3.                                                                                                  |
+| **`zoa audit`**                                | ZOA API audit trail (broader than TAs alone).                                                                                        |
+| **`zoa version`**                              | Client and API version.                                                                                                              |
 
 Use **`-o json`** and **`jq`** for scripting.
 
@@ -223,7 +222,7 @@ Use **`-o json`** and **`jq`** for scripting.
 1. Read **`ZOA_ACTIONS.md`** (baked catalog for **`rc` or `mc`** — no need to run `zoa actions` for the list if the file is present).
 2. Match the problem to **scope** and **type**: e.g. need a Secret in a non-HCP namespace → **`get_secret`** (read); need pod list → **`get_resource`** with `--resource pods`; AWS networking → **`list_vpc_endpoints`** / **`describe_vpc_endpoint`**.
 3. Run **`zoa describe <action>`** when parameters are unclear (live API view with flag bindings).
-4. Execute with **`zoa run … --jira TICKET`** (real ticket — ask the operator if missing).
+4. Execute with **`zoa run …`** (uses **`ZOA_JIRA`** / **`ZOA_SESSION.md`** context) or **`--jira TICKET`** when overriding.
 5. Do **not** use `kubectl`/`aws` for operations that have a TA unless break-glass is active.
 
 ### Kubernetes discovery (when the namespace is unknown)
@@ -244,11 +243,11 @@ For bundle collection, see **`must_gather`** in **`ZOA_ACTIONS.md`** (`--gather 
 
 ## Other tools in the image
 
-| Tool | Notes |
-|------|--------|
-| **`jq`** | Parse `zoa -o json` output. |
-| **`claude`** | **Amazon Bedrock**; **`ANTHROPIC_MODEL`** set by Terraform (Sonnet 5). Assistant only — not a bypass for TAs. |
-| **`aws`** / **`kubectl`** | Installed but **no default credentials**. Use after break-glass only. |
+| Tool                      | Notes                                                                                                         |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| **`jq`**                  | Parse `zoa -o json` output.                                                                                   |
+| **`claude`**              | **Amazon Bedrock**; **`ANTHROPIC_MODEL`** set by Terraform (Sonnet 5). Assistant only — not a bypass for TAs. |
+| **`aws`** / **`kubectl`** | Installed but **no default credentials**. Use after break-glass only.                                         |
 
 ## What you must not do
 
@@ -260,7 +259,7 @@ For bundle collection, see **`must_gather`** in **`ZOA_ACTIONS.md`** (`--gather 
 
 1. Confirm context in **`ZOA_SESSION.md`** (session id, **`ZOA_TARGET_TYPE`**, target) — know whether you are on **RC** or **MC** before choosing TAs or interpreting namespaces.
 2. For kube problems with unknown location: **namespace discovery first**, then resource-specific **`get_resource`** (see above).
-3. Pick a TA from **`ZOA_ACTIONS.md`** → **`zoa describe`** if needed → **`zoa run … --jira TICKET`** (ask for ticket if not provided).
+3. Pick a TA from **`ZOA_ACTIONS.md`** → **`zoa describe`** if needed → **`zoa run …`** (session **`ZOA_JIRA`**).
 4. Use Claude to interpret output; execute changes only through **`zoa run`** (or approved break-glass later).
 
 ## Common mistakes to avoid

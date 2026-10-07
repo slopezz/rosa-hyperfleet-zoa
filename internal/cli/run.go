@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/openshift-online/rosa-hyperfleet-zoa/internal/cli/jira"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/internal/cli/parambind"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/internal/client"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/internal/output"
@@ -77,7 +78,8 @@ On failure, logs are printed to stderr. Use --no-wait to fire and forget.`,
 	}
 
 	parambind.RegisterTAParamFlags(cmd, &opts.ta)
-	cmd.Flags().StringVar(&opts.jira, "jira", "", parambind.RunFlagHelp("jira"))
+	cmd.Flags().StringVar(&opts.jira, "jira", "",
+		fmt.Sprintf("Jira ticket (required; env: %s)", jira.EnvVar))
 	cmd.Flags().BoolVar(&opts.force, "force", false, parambind.RunFlagHelp("force"))
 	cmd.Flags().BoolVar(&opts.dryRun, "dry-run", false, parambind.RunFlagHelp("dry-run"))
 	cmd.Flags().BoolVar(&opts.noWait, "no-wait", false, parambind.RunFlagHelp("no-wait"))
@@ -87,8 +89,6 @@ On failure, logs are printed to stderr. Use --no-wait to fire and forget.`,
 	cmd.Flags().DurationVar(&opts.timeout, "timeout", 0, parambind.RunFlagHelp("timeout"))
 	cmd.Flags().StringVar(&opts.executionMode, "execution-mode", "", parambind.RunFlagHelp("execution-mode"))
 	cmd.Flags().StringArrayVar(&opts.params, "param", nil, parambind.RunFlagHelp("param"))
-
-	_ = cmd.MarkFlagRequired("jira")
 
 	cmd.ValidArgsFunction = func(_ *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		if len(args) == 0 {
@@ -117,10 +117,15 @@ func runAction(ctx context.Context, global *GlobalOptions, opts *runOptions, act
 		return err
 	}
 
+	jiraTicket, err := jira.Resolve(opts.jira)
+	if err != nil {
+		return err
+	}
+
 	params := parambind.ToAPIParams(opts.ta, opts.params)
 
 	req := &client.DispatchRequest{
-		Jira:           opts.jira,
+		Jira:           jiraTicket,
 		Params:         params,
 		Force:          opts.force,
 		DryRun:         opts.dryRun,

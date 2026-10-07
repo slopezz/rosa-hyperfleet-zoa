@@ -188,6 +188,46 @@ fields @timestamp, @message
 | sort @timestamp desc
 ```
 
+## Boundary ECS Exec session logs
+
+Boundary **interactive sessions** (`zoa session join`) record terminal I/O to CloudWatch via ECS Exec. These are separate from Lambda log groups and from the boundary **container** startup log group.
+
+### Log group naming
+
+```
+/ecs/<cluster_id>/zoa-boundary/ssm-sessions
+```
+
+`<cluster_id>` is the **target** cluster id (`eph-…-regional` on RC, `eph-…-mc01` on MC). Stream names: `ecs-execute-command-<ssm-session-id>`.
+
+Full design and FedRAMP notes: [boundary session logging](design/boundary-session-logging.md).
+
+### Viewing logs in Grafana Explorer
+
+1. Open **Grafana → Explore**
+2. Select the datasource for the **target AWS account**:
+   - **CloudWatch Logs (Regional)** — RC boundary (`target_cluster` = regional id)
+   - **CloudWatch Logs (`<mc-id>`)** — MC boundary (e.g. `eph-046f5f15-mc01`)
+3. Switch to **CloudWatch Logs** (not CloudWatch Metrics)
+4. Select log group, e.g. `/ecs/eph-046f5f15-regional/zoa-boundary/ssm-sessions`
+5. Set the log stream from session metadata:
+
+```bash
+zoa session history us-east-1-eph-046f5f15 -o json \
+  | jq -r '.items[] | .exec_session_ids[]?'
+```
+
+6. Example Insights query:
+
+```
+fields @timestamp, @message
+| filter @logStream = "ecs-execute-command-v2hqi98n2456t7b99oubhyfn9a"
+| sort @timestamp asc
+| limit 10000
+```
+
+Claude Code in the session may produce busy PTY output; the transcript is still used for session forensics. Pair with **`zoa runs`** / **`zoa get`** for structured Trusted Action output.
+
 ## E2E Validation
 
 The monitoring E2E suite (`test/e2e-monitoring/`) validates that the full
