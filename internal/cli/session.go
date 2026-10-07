@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/openshift-online/rosa-hyperfleet-zoa/internal/cli/jira"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/internal/client"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/internal/output"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/boundaryexec"
@@ -38,6 +39,7 @@ Session IDs use the form <deployment>/<session-id> (see 'zoa session start').`,
 
 func newSessionStartCommand(opts *GlobalOptions) *cobra.Command {
 	var flagDeployment, flagTarget string
+	var flagJira string
 	var flagNoConnect bool
 
 	cmd := &cobra.Command{
@@ -53,12 +55,15 @@ By default, after the task is active the CLI connects via ECS Exec (same as
 (same idea as 'zoa run --no-wait': create, show id, do not attach).
 
 ECS Exec uses scoped credentials returned by the Access API on join (not
-deployment-account admin roles).`,
-		Example: `  zoa session start us-east-1 mc01
+deployment-account admin roles).
 
-  zoa session start us-east-1 mc01 --no-connect
+A Jira ticket is required and is stored on the session, Access audit, and the
+boundary task (ZOA_JIRA) for zoa run.`,
+		Example: `  zoa session start us-east-1 mc01 --jira ROSAENG-1234
 
-  zoa session start -d us-east-1 -t mc01 --no-connect -o json`,
+  zoa session start us-east-1 mc01 --jira ROSAENG-1234 --no-connect
+
+  zoa session start -d us-east-1 -t mc01 --jira ROSAENG-1234 --no-connect -o json`,
 		Args: cobra.MaximumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			deployment, target := resolveDeploymentTarget(args, flagDeployment, flagTarget)
@@ -73,6 +78,11 @@ deployment-account admin roles).`,
 				opts.Deployment = deployment
 			}
 
+			jiraTicket, err := jira.RequireFlag(flagJira)
+			if err != nil {
+				return err
+			}
+
 			c, err := getClient(opts)
 			if err != nil {
 				return fmt.Errorf("creating client: %w", err)
@@ -81,6 +91,7 @@ deployment-account admin roles).`,
 			resp, err := c.SessionStart(cmd.Context(), &client.SessionStartRequest{
 				DeploymentName: deployment,
 				Target:         target,
+				Jira:           jiraTicket,
 			})
 			if err != nil {
 				return fmt.Errorf("starting session: %w", err)
@@ -142,6 +153,7 @@ deployment-account admin roles).`,
 
 	cmd.Flags().StringVarP(&flagDeployment, "deployment", "d", "", "Deployment name (e.g. us-east-1)")
 	cmd.Flags().StringVarP(&flagTarget, "target", "t", "", "Target ID (e.g. mc01)")
+	cmd.Flags().StringVar(&flagJira, "jira", "", "Jira ticket for this session (required, e.g. ROSAENG-1234)")
 	cmd.Flags().BoolVar(&flagNoConnect, "no-connect", false, "Print session metadata only; do not open ECS Exec (same idea as zoa run --no-wait)")
 
 	return cmd

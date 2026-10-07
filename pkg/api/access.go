@@ -18,6 +18,7 @@ import (
 	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/boundaryexec"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/config"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/execcreds"
+	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/jiraticket"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/store"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/targetroles"
 )
@@ -134,6 +135,7 @@ func (h *AccessHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 type sessionStartRequest struct {
 	DeploymentName string `json:"deployment_name"`
 	Target         string `json:"target"`
+	Jira           string `json:"jira"`
 	TimeoutHours   int    `json:"timeout_hours,omitempty"`
 }
 
@@ -183,6 +185,12 @@ func (h *AccessHandler) handleSessionStart(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	jiraTicket, err := jiraticket.Require(req.Jira)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "missing_jira", err.Error())
+		return
+	}
+
 	// Look up target from DynamoDB for VPC/subnet/task definition info
 	target, err := h.targetStore.Get(ctx, req.Target)
 	if err != nil {
@@ -219,6 +227,7 @@ func (h *AccessHandler) handleSessionStart(w http.ResponseWriter, r *http.Reques
 		Deadline:       deadline.Format(time.RFC3339Nano),
 		VpcId:          target.VpcId,
 		DeploymentName: req.DeploymentName,
+		Jira:           jiraTicket,
 	}
 
 	if err := h.sessionStore.Put(ctx, session); err != nil {
@@ -227,7 +236,7 @@ func (h *AccessHandler) handleSessionStart(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	h.recordAccessAudit(r, http.StatusOK, "session_start", sessionID)
+	h.recordAccessAudit(r, http.StatusOK, "session_start", sessionID, jiraTicket)
 
 	writeJSON(w, http.StatusOK, sessionStartResponse{
 		SessionID: sessionID,
@@ -274,6 +283,7 @@ func (h *AccessHandler) ensureBoundaryTask(ctx context.Context, session *store.S
 			"ZOA_OPERATOR":                       session.Operator,
 			"ZOA_SESSION_DEADLINE":               session.Deadline,
 			"ZOA_SESSION_IDLE_TIMEOUT_SECONDS":   fmt.Sprintf("%d", h.cfg.SessionIdleTimeoutSeconds),
+			"ZOA_JIRA":                           session.Jira,
 		},
 		Tags: map[string]string{
 			"Component":  "zoa",
@@ -444,7 +454,7 @@ func (h *AccessHandler) handleSessionStop(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	h.recordAccessAudit(r, http.StatusOK, "session_stop", sessionID)
+	h.recordAccessAudit(r, http.StatusOK, "session_stop", sessionID, session.Jira)
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "terminated", "session_id": sessionID})
 }
@@ -531,7 +541,7 @@ func (h *AccessHandler) handleSessionJoin(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	h.recordAccessAudit(r, http.StatusOK, "session_join", sessionID)
+	h.recordAccessAudit(r, http.StatusOK, "session_join", sessionID, session.Jira)
 
 	writeJSON(w, http.StatusOK, sessionJoinResponse{
 		SessionID:       sessionID,
@@ -602,7 +612,7 @@ func (h *AccessHandler) handleSessionExecAttached(w http.ResponseWriter, r *http
 		return
 	}
 
-	h.recordAccessAudit(r, http.StatusOK, "session_exec_attached", sessionID)
+	h.recordAccessAudit(r, http.StatusOK, "session_exec_attached", sessionID, session.Jira)
 
 	writeJSON(w, http.StatusOK, map[string]string{
 		"status":          "ok",
@@ -625,17 +635,17 @@ func (h *AccessHandler) handleTargetList(w http.ResponseWriter, r *http.Request)
 
 func (h *AccessHandler) handleApproveStub(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	h.recordAccessAudit(r, http.StatusNotImplemented, "approve", id)
+	h.recordAccessAudit(r, http.StatusNotImplemented, "approve", id, "")
 	writeError(w, http.StatusNotImplemented, "not_implemented", "approval workflow not yet enabled")
 }
 
 func (h *AccessHandler) handleRejectStub(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	h.recordAccessAudit(r, http.StatusNotImplemented, "reject", id)
+	h.recordAccessAudit(r, http.StatusNotImplemented, "reject", id, "")
 	writeError(w, http.StatusNotImplemented, "not_implemented", "approval workflow not yet enabled")
 }
 
-func (h *AccessHandler) recordAccessAudit(r *http.Request, statusCode int, action, sessionID string) {
+func (h *AccessHandler) recordAccessAudit(r *http.Request, statusCode int, action, sessionID, jira string) {
 	if h.auditStore == nil {
 		return
 	}
@@ -665,6 +675,7 @@ func (h *AccessHandler) recordAccessAudit(r *http.Request, statusCode int, actio
 		RequestID:   r.Header.Get("X-Request-ID"),
 		UserAgent:   r.Header.Get("User-Agent"),
 		ExecutionID: sessionID,
+		Jira:        jira,
 	}
 	if err := h.auditStore.Record(r.Context(), entry); err != nil {
 		h.logger.Error("failed to record audit entry", "error", err)

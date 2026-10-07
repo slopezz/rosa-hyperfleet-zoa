@@ -189,11 +189,12 @@ Always **`zoa describe <action>`** for modifiers. If a write fails with cooldown
 
 Do **not** store long-lived credentials, kubeconfig with static tokens, or customer secrets in this home directory.
 
-## Jira ticket (every `zoa run`)
+## Jira ticket (session start and every `zoa run`)
 
-- **`zoa run`** resolves Jira like other required fields: **`--jira`** first, else **`ZOA_JIRA`** env, else the CLI errors (API also requires `jira` on dispatch).
-- In boundary, login or **`jira TICKET`** sets **`export ZOA_JIRA=...`** and updates the **Jira** row in **`ZOA_SESSION.md`** (for you and Claude — the CLI does not read that file).
-- On rejoin, the shell reloads **`ZOA_JIRA`** from **`ZOA_SESSION.md`** before the prompt.
+- From a **laptop**, **`zoa session start … --jira ROSAENG-1234`** is required. The ticket is stored on the session, Access audit, and injected as **`ZOA_JIRA`** on the boundary ECS task.
+- **`zoa run`** resolves Jira: **`--jira`** first, else **`ZOA_JIRA`** env, else the CLI errors (API also requires `jira` on dispatch).
+- In boundary, **`ZOA_JIRA`** is set from the task env on first login; **`jira TICKET`** can change the env and **Jira** row in **`ZOA_SESSION.md`** (for you and Claude — the CLI does not read that file).
+- On rejoin, the shell prefers **`ZOA_JIRA`** from the task env, then syncs **`ZOA_SESSION.md`**.
 - Override one run with **`zoa run ... --jira OTHER`**.
 
 Session **deadline** and **idle stop** are in **`ZOA_SESSION.md`** and the login MOTD.

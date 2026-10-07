@@ -51,7 +51,11 @@ write_zoa_session_md() {
     echo "| Target type | ${target_type} |"
     echo "| AWS region | ${AWS_REGION:-unknown} |"
     echo "| ZOA API | ${ZOA_API_URL:-unknown} |"
-    echo "| Jira | *(not set)* |"
+    if [[ -n "${ZOA_JIRA:-}" ]]; then
+      echo "| Jira | ${ZOA_JIRA} |"
+    else
+      echo "| Jira | *(not set)* |"
+    fi
     if [[ -n "${ZOA_SESSION_DEADLINE:-}" ]]; then
       echo "| Session deadline (UTC) | ${ZOA_SESSION_DEADLINE} |"
     fi

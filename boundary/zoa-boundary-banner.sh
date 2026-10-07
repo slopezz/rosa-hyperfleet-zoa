@@ -254,7 +254,12 @@ zoa_boundary_jira_hydrate_from_md() {
 }
 
 zoa_boundary_prompt_session_jira() {
-  zoa_boundary_jira_hydrate_from_md
+  # Task env from RunTask (session start --jira) is authoritative; md is for Claude.
+  if [[ -n "${ZOA_JIRA:-}" ]] && zoa_boundary_jira_valid "${ZOA_JIRA}"; then
+    zoa_boundary_jira_set_in_md "${ZOA_JIRA}"
+  else
+    zoa_boundary_jira_hydrate_from_md
+  fi
 
   local current="${ZOA_JIRA:-}"
   if [[ -n "${current}" ]] && zoa_boundary_jira_valid "${current}"; then

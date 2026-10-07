@@ -46,7 +46,7 @@ Each parameter is one boundary-capable cluster: **RC** (`eph-…-regional`) and 
 ### 4. Start session, join Exec, and ownership
 
 ```bash
-zoa session start <deployment> <target>
+zoa session start <deployment> <target> --jira ROSAENG-1234
 ```
 
 **Default:** after Access accepts the request, the CLI **waits for the boundary task**, performs a **hidden `session join`**, and opens **ECS Exec** — you land in the shell without a separate join command. Use **`--no-connect`** (or `-o json`) to only create the session and print metadata.
@@ -54,8 +54,9 @@ zoa session start <deployment> <target>
 **On `session start`, Access:**
 
 - Re-validates **Central account + invoker role + operator** (same as other Access APIs).
-- Creates a row in **`zoa-boundary-sessions`** (DynamoDB): `operator`, deployment, target, deadline, etc.
-- Starts an **ECS Fargate** boundary task in the target VPC with env metadata (`ZOA_SESSION_ID`, `ZOA_OPERATOR`, `ZOA_TARGET`, `ZOA_API_URL`, `ZOA_TARGET_TYPE`, …).
+- Requires **`jira`** in the JSON body (CLI: **`--jira ROSAENG-1234`**). Stores it on the session row and Access audit.
+- Creates a row in **`zoa-boundary-sessions`** (DynamoDB): `operator`, deployment, target, `jira`, deadline, etc.
+- Starts an **ECS Fargate** boundary task in the target VPC with env metadata (`ZOA_SESSION_ID`, `ZOA_OPERATOR`, `ZOA_TARGET`, `ZOA_API_URL`, `ZOA_TARGET_TYPE`, **`ZOA_JIRA`**, …).
 
 **On join (automatic or `zoa session join <deployment>/<session-id>`):**
 
@@ -225,8 +226,8 @@ Access + RC Parameter Store — see [§3 above](#3-discover-targets-access-lambd
 See [§4 above](#4-start-session-join-exec-and-ownership). Quick reference:
 
 ```bash
-zoa session start <deployment> <target>          # default: provision + Exec
-zoa session start <deployment> <target> --no-connect   # metadata only
+zoa session start <deployment> <target> --jira ROSAENG-1234
+zoa session start <deployment> <target> --jira ROSAENG-1234 --no-connect
 zoa session join <deployment>/<session-id>       # reconnect later
 ```
 

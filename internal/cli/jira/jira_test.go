@@ -43,3 +43,17 @@ func TestResolve_WhenInvalidEnv_ItShouldError(t *testing.T) {
 		t.Fatal("expected invalid env error")
 	}
 }
+
+func TestRequireFlag_WhenValid_ItShouldReturnTicket(t *testing.T) {
+	j, err := RequireFlag("ROSAENG-42")
+	if err != nil || j != "ROSAENG-42" {
+		t.Fatalf("got %q err=%v", j, err)
+	}
+}
+
+func TestRequireFlag_WhenEmpty_ItShouldError(t *testing.T) {
+	_, err := RequireFlag("")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}

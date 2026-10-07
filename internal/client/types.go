@@ -277,6 +277,7 @@ type Session struct {
 	SignerARN      string   `json:"signer_arn,omitempty"`
 	AccountID      string   `json:"account_id,omitempty"`
 	TaskID         string   `json:"task_id,omitempty"`
+	Jira           string   `json:"jira,omitempty"`
 	TargetCluster  string   `json:"target_cluster"`
 	Status         string   `json:"status"`
 	Region         string   `json:"region,omitempty"`
@@ -297,6 +298,7 @@ type SessionList struct {
 type SessionStartRequest struct {
 	DeploymentName string `json:"deployment_name"`
 	Target         string `json:"target"`
+	Jira           string `json:"jira"`
 }
 
 type SessionStartResponse struct {
