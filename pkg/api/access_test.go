@@ -76,16 +76,6 @@ func (m *mockSessionStoreAccess) UpdateStatus(_ context.Context, id string, _, t
 	return nil
 }
 
-func (m *mockSessionStoreAccess) ListByOperator(_ context.Context, operator string, _ int) ([]*store.Session, error) {
-	var result []*store.Session
-	for _, s := range m.sessions {
-		if s.Operator == operator {
-			result = append(result, s)
-		}
-	}
-	return result, nil
-}
-
 func (m *mockSessionStoreAccess) ListAll(_ context.Context, filter *store.SessionFilter) ([]*store.Session, error) {
 	var out []*store.Session
 	for _, s := range m.sessions {
@@ -172,10 +162,11 @@ func (m *mockExecVendorAccess) VendForTask(_ context.Context, _, _, _, _, _ stri
 
 func testAccessHandler(sessionStore store.SessionStore, targetStore store.TargetStore) *AccessHandler {
 	cfg := &config.Config{
-		HandlerMode:            "access",
-		Region:                 "us-east-1",
-		BoundaryECSExecCommand: "runuser -u sre -- /bin/bash -l",
-		ExecScopedRoleARN:      "arn:aws:iam::123:role/exec-scoped",
+		HandlerMode:               "access",
+		Region:                    "us-east-1",
+		BoundaryECSExecCommand:    "runuser -u sre -- /bin/bash -l",
+		ExecScopedRoleARN:         "arn:aws:iam::123:role/exec-scoped",
+		SessionIdleTimeoutSeconds: 3600,
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	return NewAccessHandler(AccessDeps{
@@ -325,6 +316,12 @@ func TestAccessHandler_WhenSessionStart_ItShouldCreateSession(t *testing.T) {
 	if sessions.sessions[0].Operator != "slopezma" {
 		t.Errorf("expected operator 'slopezma', got %q", sessions.sessions[0].Operator)
 	}
+	if sessions.sessions[0].SignerARN != accessHeaders()["X-Operator"] {
+		t.Errorf("expected signer_arn from X-Operator, got %q", sessions.sessions[0].SignerARN)
+	}
+	if sessions.sessions[0].AccountID != "123456789012" {
+		t.Errorf("expected account_id from X-Account-ID, got %q", sessions.sessions[0].AccountID)
+	}
 	if sessions.sessions[0].Status != store.SessionStatusCreating {
 		t.Errorf("expected status creating, got %q", sessions.sessions[0].Status)
 	}
@@ -354,6 +351,7 @@ func TestAccessHandler_WhenSessionJoinFromCreating_ItShouldRunTask(t *testing.T)
 				TargetCluster:  "mc01",
 				DeploymentName: "us-east-1",
 				Status:         store.SessionStatusCreating,
+				Deadline:       "2030-01-01T00:00:00Z",
 			},
 		},
 	}
@@ -376,6 +374,12 @@ func TestAccessHandler_WhenSessionJoinFromCreating_ItShouldRunTask(t *testing.T)
 	}
 	if ecs.lastRun.Tags["Component"] != "zoa" || ecs.lastRun.Tags["function"] != "zoa" {
 		t.Errorf("expected Component and function zoa tags on task, got %v", ecs.lastRun.Tags)
+	}
+	if ecs.lastRun.Environment["ZOA_SESSION_DEADLINE"] != "2030-01-01T00:00:00Z" {
+		t.Errorf("expected ZOA_SESSION_DEADLINE on task, got %v", ecs.lastRun.Environment)
+	}
+	if ecs.lastRun.Environment["ZOA_SESSION_IDLE_TIMEOUT_SECONDS"] != "3600" {
+		t.Errorf("expected idle timeout env on task, got %v", ecs.lastRun.Environment)
 	}
 }
 

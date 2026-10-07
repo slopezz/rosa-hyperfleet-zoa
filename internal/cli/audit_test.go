@@ -1,8 +1,12 @@
 package cli
 
 import (
+	"bytes"
 	"context"
+	"io"
 	"net/url"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/openshift-online/rosa-hyperfleet-zoa/internal/client"
@@ -115,6 +119,56 @@ func TestListAudit_WhenJSONFormat_ItShouldReturnNilError(t *testing.T) {
 	err := listAudit(context.Background(), global, opts)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestListAudit_WhenWideFormat_ItShouldIncludeSignerARNAndSessionID(t *testing.T) {
+	signer := "arn:aws:sts::123456:assumed-role/task-role/" + "6e8699e3938a4bcd1234567890abcdef"
+	mock := &mockClient{
+		listAuditFn: func(_ context.Context, _ url.Values) (*client.AuditList, error) {
+			return &client.AuditList{
+				Items: []client.AuditEntry{
+					{
+						Timestamp:  "2024-06-01T10:00:00Z",
+						Method:     "POST",
+						StatusCode: 200,
+						Operator:   "slopezma",
+						SignerARN:  signer,
+						SessionID:  "sess-abc",
+						Action:     "get_pods",
+					},
+				},
+			}, nil
+		},
+	}
+
+	global := newMockGlobalOpts(mock)
+	global.OutputFormat = output.FormatWide
+	opts := &auditOptions{limit: 50}
+
+	oldStdout := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = w
+
+	err = listAudit(context.Background(), global, opts)
+	w.Close()
+	os.Stdout = oldStdout
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var out bytes.Buffer
+	if _, err := io.Copy(&out, r); err != nil {
+		t.Fatal(err)
+	}
+	s := out.String()
+	for _, want := range []string{"SIGNER_ARN", "SESSION_ID", signer, "sess-abc", "slopezma"} {
+		if !strings.Contains(s, want) {
+			t.Fatalf("expected output to contain %q, got:\n%s", want, s)
+		}
 	}
 }
 

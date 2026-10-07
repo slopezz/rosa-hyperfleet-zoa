@@ -39,9 +39,6 @@ func (m *mockSessionStoreReaper) UpdateStatus(_ context.Context, id string, from
 	m.updated[id] = to
 	return nil
 }
-func (m *mockSessionStoreReaper) ListByOperator(_ context.Context, _ string, _ int) ([]*store.Session, error) {
-	return nil, nil
-}
 func (m *mockSessionStoreReaper) ListAll(_ context.Context, _ *store.SessionFilter) ([]*store.Session, error) {
 	return nil, nil
 }

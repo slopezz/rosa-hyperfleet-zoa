@@ -12,15 +12,15 @@ The epic follows the format of [ROSAENG-65229](https://redhat.atlassian.net/brow
 
 Child stories were defined in this document before Jira subtasks existed. Create or link issues under [ROSAENG-60291](https://redhat.atlassian.net/browse/ROSAENG-60291) using the titles below. Team: **[ROSA] HyperFleet** (`customfield_10001`: `0c538cd9-152b-49f6-ad7c-e2fa2f865809`). Do **not** set Component (HyperFleet convention).
 
-| #   | Title (Jira summary)                                                                | Primary repo                             | Jira key                                                                                                 |
-| --- | ----------------------------------------------------------------------------------- | ---------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| 1   | ZOA Boundary Core — Access Lambda, boundary container, CLI, identity bridge, reaper | `rosa-hyperfleet-zoa`                    | [ROSAENG-68805](https://redhat.atlassian.net/browse/ROSAENG-68805)                                       |
-| 2   | ZOA Boundary Infrastructure — Terraform modules, SSM autodiscovery, DynamoDB, IAM   | `rosa-hyperfleet`                        | [ROSAENG-68806](https://redhat.atlassian.net/browse/ROSAENG-68806)                                       |
-| 3   | Konflux Pipeline — ZOA Boundary Image                                               | `rosa-hyperfleet-zoa`                    | [ROSAENG-68807](https://redhat.atlassian.net/browse/ROSAENG-68807)                                       |
-| 4   | Observability — ZOA Access Lambda + Boundary Sessions                               | `configuration` + hyperfleet             | [ROSAENG-68808](https://redhat.atlassian.net/browse/ROSAENG-68808)                                       |
-| 5   | E2E Testing — boundary session lifecycle                                            | `rosa-hyperfleet`                        | [ROSAENG-68809](https://redhat.atlassian.net/browse/ROSAENG-68809)                                       |
-| 6   | ZOA Boundary Documentation — architecture, CLI reference, SRE runbook               | both                                     | [ROSAENG-68810](https://redhat.atlassian.net/browse/ROSAENG-68810)                                       |
-| 7   | App-interface: Central Account SAML role for ZOA Access invoker (dev, int, stage)   | app-interface + `rosa-hyperfleet` config | [ROSAENG-68811](https://redhat.atlassian.net/browse/ROSAENG-68811)                                       |
+| #   | Title (Jira summary)                                                                | Primary repo                             | Jira key                                                           |
+| --- | ----------------------------------------------------------------------------------- | ---------------------------------------- | ------------------------------------------------------------------ |
+| 1   | ZOA Boundary Core — Access Lambda, boundary container, CLI, identity bridge, reaper | `rosa-hyperfleet-zoa`                    | [ROSAENG-68805](https://redhat.atlassian.net/browse/ROSAENG-68805) |
+| 2   | ZOA Boundary Infrastructure — Terraform modules, SSM autodiscovery, DynamoDB, IAM   | `rosa-hyperfleet`                        | [ROSAENG-68806](https://redhat.atlassian.net/browse/ROSAENG-68806) |
+| 3   | Konflux Pipeline — ZOA Boundary Image                                               | `rosa-hyperfleet-zoa`                    | [ROSAENG-68807](https://redhat.atlassian.net/browse/ROSAENG-68807) |
+| 4   | Observability — ZOA Access Lambda + Boundary Sessions                               | `configuration` + hyperfleet             | [ROSAENG-68808](https://redhat.atlassian.net/browse/ROSAENG-68808) |
+| 5   | E2E Testing — boundary session lifecycle                                            | `rosa-hyperfleet`                        | [ROSAENG-68809](https://redhat.atlassian.net/browse/ROSAENG-68809) |
+| 6   | ZOA Boundary Documentation — architecture, CLI reference, SRE runbook               | both                                     | [ROSAENG-68810](https://redhat.atlassian.net/browse/ROSAENG-68810) |
+| 7   | App-interface: Central Account SAML role for ZOA Access invoker (dev, int, stage)   | app-interface + `rosa-hyperfleet` config | [ROSAENG-68811](https://redhat.atlassian.net/browse/ROSAENG-68811) |
 
 ### Implementation status (2026-10-06)
 
@@ -1207,7 +1207,7 @@ ZOA uses a **scoped credentials** model instead of ABAC (Attribute-Based Access 
 | Exec into another SRE's task                     | ❌      | Scoped credentials restrict to one task ARN                                                                          |
 | Container breakout → ECS metadata endpoint       | Limited | Fargate microVM isolation; task role scoped to SSM + CW + Function URL only                                          |
 
-**Session ID and SignerARN — dual-field forensics**: Every execution and audit entry stores both the resolved `operator` (human-readable, stable across re-auth) and the raw `signerARN` (full SigV4 caller ARN for forensic reconstruction). The `sessionID` field links all operations back to the originating boundary session — derived server-side from the same `task-id-index` GSI lookup that resolves the operator, so the SRE cannot forge or redirect session linkage.
+**Session ID and SignerARN — dual-field forensics**: Every execution and audit entry stores both the resolved `operator` (human-readable, stable across re-auth) and the raw `signerARN` (full SigV4 caller ARN for forensic reconstruction). The `sessionID` field links all operations back to the originating boundary session — derived server-side from the same `task-id-index` GSI lookup that resolves the operator, so the SRE cannot forge or redirect session linkage. Implementation detail and GSI policy: [boundary-identity-and-storage.md](./boundary-identity-and-storage.md).
 
 **IAM scoping rules (enforced in Terraform):**
 

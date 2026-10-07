@@ -33,10 +33,12 @@ const (
 )
 
 // Session represents a ZOA Boundary session in DynamoDB.
+// PK sessionId is a UUID from session_start; taskId (GSI task-id-index) is set when the ECS task is active.
 type Session struct {
 	SessionID      string        `json:"session_id" dynamodbav:"sessionId"`
 	Operator       string        `json:"operator" dynamodbav:"operator"`
-	OperatorARN    string        `json:"operator_arn" dynamodbav:"operatorARN"`
+	SignerARN      string        `json:"signer_arn" dynamodbav:"signerARN"`
+	AccountID      string        `json:"account_id,omitempty" dynamodbav:"accountId,omitempty"`
 	TargetCluster  string        `json:"target_cluster" dynamodbav:"targetCluster"`
 	Region         string        `json:"region" dynamodbav:"region"`
 	TaskArn        string        `json:"task_arn,omitempty" dynamodbav:"taskArn,omitempty"`
@@ -85,7 +87,6 @@ type SessionStore interface {
 	ListAll(ctx context.Context, filter *SessionFilter) ([]*Session, error)
 
 	UpdateStatus(ctx context.Context, sessionID string, from, to SessionStatus, updates map[string]interface{}) error
-	ListByOperator(ctx context.Context, operator string, limit int) ([]*Session, error)
 	ListExpired(ctx context.Context) ([]*Session, error)
 
 	// ListActiveBeforeDeadline returns active sessions whose deadline is still in the future.
@@ -151,9 +152,8 @@ func (s *DynamoDBSessionStore) Get(ctx context.Context, sessionID string) (*Sess
 	return &session, nil
 }
 
-// GetByTaskID looks up a session by ECS task ID via the task-id-index GSI.
-// The task ID is the short ID (last segment of the task ARN), written to the
-// taskId attribute when the session transitions to active.
+// GetByTaskID is the identity bridge: ECS task UUID (STS RoleSessionName on the task role)
+// → session row → human operator. Uses GSI task-id-index (see docs/design/boundary-identity-and-storage.md).
 func (s *DynamoDBSessionStore) GetByTaskID(ctx context.Context, taskID string) (*Session, error) {
 	keyCond := expression.Key("taskId").Equal(expression.Value(taskID))
 	expr, err := expression.NewBuilder().WithKeyCondition(keyCond).Build()
@@ -400,47 +400,6 @@ func (s *DynamoDBSessionStore) UpdateStatus(ctx context.Context, sessionID strin
 		ExpressionAttributeValues: expr.Values(),
 	})
 	return err
-}
-
-func (s *DynamoDBSessionStore) ListByOperator(ctx context.Context, operator string, limit int) ([]*Session, error) {
-	keyCond := expression.KeyAnd(
-		expression.Key("operator").Equal(expression.Value(operator)),
-		expression.Key("createdAt").GreaterThan(expression.Value("0")),
-	)
-
-	expr, err := expression.NewBuilder().WithKeyCondition(keyCond).Build()
-	if err != nil {
-		return nil, fmt.Errorf("building operator query expression: %w", err)
-	}
-
-	if limit == 0 {
-		limit = 50
-	}
-
-	input := &dynamodb.QueryInput{
-		TableName:                 &s.tableName,
-		IndexName:                 aws.String("operator-index"),
-		KeyConditionExpression:    expr.KeyCondition(),
-		ExpressionAttributeNames:  expr.Names(),
-		ExpressionAttributeValues: expr.Values(),
-		ScanIndexForward:          aws.Bool(false),
-		Limit:                     aws.Int32(int32(limit)),
-	}
-
-	out, err := s.client.Query(ctx, input)
-	if err != nil {
-		return nil, fmt.Errorf("querying sessions by operator: %w", err)
-	}
-
-	sessions := make([]*Session, 0, len(out.Items))
-	for _, item := range out.Items {
-		var session Session
-		if err := attributevalue.UnmarshalMap(item, &session); err != nil {
-			return nil, fmt.Errorf("unmarshaling session: %w", err)
-		}
-		sessions = append(sessions, &session)
-	}
-	return sessions, nil
 }
 
 // ListExpired queries status-deadline-index for active sessions past their deadline.

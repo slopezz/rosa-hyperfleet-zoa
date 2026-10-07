@@ -41,59 +41,56 @@ type IdentityResult struct {
 	SessionID string // Boundary session ID (empty for direct laptop calls)
 }
 
-// ResolveIdentity determines the SRE identity from a caller ARN. If the caller
-// is a boundary ECS task role, it looks up the session in DynamoDB to find the
-// originating SRE and session ID. Otherwise, it extracts the identity directly
-// from the ARN (laptop caller, no boundary session).
+// ResolveIdentity attributes API requests to a human operator and optional boundary session.
 //
-// The boundary task role ARN looks like:
+// Design: docs/design/boundary-identity-and-storage.md
 //
-//	arn:aws:sts::ACCOUNT:assumed-role/zoa-boundary-task-role/TASK_ID
+//  1. Identity bridge: RoleSessionName from signer_arn is often the ECS task UUID on
+//     boundary TAs. GetByTaskID (GSI task-id-index) → operator + session_id.
+//  2. TEMPORARY fallback (laptop zoa run until IAM restricts API invoke to boundary tasks):
+//     operator = ExtractSREIdentity(signer_arn); session_id = "".
 //
-// The task ID is the RoleSessionName set by the ECS agent (tamper-proof — the
-// SRE cannot change it). It is used to look up the session in DynamoDB via
-// the task-id-index GSI. The session record contains the original SRE's
-// username and the session ID. Both are returned, eliminating any reliance
-// on client-supplied headers for identity or session linkage.
-func ResolveIdentity(ctx context.Context, callerARN string, sessionStore store.SessionStore, boundaryRolePrefix string) (*IdentityResult, error) {
-	if callerARN == "" {
+// IAM policies decide who may invoke; this function does not gate on IAM role names.
+func ResolveIdentity(ctx context.Context, signerARN string, sessionStore store.SessionStore) (*IdentityResult, error) {
+	if signerARN == "" {
 		return nil, fmt.Errorf("empty caller ARN")
 	}
 
-	sreUsername, role, err := ExtractSREIdentity(callerARN)
+	sessionName, _, err := ExtractSREIdentity(signerARN)
 	if err != nil {
 		return nil, err
 	}
 
-	if boundaryRolePrefix == "" {
-		boundaryRolePrefix = "zoa-boundary"
-	}
-
-	// If the role matches the boundary task role pattern, resolve via DynamoDB.
-	// The session name for ECS task roles is the task ID (set by ECS agent,
-	// not the SRE — tamper-proof).
-	if strings.HasPrefix(role, boundaryRolePrefix) {
-		if sessionStore == nil {
-			return nil, fmt.Errorf("session store required for boundary task role identity resolution")
-		}
-
-		taskID := sreUsername
-		session, err := sessionStore.GetByTaskID(ctx, taskID)
+	if sessionStore != nil && looksLikeECSTaskID(sessionName) {
+		session, err := sessionStore.GetByTaskID(ctx, sessionName)
 		if err != nil {
-			return nil, fmt.Errorf("looking up session for task %q: %w", taskID, err)
+			return nil, fmt.Errorf("looking up session for task %q: %w", sessionName, err)
 		}
-		if session == nil {
-			return nil, fmt.Errorf("no session found for task %q — cannot resolve SRE identity", taskID)
+		if session != nil {
+			return &IdentityResult{
+				Operator:  session.Operator,
+				SessionID: session.SessionID,
+			}, nil
 		}
-		return &IdentityResult{
-			Operator:  session.Operator,
-			SessionID: session.SessionID,
-		}, nil
 	}
 
-	// Direct caller (laptop) — identity is the session name from the ARN.
-	// No boundary session exists.
+	// TEMPORARY: laptop TA until IAM restricts API invoke to boundary task role only.
 	return &IdentityResult{
-		Operator: sreUsername,
+		Operator: sessionName,
 	}, nil
+}
+
+// looksLikeECSTaskID is a performance hint only (ECS task ids are 32-char hex).
+func looksLikeECSTaskID(s string) bool {
+	if len(s) != 32 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F') {
+			continue
+		}
+		return false
+	}
+	return true
 }

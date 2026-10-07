@@ -142,8 +142,14 @@ func renderExecution(global *GlobalOptions, exec *client.Execution, opts getOpts
 	fmt.Printf("DRY-RUN:   %s\n", output.FormatBool(exec.DryRun))
 	fmt.Printf("FORCE:     %s\n", output.FormatBool(exec.Force))
 	fmt.Printf("JIRA:      %s\n", output.Dash(exec.Jira))
-	fmt.Printf("OPERATOR:  %s\n", output.ShortOperator(exec.Operator))
-	fmt.Printf("REVISION:  %s\n", output.Dash(exec.Revision))
+	fmt.Printf("OPERATOR:   %s\n", exec.Operator)
+	if exec.SignerARN != "" {
+		fmt.Printf("SIGNER_ARN: %s\n", exec.SignerARN)
+	}
+	if exec.SessionID != "" {
+		fmt.Printf("SESSION_ID: %s\n", exec.SessionID)
+	}
+	fmt.Printf("REVISION:   %s\n", output.Dash(exec.Revision))
 	if len(exec.Params) > 0 {
 		parts := make([]string, 0, len(exec.Params))
 		for k, v := range exec.Params {

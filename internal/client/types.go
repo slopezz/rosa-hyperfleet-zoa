@@ -20,6 +20,8 @@ type Execution struct {
 	Force           bool              `json:"force"`
 	Jira            string            `json:"jira,omitempty"`
 	Operator        string            `json:"operator,omitempty"`
+	SignerARN       string            `json:"signer_arn,omitempty"`
+	SessionID       string            `json:"session_id,omitempty"`
 	Revision        string            `json:"revision,omitempty"`
 	Params          map[string]string `json:"params,omitempty"`
 	CreatedAt       *time.Time        `json:"created_at,omitempty"`
@@ -135,6 +137,8 @@ type AuditEntry struct {
 	Path          string `json:"path"`
 	StatusCode    int    `json:"status_code"`
 	Operator      string `json:"operator"`
+	SignerARN     string `json:"signer_arn,omitempty"`
+	SessionID     string `json:"session_id,omitempty"`
 	Action        string `json:"action,omitempty"`
 	TargetCluster string `json:"target_cluster,omitempty"`
 	SourceIP      string `json:"source_ip,omitempty"`
@@ -270,7 +274,10 @@ type TargetList struct {
 type Session struct {
 	SessionID      string   `json:"session_id"`
 	Operator       string   `json:"operator"`
-	Target         string   `json:"target_cluster"`
+	SignerARN      string   `json:"signer_arn,omitempty"`
+	AccountID      string   `json:"account_id,omitempty"`
+	TaskID         string   `json:"task_id,omitempty"`
+	TargetCluster  string   `json:"target_cluster"`
 	Status         string   `json:"status"`
 	Region         string   `json:"region,omitempty"`
 	EcsCluster     string   `json:"ecs_cluster,omitempty"`
@@ -309,6 +316,7 @@ type SessionJoinResponse struct {
 	Region          string           `json:"region"`
 	ExecCommand     string           `json:"exec_command"`
 	ExecCredentials *ExecCredentials `json:"exec_credentials"`
+	Deadline        string           `json:"deadline,omitempty"`
 }
 
 // ExecCredentials are vended by ZOA Access on session join for scoped ECS Exec.

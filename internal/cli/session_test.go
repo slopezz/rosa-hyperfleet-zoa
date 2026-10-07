@@ -46,7 +46,7 @@ func TestPrintSessionTable_WhenListMode_ItShouldIncludeStopReasonAndEnded(t *tes
 		Items: []client.Session{
 			{
 				SessionID:      "7840ac64-65f7-4198-b9da-8e38fc985d42",
-				Target:         "eph-regional",
+				TargetCluster:  "eph-regional",
 				Status:         "terminated",
 				StopReason:     "idleReaperStop",
 				ExecSessionIDs: []string{"ecs-execute-command-k7zkjuilu2vhsrp76e48ie3ciy"},
@@ -79,6 +79,37 @@ func TestPrintSessionTable_WhenListMode_ItShouldIncludeStopReasonAndEnded(t *tes
 	}
 	if !strings.Contains(out, "2026-10-05T21:24:40.967512578Z") {
 		t.Fatalf("expected ended timestamp in output, got:\n%s", out)
+	}
+}
+
+func TestPrintSessionTable_WhenWide_ItShouldIncludeIdentityColumns(t *testing.T) {
+	signer := "arn:aws:sts::123456:assumed-role/sre-role/slopezma"
+	list := &client.SessionList{
+		Items: []client.Session{
+			{
+				SessionID:     "7840ac64-65f7-4198-b9da-8e38fc985d42",
+				Operator:      "slopezma",
+				SignerARN:     signer,
+				AccountID:     "123456789012",
+				TaskID:        "6e8699e3938a4bcd1234567890abcdef",
+				TargetCluster: "eph-regional",
+				Status:        "active",
+			},
+		},
+		Count: 1,
+	}
+
+	var buf bytes.Buffer
+	opts := &GlobalOptions{OutputFormat: output.FormatWide}
+	if err := printSessionTable(&buf, opts, "us-east-1-eph", list, true); err != nil {
+		t.Fatalf("printSessionTable: %v", err)
+	}
+
+	out := buf.String()
+	for _, want := range []string{"SIGNER_ARN", "ACCOUNT_ID", "TASK_ID", signer, "123456789012"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("expected output to contain %q, got:\n%s", want, out)
+		}
 	}
 }
 

@@ -112,6 +112,7 @@ deployment-account admin roles).`,
 				if err := runSessionECSExec(cmd.Context(), deployment, region, resp.SessionID, accessClientForJoin(c), joinResp); err != nil {
 					return fmt.Errorf("ECS Exec: %w", err)
 				}
+				printSessionExecEndedHint(sessionProgressWriter(), deployment, compoundID, joinDeadline(resp.Deadline, joinResp))
 				return nil
 			}
 
@@ -222,6 +223,8 @@ ECS Exec and session-manager-plugin using scoped credentials from the join respo
 			if err := runSessionECSExec(cmd.Context(), deployment, region, rawID, accessClientForJoin(c), resp); err != nil {
 				return fmt.Errorf("ECS Exec: %w", err)
 			}
+			compoundID := FormatSessionID(deployment, rawID)
+			printSessionExecEndedHint(sessionProgressWriter(), deployment, compoundID, resp.Deadline)
 			return nil
 		},
 	}
@@ -229,8 +232,16 @@ ECS Exec and session-manager-plugin using scoped credentials from the join respo
 	return cmd
 }
 
+func joinDeadline(startDeadline string, join *client.SessionJoinResponse) string {
+	if join != nil && join.Deadline != "" {
+		return join.Deadline
+	}
+	return startDeadline
+}
+
 func newSessionListCommand(opts *GlobalOptions) *cobra.Command {
-	var status, target string
+	var status, target, since, until string
+	var limit int
 
 	cmd := &cobra.Command{
 		Use:   "list <deployment>",
@@ -261,11 +272,20 @@ listing other operators here. Use 'zoa session history' for fleet-wide audit.`,
 
 			query := url.Values{}
 			query.Set("scope", "mine")
+			if since != "" {
+				query.Set("since", since)
+			}
+			if until != "" {
+				query.Set("until", until)
+			}
 			if status != "" && status != "all" {
 				query.Set("status", status)
 			}
 			if target != "" {
 				query.Set("target", target)
+			}
+			if limit > 0 {
+				query.Set("limit", fmt.Sprintf("%d", limit))
 			}
 
 			list, err := c.ListSessions(cmd.Context(), query)
@@ -279,6 +299,10 @@ listing other operators here. Use 'zoa session history' for fleet-wide audit.`,
 
 	cmd.Flags().StringVar(&status, "status", "all", "Filter by status (creating, active, terminated, failed, all)")
 	cmd.Flags().StringVarP(&target, "target", "t", "", "Filter by target cluster")
+	// Default --since 24h keeps date-bucket-index queries bounded (same as zoa runs / session history).
+	cmd.Flags().StringVar(&since, "since", "24h", "Start of time window (duration: 1h, 7d; date: 2026-08-25; RFC3339)")
+	cmd.Flags().StringVar(&until, "until", "", "End of time window (same formats as --since; default: now)")
+	cmd.Flags().IntVar(&limit, "limit", 50, "Max results (max 200)")
 
 	return cmd
 }
@@ -376,8 +400,15 @@ func printSessionTable(w io.Writer, opts *GlobalOptions, deployment string, list
 		return nil
 	}
 
+	wide := opts.OutputFormat == output.FormatWide
 	tw := output.NewTable(w)
-	if history {
+	if wide {
+		if history {
+			fmt.Fprintln(tw, "SESSION ID\tOPERATOR\tSIGNER_ARN\tACCOUNT_ID\tTASK_ID\tTARGET\tSTATUS\tSTOP REASON\tEXEC SESSIONS\tCREATED\tENDED\tDEADLINE")
+		} else {
+			fmt.Fprintln(tw, "SESSION ID\tOPERATOR\tSIGNER_ARN\tACCOUNT_ID\tTASK_ID\tTARGET\tSTATUS\tSTOP REASON\tEXEC SESSIONS\tCREATED\tENDED\tDEADLINE")
+		}
+	} else if history {
 		fmt.Fprintln(tw, "SESSION ID\tOPERATOR\tTARGET\tSTATUS\tSTOP REASON\tEXEC SESSIONS\tCREATED\tENDED\tDEADLINE")
 	} else {
 		fmt.Fprintln(tw, "SESSION ID\tTARGET\tSTATUS\tSTOP REASON\tEXEC SESSIONS\tCREATED\tENDED\tDEADLINE")
@@ -389,13 +420,20 @@ func printSessionTable(w io.Writer, opts *GlobalOptions, deployment string, list
 		created := output.Dash(s.CreatedAt)
 		ended := output.Dash(s.CompletedAt)
 		deadline := output.Dash(s.Deadline)
+		target := s.TargetCluster
+		if wide {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+				sessionID, s.Operator, s.SignerARN, output.Dash(s.AccountID), output.Dash(s.TaskID),
+				target, s.Status, stopReason, execSessions, created, ended, deadline)
+			continue
+		}
 		if history {
 			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-				sessionID, s.Operator, s.Target, s.Status,
+				sessionID, s.Operator, target, s.Status,
 				stopReason, execSessions, created, ended, deadline)
 		} else {
 			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-				sessionID, s.Target, s.Status,
+				sessionID, target, s.Status,
 				stopReason, execSessions, created, ended, deadline)
 		}
 	}

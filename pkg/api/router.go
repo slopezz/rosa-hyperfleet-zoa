@@ -64,21 +64,13 @@ func WithSessionStore(s store.SessionStore) HandlerOption {
 	return func(h *Handler) { h.sessionStore = s }
 }
 
-// resolveIdentity extracts the SRE operator, raw signer ARN, and session ID
-// from a request. All three values are derived server-side from the SigV4
-// caller identity — no client-supplied headers are trusted for identity or
-// session linkage.
-//
-// For boundary callers: task ID from SigV4 ARN → sessions table → operator +
-// session ID (tamper-proof: SRE cannot change their task ID or session mapping).
-//
-// For laptop callers: operator extracted directly from SigV4 ARN, session ID
-// is empty (no boundary session).
+// resolveIdentity returns operator, signer_arn, and session_id for audit/executions.
+// See ResolveIdentity and docs/design/boundary-identity-and-storage.md.
 func (h *Handler) resolveIdentity(r *http.Request) (operator, signerARN, sessionID string) {
 	signerARN = r.Header.Get("X-Operator")
 
 	if h.sessionStore != nil && signerARN != "" {
-		result, err := ResolveIdentity(r.Context(), signerARN, h.sessionStore, "")
+		result, err := ResolveIdentity(r.Context(), signerARN, h.sessionStore)
 		if err != nil {
 			h.logger.Warn("identity bridge lookup failed, using ARN extraction",
 				"signerARN", signerARN, "error", err)

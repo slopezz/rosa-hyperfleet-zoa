@@ -23,7 +23,7 @@ func TestDynamoDBSessionStore_Put_WhenSuccess_ItShouldSetTTL(t *testing.T) {
 	session := &Session{
 		SessionID:     "task-abc",
 		Operator:      "slopezma",
-		OperatorARN:   "arn:aws:sts::123:assumed-role/sre-role/slopezma",
+		SignerARN:     "arn:aws:sts::123:assumed-role/sre-role/slopezma",
 		TargetCluster: "mc01",
 		Region:        "us-east-1",
 		Status:        SessionStatusCreating,
@@ -43,6 +43,14 @@ func TestDynamoDBSessionStore_Put_WhenSuccess_ItShouldSetTTL(t *testing.T) {
 	}
 	if session.TTL == 0 {
 		t.Error("expected TTL to be set")
+	}
+	if _, ok := capturedInput.Item["operatorARN"]; ok {
+		t.Error("expected signerARN attribute, not legacy operatorARN")
+	}
+	if v, ok := capturedInput.Item["signerARN"]; !ok {
+		t.Fatal("expected signerARN on DynamoDB item")
+	} else if s, ok := v.(*types.AttributeValueMemberS); !ok || s.Value != session.SignerARN {
+		t.Errorf("signerARN value mismatch: %+v", v)
 	}
 }
 
@@ -176,6 +184,51 @@ func TestDynamoDBSessionStore_ListExpired_WhenExpiredSessionsExist_ItShouldUseSt
 	}
 }
 
+func TestDynamoDBSessionStore_GetByTaskID_WhenFound_ItShouldUseTaskIDIndex(t *testing.T) {
+	want := &Session{
+		SessionID: "sess-uuid",
+		TaskID:    testECSTaskID,
+		Operator:  "slopezma",
+	}
+	item, _ := attributevalue.MarshalMap(want)
+
+	mock := &mockDynamoDBAPI{
+		queryFn: func(_ context.Context, params *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
+			if params.IndexName == nil || *params.IndexName != "task-id-index" {
+				t.Errorf("expected task-id-index GSI, got %v", params.IndexName)
+			}
+			return &dynamodb.QueryOutput{Items: []map[string]types.AttributeValue{item}}, nil
+		},
+	}
+
+	s := NewSessionStore(mock, "test-sessions", 30)
+	got, err := s.GetByTaskID(context.Background(), testECSTaskID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got == nil || got.Operator != "slopezma" || got.SessionID != "sess-uuid" {
+		t.Fatalf("unexpected session: %+v", got)
+	}
+}
+
+func TestDynamoDBSessionStore_GetByTaskID_WhenMissing_ItShouldReturnNil(t *testing.T) {
+	mock := &mockDynamoDBAPI{
+		queryFn: func(_ context.Context, _ *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
+			return &dynamodb.QueryOutput{Items: nil}, nil
+		},
+	}
+	s := NewSessionStore(mock, "test-sessions", 30)
+	got, err := s.GetByTaskID(context.Background(), testECSTaskID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("expected nil session, got %+v", got)
+	}
+}
+
+const testECSTaskID = "6e8699e3938a4bcd1234567890abcdef"
+
 func TestDynamoDBSessionStore_List_WhenStatusFilter_ItShouldApplyFilterExpression(t *testing.T) {
 	item, _ := attributevalue.MarshalMap(&Session{
 		SessionID: "task-1",
@@ -195,33 +248,6 @@ func TestDynamoDBSessionStore_List_WhenStatusFilter_ItShouldApplyFilterExpressio
 	s := NewSessionStore(mock, "test-sessions", 30)
 	status := SessionStatusActive
 	sessions, err := s.List(context.Background(), &SessionFilter{Status: &status})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(sessions) != 1 {
-		t.Fatalf("expected 1 session, got %d", len(sessions))
-	}
-}
-
-func TestDynamoDBSessionStore_ListByOperator_WhenSuccess_ItShouldUseOperatorIndex(t *testing.T) {
-	item, _ := attributevalue.MarshalMap(&Session{
-		SessionID: "task-1",
-		Operator:  "slopezma",
-		Status:    SessionStatusActive,
-		CreatedAt: time.Now().Format(time.RFC3339Nano),
-	})
-
-	mock := &mockDynamoDBAPI{
-		queryFn: func(_ context.Context, params *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
-			if *params.IndexName != "operator-index" {
-				t.Errorf("expected operator-index, got %q", *params.IndexName)
-			}
-			return &dynamodb.QueryOutput{Items: []map[string]types.AttributeValue{item}}, nil
-		},
-	}
-
-	s := NewSessionStore(mock, "test-sessions", 30)
-	sessions, err := s.ListByOperator(context.Background(), "slopezma", 50)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

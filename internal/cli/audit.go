@@ -131,14 +131,16 @@ func listAudit(ctx context.Context, global *GlobalOptions, opts *auditOptions) e
 		return output.JSON(os.Stdout, list)
 	}
 
+	wide := global.OutputFormat == output.FormatWide
+
 	if len(list.Items) == 0 {
 		fmt.Fprintln(os.Stderr, "No audit entries found")
 		return nil
 	}
 
 	type row struct {
-		ts, method, operator, action, target, sourceIP, userAgent, jira, approval, execID, path string
-		code                                                                                    int
+		ts, method, operator, signerARN, sessionID, action, target, sourceIP, userAgent, jira, approval, execID, path string
+		code                                                                                                              int
 	}
 
 	rows := make([]row, 0, len(list.Items))
@@ -182,7 +184,9 @@ func listAudit(ctx context.Context, global *GlobalOptions, opts *auditOptions) e
 			ts:        ts,
 			method:    e.Method,
 			code:      e.StatusCode,
-			operator:  output.ShortOperator(e.Operator),
+			operator:  e.Operator,
+			signerARN: e.SignerARN,
+			sessionID: e.SessionID,
 			action:    actionStr,
 			target:    target,
 			sourceIP:  sourceIP,
@@ -194,19 +198,30 @@ func listAudit(ctx context.Context, global *GlobalOptions, opts *auditOptions) e
 		})
 	}
 
-	fmtStr := fmt.Sprintf("%%-19s  %%-6s  %%-4s  %%-12s  %%-%ds  %%-%ds  %%-%ds  %%-%ds  %%-%ds  %%-14s  %%-36s  %%s\n",
+	if wide {
+		tw := output.NewTable(os.Stdout)
+		fmt.Fprintln(tw, "TIMESTAMP\tMETHOD\tCODE\tOPERATOR\tSIGNER_ARN\tSESSION_ID\tACTION\tTARGET\tSOURCE_IP\tUSER_AGENT\tJIRA\tAPPROVAL\tEXEC_ID\tPATH")
+		for _, r := range rows {
+			fmt.Fprintf(tw, "%s\t%s\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+				r.ts, r.method, r.code, r.operator, r.signerARN, output.Dash(r.sessionID),
+				r.action, r.target, r.sourceIP, r.userAgent, r.jira, r.approval, r.execID, r.path)
+		}
+		return tw.Flush()
+	}
+
+	fmtStr := fmt.Sprintf("%%-19s  %%-6s  %%-4s  %%-20s  %%-%ds  %%-%ds  %%-%ds  %%-%ds  %%-%ds  %%-14s  %%-36s  %%s\n",
 		maxAction, maxTarget, maxIP, maxUA, maxJira)
 	fmt.Fprintf(os.Stdout, fmtStr,
 		"TIMESTAMP", "METHOD", "CODE", "OPERATOR", "ACTION", "TARGET", "SOURCE_IP", "USER_AGENT", "JIRA", "APPROVAL", "EXEC_ID", "PATH")
 
-	fmtRow := fmt.Sprintf("%%-19s  %%-6s  %%-4d  %%-12s  %%-%ds  %%-%ds  %%-%ds  %%-%ds  %%-%ds  %%-14s  %%-36s  %%s\n",
+	fmtRow := fmt.Sprintf("%%-19s  %%-6s  %%-4d  %%-20s  %%-%ds  %%-%ds  %%-%ds  %%-%ds  %%-%ds  %%-14s  %%-36s  %%s\n",
 		maxAction, maxTarget, maxIP, maxUA, maxJira)
 	for _, r := range rows {
 		fmt.Fprintf(os.Stdout, fmtRow,
 			r.ts,
 			r.method,
 			r.code,
-			output.Truncate(r.operator, 12),
+			r.operator,
 			r.action,
 			r.target,
 			r.sourceIP,

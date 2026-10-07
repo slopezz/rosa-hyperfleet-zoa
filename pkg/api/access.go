@@ -160,6 +160,8 @@ func (h *AccessHandler) sessionDurationFromRequest(timeoutHours int) (time.Durat
 	return time.Duration(timeoutHours) * time.Hour, nil
 }
 
+// handleSessionStart records operator, signer_arn, and account_id on a new session row (PK sessionId UUID).
+// ECS task_id is written later on activate for the API identity bridge (task-id-index GSI).
 func (h *AccessHandler) handleSessionStart(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	operatorARN := r.Header.Get("X-Operator")
@@ -203,10 +205,13 @@ func (h *AccessHandler) handleSessionStart(w http.ResponseWriter, r *http.Reques
 	deadline := now.Add(sessionDuration)
 	sessionID := uuid.New().String()
 
+	// Stores human operator + invoker signer_arn + account; task_id is set when ECS task becomes active.
+	accountID := r.Header.Get("X-Account-ID")
 	session := &store.Session{
 		SessionID:      sessionID,
 		Operator:       username,
-		OperatorARN:    operatorARN,
+		SignerARN:      operatorARN,
+		AccountID:      accountID,
 		TargetCluster:  req.Target,
 		Region:         target.Region,
 		Status:         store.SessionStatusCreating,
@@ -261,12 +266,14 @@ func (h *AccessHandler) ensureBoundaryTask(ctx context.Context, session *store.S
 		Subnets:        subnets,
 		SecurityGroup:  target.SecurityGroupId,
 		Environment: map[string]string{
-			"ZOA_API_URL":     target.FunctionUrl,
-			"ZOA_TARGET":      session.TargetCluster,
-			"ZOA_DEPLOYMENT":  session.DeploymentName,
-			"ZOA_TARGET_TYPE": strings.ToLower(target.TargetType),
-			"ZOA_SESSION_ID":  session.SessionID,
-			"ZOA_OPERATOR":    session.Operator,
+			"ZOA_API_URL":                        target.FunctionUrl,
+			"ZOA_TARGET":                         session.TargetCluster,
+			"ZOA_DEPLOYMENT":                     session.DeploymentName,
+			"ZOA_TARGET_TYPE":                    strings.ToLower(target.TargetType),
+			"ZOA_SESSION_ID":                     session.SessionID,
+			"ZOA_OPERATOR":                       session.Operator,
+			"ZOA_SESSION_DEADLINE":               session.Deadline,
+			"ZOA_SESSION_IDLE_TIMEOUT_SECONDS":   fmt.Sprintf("%d", h.cfg.SessionIdleTimeoutSeconds),
 		},
 		Tags: map[string]string{
 			"Component":  "zoa",
@@ -450,6 +457,7 @@ type sessionJoinResponse struct {
 	ContainerName   string                    `json:"container_name"`
 	ExecCommand     string                    `json:"exec_command"`
 	ExecCredentials *execcreds.APICredentials `json:"exec_credentials"`
+	Deadline        string                    `json:"deadline,omitempty"`
 }
 
 func (h *AccessHandler) handleSessionJoin(w http.ResponseWriter, r *http.Request) {
@@ -533,6 +541,7 @@ func (h *AccessHandler) handleSessionJoin(w http.ResponseWriter, r *http.Request
 		ContainerName:   "zoa-boundary",
 		ExecCommand:     h.cfg.BoundaryECSExecCommand,
 		ExecCredentials: execCreds,
+		Deadline:        session.Deadline,
 	})
 }
 
@@ -630,7 +639,17 @@ func (h *AccessHandler) recordAccessAudit(r *http.Request, statusCode int, actio
 	if h.auditStore == nil {
 		return
 	}
-	operator := r.Header.Get("X-Operator")
+	signerARN := r.Header.Get("X-Operator")
+	operator := signerARN
+	auditSessionID := sessionID
+	if result, err := ResolveIdentity(r.Context(), signerARN, h.sessionStore); err == nil {
+		operator = result.Operator
+		if result.SessionID != "" {
+			auditSessionID = result.SessionID
+		}
+	} else if username, _, err := ExtractSREIdentity(signerARN); err == nil {
+		operator = username
+	}
 	accountID := r.Header.Get("X-Account-ID")
 	entry := &store.AuditEntry{
 		AccountID:   accountID,
@@ -639,6 +658,8 @@ func (h *AccessHandler) recordAccessAudit(r *http.Request, statusCode int, actio
 		Path:        r.URL.Path,
 		StatusCode:  statusCode,
 		Operator:    operator,
+		SignerARN:   signerARN,
+		SessionID:   auditSessionID,
 		Action:      action,
 		SourceIP:    r.Header.Get("X-Source-IP"),
 		RequestID:   r.Header.Get("X-Request-ID"),

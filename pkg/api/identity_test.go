@@ -8,6 +8,8 @@ import (
 	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/store"
 )
 
+const testECSTaskID = "6e8699e3938a4bcd1234567890abcdef"
+
 func TestExtractSREIdentity_WhenValidAssumedRoleARN_ItShouldReturnUsernameAndRole(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -23,8 +25,8 @@ func TestExtractSREIdentity_WhenValidAssumedRoleARN_ItShouldReturnUsernameAndRol
 		},
 		{
 			name:     "boundary task ARN",
-			arn:      "arn:aws:sts::123456:assumed-role/zoa-boundary-task-role/abc123def",
-			wantUser: "abc123def",
+			arn:      "arn:aws:sts::123456:assumed-role/zoa-boundary-task-role/" + testECSTaskID,
+			wantUser: testECSTaskID,
 			wantRole: "zoa-boundary-task-role",
 		},
 		{
@@ -77,7 +79,6 @@ type mockSessionStore struct {
 	putFn          func(ctx context.Context, s *store.Session) error
 	listFn         func(ctx context.Context, filter *store.SessionFilter) ([]*store.Session, error)
 	updateStatusFn func(ctx context.Context, id string, from, to store.SessionStatus, updates map[string]interface{}) error
-	listByOperFn   func(ctx context.Context, operator string, limit int) ([]*store.Session, error)
 	listExpiredFn  func(ctx context.Context) ([]*store.Session, error)
 }
 
@@ -109,18 +110,11 @@ func (m *mockSessionStore) List(ctx context.Context, filter *store.SessionFilter
 	return nil, nil
 }
 
-func (m *mockSessionStore) UpdateStatus(ctx context.Context, id string, from, to store.SessionStatus, updates map[string]interface{}) error {
+func (m *mockSessionStore) UpdateStatus(ctx context.Context, sessionID string, from, to store.SessionStatus, updates map[string]interface{}) error {
 	if m.updateStatusFn != nil {
-		return m.updateStatusFn(ctx, id, from, to, updates)
+		return m.updateStatusFn(ctx, sessionID, from, to, updates)
 	}
 	return nil
-}
-
-func (m *mockSessionStore) ListByOperator(ctx context.Context, operator string, limit int) ([]*store.Session, error) {
-	if m.listByOperFn != nil {
-		return m.listByOperFn(ctx, operator, limit)
-	}
-	return nil, nil
 }
 
 func (m *mockSessionStore) ListAll(_ context.Context, _ *store.SessionFilter) ([]*store.Session, error) {
@@ -143,11 +137,16 @@ func (m *mockSessionStore) RecordExecSession(ctx context.Context, sessionID, ope
 }
 
 func TestResolveIdentity_WhenDirectSREARN_ItShouldReturnUsernameAndEmptySession(t *testing.T) {
+	mockStore := &mockSessionStore{
+		getByTaskIDFn: func(_ context.Context, _ string) (*store.Session, error) {
+			t.Fatal("should not query task-id index for human session name")
+			return nil, nil
+		},
+	}
 	result, err := ResolveIdentity(
 		context.Background(),
 		"arn:aws:sts::123456:assumed-role/sre-role/slopezma",
-		nil,
-		"",
+		mockStore,
 	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -160,26 +159,19 @@ func TestResolveIdentity_WhenDirectSREARN_ItShouldReturnUsernameAndEmptySession(
 	}
 }
 
-func TestResolveIdentity_WhenBoundaryTaskRole_ItShouldLookupSessionByTaskID(t *testing.T) {
+func TestResolveIdentity_WhenTaskIDBridgeHit_ItShouldReturnSessionOperator(t *testing.T) {
 	mockStore := &mockSessionStore{
 		getByTaskIDFn: func(_ context.Context, taskID string) (*store.Session, error) {
-			if taskID != "task-abc123" {
-				return nil, fmt.Errorf("unexpected task ID: %s", taskID)
-			}
 			return &store.Session{
 				SessionID: "sess-xyz",
-				TaskID:    "task-abc123",
+				TaskID:    taskID,
 				Operator:  "slopezma",
 			}, nil
 		},
 	}
 
-	result, err := ResolveIdentity(
-		context.Background(),
-		"arn:aws:sts::123456:assumed-role/zoa-boundary-task-role/task-abc123",
-		mockStore,
-		"",
-	)
+	arn := "arn:aws:sts::123456:assumed-role/eph-046f5f15-regional-zoa-boundary-task/" + testECSTaskID
+	result, err := ResolveIdentity(context.Background(), arn, mockStore)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -191,66 +183,158 @@ func TestResolveIdentity_WhenBoundaryTaskRole_ItShouldLookupSessionByTaskID(t *t
 	}
 }
 
-func TestResolveIdentity_WhenBoundaryTaskRoleNoSession_ItShouldReturnError(t *testing.T) {
+func TestResolveIdentity_WhenTaskIDBridgeMiss_ItShouldFallbackToSessionName(t *testing.T) {
 	mockStore := &mockSessionStore{
 		getByTaskIDFn: func(_ context.Context, _ string) (*store.Session, error) {
 			return nil, nil
 		},
 	}
 
-	_, err := ResolveIdentity(
+	result, err := ResolveIdentity(
 		context.Background(),
-		"arn:aws:sts::123456:assumed-role/zoa-boundary-task-role/task-unknown",
+		"arn:aws:sts::123456:assumed-role/zoa-boundary-task-role/"+testECSTaskID,
 		mockStore,
-		"",
 	)
-	if err == nil {
-		t.Fatal("expected error when session not found")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Operator != testECSTaskID {
+		t.Errorf("expected fallback operator %q, got %q", testECSTaskID, result.Operator)
+	}
+	if result.SessionID != "" {
+		t.Errorf("expected empty session ID on bridge miss, got %q", result.SessionID)
 	}
 }
 
-func TestResolveIdentity_WhenBoundaryTaskRoleNoStore_ItShouldReturnError(t *testing.T) {
+func TestResolveIdentity_WhenBridgeLookupErrors_ItShouldReturnError(t *testing.T) {
+	mockStore := &mockSessionStore{
+		getByTaskIDFn: func(_ context.Context, _ string) (*store.Session, error) {
+			return nil, fmt.Errorf("dynamo down")
+		},
+	}
+
 	_, err := ResolveIdentity(
 		context.Background(),
-		"arn:aws:sts::123456:assumed-role/zoa-boundary-task-role/task-abc",
-		nil,
-		"",
+		"arn:aws:sts::123456:assumed-role/zoa-boundary-task-role/"+testECSTaskID,
+		mockStore,
 	)
 	if err == nil {
-		t.Fatal("expected error when session store is nil for boundary role")
+		t.Fatal("expected error when bridge lookup fails")
 	}
 }
 
 func TestResolveIdentity_WhenEmptyARN_ItShouldReturnError(t *testing.T) {
-	_, err := ResolveIdentity(context.Background(), "", nil, "")
+	_, err := ResolveIdentity(context.Background(), "", nil)
 	if err == nil {
 		t.Fatal("expected error for empty ARN")
 	}
 }
 
-func TestResolveIdentity_WhenCustomBoundaryRolePrefix_ItShouldMatch(t *testing.T) {
-	mockStore := &mockSessionStore{
-		getByTaskIDFn: func(_ context.Context, _ string) (*store.Session, error) {
-			return &store.Session{
-				SessionID: "sess-custom",
-				Operator:  "testuser",
-			}, nil
-		},
-	}
-
+func TestResolveIdentity_WhenNilSessionStoreAndTaskIDARN_ItShouldFallback(t *testing.T) {
 	result, err := ResolveIdentity(
 		context.Background(),
-		"arn:aws:sts::123456:assumed-role/custom-boundary-role/task-xyz",
-		mockStore,
-		"custom-boundary",
+		"arn:aws:sts::123456:assumed-role/zoa-boundary-task-role/"+testECSTaskID,
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Operator != "testuser" {
-		t.Errorf("expected operator 'testuser', got %q", result.Operator)
+	if result.Operator != testECSTaskID {
+		t.Errorf("expected operator %q, got %q", testECSTaskID, result.Operator)
 	}
-	if result.SessionID != "sess-custom" {
-		t.Errorf("expected session ID 'sess-custom', got %q", result.SessionID)
+}
+
+func TestResolveIdentity_WhenHumanSessionName_ItShouldNotCallTaskIDBridge(t *testing.T) {
+	called := false
+	mockStore := &mockSessionStore{
+		getByTaskIDFn: func(_ context.Context, _ string) (*store.Session, error) {
+			called = true
+			return nil, nil
+		},
+	}
+	result, err := ResolveIdentity(
+		context.Background(),
+		"arn:aws:sts::123456:assumed-role/sre-role/slopezma",
+		mockStore,
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if called {
+		t.Fatal("expected task-id bridge lookup to be skipped for human session name")
+	}
+	if result.Operator != "slopezma" {
+		t.Errorf("expected operator slopezma, got %q", result.Operator)
+	}
+}
+
+func TestLooksLikeECSTaskID_WhenValidHex32_ItShouldReturnTrue(t *testing.T) {
+	if !looksLikeECSTaskID(testECSTaskID) {
+		t.Error("expected true for 32-char hex task id")
+	}
+}
+
+func TestResolveIdentity_TableDriven_ItShouldCoverAttributionPaths(t *testing.T) {
+	laptopARN := "arn:aws:sts::123456:assumed-role/sre-role/slopezma"
+	taskARN := "arn:aws:sts::123456:assumed-role/zoa-boundary-task-role/" + testECSTaskID
+
+	tests := []struct {
+		name      string
+		arn       string
+		store     store.SessionStore
+		wantOp   string
+		wantSess string
+	}{
+		{
+			name:     "laptop with store skips bridge",
+			arn:      laptopARN,
+			store:    &mockSessionStore{},
+			wantOp:   "slopezma",
+			wantSess: "",
+		},
+		{
+			name:   "boundary hit",
+			arn:    taskARN,
+			store:  &mockSessionStore{getByTaskIDFn: func(_ context.Context, _ string) (*store.Session, error) {
+				return &store.Session{Operator: "slopezma", SessionID: "s-1"}, nil
+			}},
+			wantOp:   "slopezma",
+			wantSess: "s-1",
+		},
+		{
+			name:   "boundary miss",
+			arn:    taskARN,
+			store:  &mockSessionStore{getByTaskIDFn: func(_ context.Context, _ string) (*store.Session, error) {
+				return nil, nil
+			}},
+			wantOp: testECSTaskID,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ResolveIdentity(context.Background(), tt.arn, tt.store)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got.Operator != tt.wantOp || got.SessionID != tt.wantSess {
+				t.Fatalf("got operator=%q session=%q", got.Operator, got.SessionID)
+			}
+		})
+	}
+}
+
+func TestLooksLikeECSTaskID_WhenInvalid_ItShouldReturnFalse(t *testing.T) {
+	tests := []string{
+		"",
+		"slopezma",
+		"task-abc123",
+		"6e8699e3938abcd",
+		"zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+	}
+	for _, s := range tests {
+		if looksLikeECSTaskID(s) {
+			t.Errorf("expected false for %q", s)
+		}
 	}
 }

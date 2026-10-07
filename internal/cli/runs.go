@@ -149,14 +149,14 @@ func listRuns(ctx context.Context, global *GlobalOptions, opts *runsOptions) err
 	wide := global.OutputFormat == output.FormatWide
 
 	type row struct {
-		created, operator, id, action, params, target string
-		scope, typ, status, rev, class                string
-		jira, total, outBytes                         string
-		dispatchedAt, completedAt, logBytes           string
+		created, operator, signerARN, sessionID, id, action, params, target string
+		scope, typ, status, rev, class                                      string
+		jira, total, outBytes                                               string
+		dispatchedAt, completedAt, logBytes                                 string
 	}
 
 	rows := make([]row, 0, len(list.Items))
-	maxAction, maxParams, maxTarget, maxJira := 6, 6, 6, 4
+	maxAction, maxParams, maxTarget, maxJira, maxOperator := 6, 6, 6, 4, 8
 
 	for _, e := range list.Items {
 		actionStr := e.Action
@@ -184,6 +184,9 @@ func listRuns(ctx context.Context, global *GlobalOptions, opts *runsOptions) err
 		if len(e.Jira) > maxJira {
 			maxJira = len(e.Jira)
 		}
+		if len(e.Operator) > maxOperator {
+			maxOperator = len(e.Operator)
+		}
 
 		rev := output.Dash(e.Revision)
 		if len(rev) > 7 && rev != "-" {
@@ -192,7 +195,9 @@ func listRuns(ctx context.Context, global *GlobalOptions, opts *runsOptions) err
 
 		rows = append(rows, row{
 			created:      output.FormatTimestamp(e.CreatedAt),
-			operator:     output.ShortOperator(e.Operator),
+			operator:     e.Operator,
+			signerARN:    e.SignerARN,
+			sessionID:    e.SessionID,
 			id:           e.ID,
 			action:       actionStr,
 			params:       params,
@@ -213,11 +218,13 @@ func listRuns(ctx context.Context, global *GlobalOptions, opts *runsOptions) err
 
 	if wide {
 		tw := output.NewTable(os.Stdout)
-		fmt.Fprintln(tw, "CREATED_AT\tOPERATOR\tID\tACTION\tPARAMS\tTARGET\tSCOPE\tTYPE\tSTATUS\tREV\tMODE\tJIRA\tDUR\tOUT\tDISPATCHED_AT\tCOMPLETED_AT\tLOGS")
+		fmt.Fprintln(tw, "CREATED_AT\tOPERATOR\tSIGNER_ARN\tSESSION_ID\tID\tACTION\tPARAMS\tTARGET\tSCOPE\tTYPE\tSTATUS\tREV\tMODE\tJIRA\tDUR\tOUT\tDISPATCHED_AT\tCOMPLETED_AT\tLOGS")
 		for _, r := range rows {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 				r.created,
-				output.Truncate(r.operator, 20),
+				r.operator,
+				r.signerARN,
+				output.Dash(r.sessionID),
 				r.id,
 				r.action,
 				output.Truncate(r.params, 70),
@@ -253,8 +260,11 @@ func listRuns(ctx context.Context, global *GlobalOptions, opts *runsOptions) err
 		maxJira = 15
 	}
 
-	fmtStr := fmt.Sprintf("%%-19s  %%-12s  %%-36s  %%-%ds  %%-%ds  %%-%ds  %%-9s  %%-6s  %%-12s  %%-7s  %%-6s  %%-%ds  %%-6s  %%s\n",
-		maxAction, maxParams, maxTarget, maxJira)
+	if maxOperator > 24 {
+		maxOperator = 24
+	}
+	fmtStr := fmt.Sprintf("%%-19s  %%-%ds  %%-36s  %%-%ds  %%-%ds  %%-%ds  %%-9s  %%-6s  %%-12s  %%-7s  %%-6s  %%-%ds  %%-6s  %%s\n",
+		maxOperator, maxAction, maxParams, maxTarget, maxJira)
 
 	fmt.Fprintf(os.Stdout, fmtStr,
 		"CREATED_AT", "OPERATOR", "ID", "ACTION", "PARAMS", "TARGET", "SCOPE", "TYPE", "STATUS", "REV", "MODE", "JIRA", "DUR", "OUT")
@@ -262,7 +272,7 @@ func listRuns(ctx context.Context, global *GlobalOptions, opts *runsOptions) err
 	for _, r := range rows {
 		fmt.Fprintf(os.Stdout, fmtStr,
 			r.created,
-			output.Truncate(r.operator, 12),
+			r.operator,
 			r.id,
 			output.Truncate(r.action, maxAction),
 			output.Truncate(r.params, maxParams),
