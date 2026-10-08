@@ -1,4 +1,4 @@
-# Session limits and Jira prompt after MOTD (15-zoa-motd.bashrc).
+# Session limits after MOTD (Jira block is in zoa_boundary_print_motd; 15-zoa-motd.bashrc).
 
 ZOA_BOUNDARY_BANNER="/etc/zoa-boundary/banner.sh"
 
@@ -12,7 +12,6 @@ zoa_boundary_session_login_once() {
   # shellcheck source=/dev/null
   source "${ZOA_BOUNDARY_BANNER}"
   zoa_boundary_print_session_limits
-  zoa_boundary_prompt_session_jira
   export ZOA_SESSION_LOGIN_SHOWN=1
 }
 

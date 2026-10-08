@@ -27,6 +27,7 @@ setup() {
     ZOA_DEPLOYMENT="us-east-1-eph" \
     ZOA_TARGET="mc01" \
     ZOA_TARGET_TYPE="mc" \
+    ZOA_JIRA="ROSAENG-99" \
     AWS_REGION="us-east-1" \
     bash -c '
       zoa_compound_session_id() { printf "us-east-1-eph/d77d58c8-1111-2222"; }
@@ -41,10 +42,29 @@ setup() {
   [[ "${output}" == *"ROSA HyperFleet architecture"* ]]
   [[ "${output}" != *"not env vars alone"* ]]
   [[ "${output}" == *"==> ZOA Boundary session"* ]]
+  [[ "${output}" == *"==> Session Jira"* ]]
+  [[ "${output}" == *"ROSAENG-99"* ]]
   [[ "${output}" == *"us-east-1-eph/d77d58c8-1111-2222"* ]]
-  [[ "${output}" == *"zoa session stop us-east-1-eph/d77d58c8-1111-2222"* ]]
+  [[ "${output}" != *"==> Remember"* ]]
   [[ "${output}" == *"CLAUDE.md"* ]]
   [[ "${output}" == *"ZOA_SESSION.md"* ]]
+}
+
+@test "zoa_boundary_print_session_limits includes stop hint and renamed header" {
+  run env \
+    ZOA_SESSION_ID="d77d58c8-1111-2222" \
+    ZOA_DEPLOYMENT="us-east-1-eph" \
+    ZOA_SESSION_DEADLINE="2030-01-01T12:00:00Z" \
+    ZOA_SESSION_IDLE_TIMEOUT_SECONDS="3600" \
+    bash -c '
+      zoa_compound_session_id() { printf "us-east-1-eph/d77d58c8-1111-2222"; }
+      source "$1"
+      zoa_boundary_print_session_limits
+    ' bash "${BANNER}"
+
+  [ "${status}" -eq 0 ]
+  [[ "${output}" == *"==> ZOA Boundary session limits"* ]]
+  [[ "${output}" == *"zoa session stop us-east-1-eph/d77d58c8-1111-2222"* ]]
 }
 
 @test "zoa_boundary_print_exit_hint uses aligned stop and join lines" {

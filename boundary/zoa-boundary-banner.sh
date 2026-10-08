@@ -63,21 +63,14 @@ zoa_boundary_print_motd() {
   echo "    Audited container in the target VPC. Run Trusted Actions with zoa run;"
   echo "    operator attribution uses the identity bridge."
   echo ""
+  zoa_boundary_prompt_session_jira
   echo "==> Quick start"
-  echo "    zoa run <action> ...   (session Jira set below; or --jira TICKET)"
+  echo "    zoa run <action> ...   (session Jira above; or --jira TICKET)"
   echo ""
   echo "==> Agent and session docs (Claude Code + humans)"
   echo "    ~/.claude/CLAUDE.md       — ROSA HyperFleet architecture, boundary rules, RC vs MC, identity bridge, TA workflow"
   echo "    ~/.claude/ZOA_SESSION.md  — this session (deployment, target, target type)"
   echo "    ~/.claude/ZOA_ACTIONS.md  — offline TA catalog (live API: zoa actions)"
-  echo ""
-  echo "==> Remember"
-  echo "    exit / Ctrl+D disconnects Exec only — stop from your laptop:"
-  if [[ -n "${compound}" ]]; then
-    printf '    zoa session stop %s\n' "${compound}"
-  else
-    echo "    zoa session stop <deployment>/<session-id>"
-  fi
   echo ""
 }
 
@@ -174,7 +167,7 @@ zoa_boundary_deadline_human() {
 }
 
 zoa_boundary_print_session_limits() {
-  echo "==> Session limits"
+  echo "==> ZOA Boundary session limits"
   if [[ -n "${ZOA_SESSION_DEADLINE:-}" ]]; then
     printf '    Hard stop:  %s\n' "$(zoa_boundary_deadline_human "${ZOA_SESSION_DEADLINE}")"
     echo "                — max session length from start"
