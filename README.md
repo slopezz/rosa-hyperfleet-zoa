@@ -80,7 +80,7 @@ graph TD
 
     subgraph rc["RC Account"]
         ACCESS["ZOA Access Lambda<br/>(Function URL, IAM)"]
-        STATE["RC state<br/>DynamoDB · zoa-boundary-sessions<br/>DynamoDB · zoa-executions<br/>DynamoDB · zoa-audit-log<br/>S3 · zoa-outputs"]
+        STATE["RC state<br/>DynamoDB · sessions, executions, audit-log<br/>S3 · outputs"]
         subgraph rc_vpc["Target RC VPC"]
             BOUNDARY_RC["ZOA boundary<br/>ECS Fargate + ECS Exec"]
             EB_RC["EventBridge Scheduler"]
