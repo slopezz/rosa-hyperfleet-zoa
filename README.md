@@ -73,6 +73,10 @@ ZOA deploys **two Lambda functions per target VPC** (one per EKS cluster). Both 
 The split exists because Lambda timeout, concurrency, and invocation mode (streaming vs standard) are per-function settings.
 
 ```mermaid
+---
+config:
+  layout: dagre
+---
 graph TD
     subgraph laptop["SRE Laptop"]
         L["RH VPN → kinit<br/>rh-aws-saml-login (Central)<br/>zoa deployments · targets<br/>zoa session start · join"]
