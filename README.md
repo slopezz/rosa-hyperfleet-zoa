@@ -84,7 +84,7 @@ graph TD
 
     subgraph rc["RC Account"]
         ACCESS["ZOA Access Lambda<br/>(Function URL, IAM)"]
-        DDB["DynamoDB + S3<br/>(centralized state)"]
+        STATE["RC state<br/>DynamoDB · sessions, executions, audit-log<br/>S3 · outputs"]
         subgraph rc_vpc["Target RC VPC"]
             BOUNDARY_RC["ZOA boundary<br/>ECS Fargate + ECS Exec"]
             EB_RC["EventBridge Scheduler"]
@@ -105,7 +105,7 @@ graph TD
     end
 
     L -->|"SigV4: session start/stop/list"| ACCESS
-    ACCESS -->|"sessions, RunTask"| DDB
+    ACCESS -->|"sessions, RunTask"| STATE
     ACCESS -->|"ecs:RunTask"| BOUNDARY_RC
     ACCESS -->|"ecs:RunTask (cross-account)"| BOUNDARY_MC
 
@@ -126,10 +126,10 @@ graph TD
     API_MC --> EKS_MC
     WORKER_MC --> EKS_MC
 
-    API_RC -->|"read/write"| DDB
-    WORKER_RC --> DDB
-    API_MC -.->|"cross-account"| DDB
-    WORKER_MC -.->|"cross-account"| DDB
+    API_RC -->|"read/write"| STATE
+    WORKER_RC --> STATE
+    API_MC -.->|"cross-account"| STATE
+    WORKER_MC -.->|"cross-account"| STATE
 ```
 
 > **Note:** Laptop flow: connect **RH VPN** (needed for **`kinit`** only), **`kinit`**, then **`rh-aws-saml-login`** into the environment **Central** account — after that, VPN is not required for ZOA/AWS CLI work. Discovery: **`zoa deployments`** (Central SSM, no Access Lambda) then **`zoa targets <deployment>`** (Access invoker + SigV4) before **`zoa session start <deployment> <target> --jira TICKET`**. ZOA Access is a **Function URL** with IAM auth (not API Gateway). TA execution from boundary uses the per-VPC API Lambda (`ZOA_API_URL`). Break-glass kubectl and approval-gated TAs are not implemented yet.
