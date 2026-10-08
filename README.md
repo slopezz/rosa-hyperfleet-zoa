@@ -75,12 +75,12 @@ The split exists because Lambda timeout, concurrency, and invocation mode (strea
 ```mermaid
 graph TD
     subgraph laptop["SRE Laptop"]
-        L["$ kinit / rh-saml<br/>$ zoa session start D T<br/>$ zoa session join …"]
+        L["RH VPN → kinit<br/>rh-aws-saml-login (Central)<br/>zoa deployments · targets<br/>zoa session start · join"]
     end
 
     subgraph rc["RC Account"]
         ACCESS["ZOA Access Lambda<br/>(Function URL, IAM)"]
-        DDB["DynamoDB + S3<br/>(centralized state)"]
+        STATE["RC state<br/>DynamoDB · zoa-boundary-sessions<br/>DynamoDB · zoa-executions<br/>DynamoDB · zoa-audit-log<br/>S3 · zoa-outputs"]
         subgraph rc_vpc["Target RC VPC"]
             BOUNDARY_RC["ZOA boundary<br/>ECS Fargate + ECS Exec"]
             EB_RC["EventBridge Scheduler"]
@@ -101,7 +101,7 @@ graph TD
     end
 
     L -->|"SigV4: session start/stop/list"| ACCESS
-    ACCESS -->|"sessions, RunTask"| DDB
+    ACCESS -->|"sessions, RunTask"| STATE
     ACCESS -->|"ecs:RunTask"| BOUNDARY_RC
     ACCESS -->|"ecs:RunTask (cross-account)"| BOUNDARY_MC
 
@@ -114,21 +114,21 @@ graph TD
     BOUNDARY_RC -.->|"break-glass · future"| EKS_RC
     BOUNDARY_MC -.->|"break-glass · future"| EKS_MC
 
-    EB_RC -->|"1m reconciler / 5m GC / 5m reaper"| WORKER_RC
-    EB_MC -->|"1m reconciler / 5m GC / 5m reaper"| WORKER_MC
+    EB_RC -->|"1m rec / 5m GC / 5m reaper"| WORKER_RC
+    EB_MC -->|"1m rec / 5m GC / 5m reaper"| WORKER_MC
 
     API_RC --> EKS_RC
     WORKER_RC --> EKS_RC
     API_MC --> EKS_MC
     WORKER_MC --> EKS_MC
 
-    API_RC -->|"read/write"| DDB
-    WORKER_RC --> DDB
-    API_MC -.->|"cross-account"| DDB
-    WORKER_MC -.->|"cross-account"| DDB
+    API_RC -->|"read/write"| STATE
+    WORKER_RC --> STATE
+    API_MC -.->|"cross-account"| STATE
+    WORKER_MC -.->|"cross-account"| STATE
 ```
 
-> **Note:** `zoa session start <deployment> <target>` uses positional args (e.g. `zoa session start us-east-1 mc01`). ZOA Access is a **Function URL** with IAM auth (not API Gateway). TA execution from investigations uses the per-VPC API Lambda Function URL inside the boundary container (`ZOA_API_URL`). Break-glass kubectl and approval-gated TAs are not implemented yet.
+> **Note:** Laptop flow: connect **RH VPN** (needed for **`kinit`** only), **`kinit`**, then **`rh-aws-saml-login`** into the environment **Central** account — after that, VPN is not required for ZOA/AWS CLI work. Discovery: **`zoa deployments`** (Central SSM, no Access Lambda) then **`zoa targets <deployment>`** (Access invoker + SigV4) before **`zoa session start <deployment> <target> --jira TICKET`**. ZOA Access is a **Function URL** with IAM auth (not API Gateway). TA execution from boundary uses the per-VPC API Lambda (`ZOA_API_URL`). Break-glass kubectl and approval-gated TAs are not implemented yet.
 
 ### Execution Modes
 
