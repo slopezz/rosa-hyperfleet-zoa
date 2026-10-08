@@ -4,17 +4,17 @@ import (
 	"context"
 	"testing"
 
-	"github.com/openshift-online/rosa-hyperfleet-zoa/internal/cli/jira"
+	"github.com/openshift-online/rosa-hyperfleet-zoa/internal/cli/reason"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/internal/client"
 )
 
-func TestRunAction_WhenZOAJIRAEnvSet_ItShouldDispatchEnvJira(t *testing.T) {
-	t.Setenv(jira.EnvVar, "ROSAENG-555")
+func TestRunAction_WhenZOAReasonEnvSet_ItShouldDispatchEnvReason(t *testing.T) {
+	t.Setenv(reason.EnvVar, "ROSAENG-555")
 
-	var dispatchedJira string
+	var dispatchedReason string
 	mock := &mockClient{
 		dispatchFn: func(_ context.Context, _ string, req *client.DispatchRequest) (*client.DispatchResponse, error) {
-			dispatchedJira = req.Jira
+			dispatchedReason = req.Reason
 			return &client.DispatchResponse{
 				ID:            "exec-1",
 				Status:        "succeeded",
@@ -28,22 +28,22 @@ func TestRunAction_WhenZOAJIRAEnvSet_ItShouldDispatchEnvJira(t *testing.T) {
 	}
 
 	global := newMockGlobalOpts(mock)
-	opts := &runOptions{jira: ""}
+	opts := &runOptions{reason: ""}
 	if err := runAction(context.Background(), global, opts, "get_resource"); err != nil {
 		t.Fatalf("runAction: %v", err)
 	}
-	if dispatchedJira != "ROSAENG-555" {
-		t.Fatalf("expected ZOA_JIRA on dispatch, got %q", dispatchedJira)
+	if dispatchedReason != "ROSAENG-555" {
+		t.Fatalf("expected ZOA_REASON on dispatch, got %q", dispatchedReason)
 	}
 }
 
-func TestRunAction_WhenZOAJIRAAndFlagSet_ItShouldPreferFlagJira(t *testing.T) {
-	t.Setenv(jira.EnvVar, "ROSAENG-555")
+func TestRunAction_WhenZOAReasonAndFlagSet_ItShouldPreferFlagReason(t *testing.T) {
+	t.Setenv(reason.EnvVar, "ROSAENG-555")
 
-	var dispatchedJira string
+	var dispatchedReason string
 	mock := &mockClient{
 		dispatchFn: func(_ context.Context, _ string, req *client.DispatchRequest) (*client.DispatchResponse, error) {
-			dispatchedJira = req.Jira
+			dispatchedReason = req.Reason
 			return &client.DispatchResponse{
 				ID:            "exec-2",
 				Status:        "succeeded",
@@ -57,28 +57,28 @@ func TestRunAction_WhenZOAJIRAAndFlagSet_ItShouldPreferFlagJira(t *testing.T) {
 	}
 
 	global := newMockGlobalOpts(mock)
-	opts := &runOptions{jira: "ROSAENG-888"}
+	opts := &runOptions{reason: "ROSAENG-888"}
 	if err := runAction(context.Background(), global, opts, "get_resource"); err != nil {
 		t.Fatalf("runAction: %v", err)
 	}
-	if dispatchedJira != "ROSAENG-888" {
-		t.Fatalf("--jira must win over ZOA_JIRA; dispatch jira was %q", dispatchedJira)
+	if dispatchedReason != "ROSAENG-888" {
+		t.Fatalf("--reason must win over ZOA_REASON; dispatch reason was %q", dispatchedReason)
 	}
 }
 
-func TestRunAction_WhenNoJiraFlagOrEnv_ItShouldFailBeforeDispatch(t *testing.T) {
-	t.Setenv(jira.EnvVar, "")
+func TestRunAction_WhenNoReasonFlagOrEnv_ItShouldFailBeforeDispatch(t *testing.T) {
+	t.Setenv(reason.EnvVar, "")
 
 	mock := &mockClient{
 		dispatchFn: func(_ context.Context, _ string, _ *client.DispatchRequest) (*client.DispatchResponse, error) {
-			t.Fatal("dispatch should not be called without jira")
+			t.Fatal("dispatch should not be called without reason")
 			return nil, nil
 		},
 	}
 
 	global := newMockGlobalOpts(mock)
-	opts := &runOptions{jira: ""}
+	opts := &runOptions{reason: ""}
 	if err := runAction(context.Background(), global, opts, "get_resource"); err == nil {
-		t.Fatal("expected missing jira error")
+		t.Fatal("expected missing reason error")
 	}
 }

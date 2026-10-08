@@ -141,7 +141,7 @@ func renderExecution(global *GlobalOptions, exec *client.Execution, opts getOpts
 	fmt.Printf("MODE:      %s\n", output.Dash(exec.ExecutionMode))
 	fmt.Printf("DRY-RUN:   %s\n", output.FormatBool(exec.DryRun))
 	fmt.Printf("FORCE:     %s\n", output.FormatBool(exec.Force))
-	fmt.Printf("JIRA:      %s\n", output.Dash(exec.Jira))
+	fmt.Printf("REASON:    %s\n", output.Dash(exec.Reason))
 	fmt.Printf("OPERATOR:   %s\n", exec.Operator)
 	if exec.SignerARN != "" {
 		fmt.Printf("SIGNER_ARN: %s\n", exec.SignerARN)

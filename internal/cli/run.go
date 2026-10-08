@@ -9,15 +9,15 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/openshift-online/rosa-hyperfleet-zoa/internal/cli/jira"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/internal/cli/parambind"
+	"github.com/openshift-online/rosa-hyperfleet-zoa/internal/cli/reason"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/internal/client"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/internal/output"
 )
 
 type runOptions struct {
 	ta            parambind.RunTAParams
-	jira          string
+	reason        string
 	force         bool
 	dryRun        bool
 	noWait        bool
@@ -43,31 +43,31 @@ serves exactly one EKS cluster — set ZOA_API_URL to point at the right one.
 The result (stdout of the TA script) is printed to stdout on success.
 On failure, logs are printed to stderr. Use --no-wait to fire and forget.`,
 		Example: `  # Basic read action
-  zoa run get_resource --resource pods -n cert-manager --jira ROSAENG-1234
+  zoa run get_resource --resource pods -n cert-manager --reason ROSAENG-1234
 
   # All namespaces with verbose JSON, piped to jq
-  zoa run get_resource --resource pods -A -v --jira ROSAENG-1234 | jq '.[] | select(.status != "Running")'
+  zoa run get_resource --resource pods -A -v --reason ROSAENG-1234 | jq '.[] | select(.status != "Running")'
 
   # Write action
-  zoa run rollout_restart --resource deployment -n cert-manager --name cert-manager-webhook --jira ROSAENG-1234
+  zoa run rollout_restart --resource deployment -n cert-manager --name cert-manager-webhook --reason ROSAENG-1234
 
   # Write action with force (bypass cooldown and concurrency limits)
-  zoa run rollout_restart --resource deployment -n cert-manager --name cert-manager-webhook --jira ROSAENG-1234 --force
+  zoa run rollout_restart --resource deployment -n cert-manager --name cert-manager-webhook --reason ROSAENG-1234 --force
 
   # Dry run (executes the dry_run_action variant, no side effects)
-  zoa run delete_pod -n cert-manager --name cert-manager-webhook-abc123 --jira ROSAENG-1234 --dry-run
+  zoa run delete_pod -n cert-manager --name cert-manager-webhook-abc123 --reason ROSAENG-1234 --dry-run
 
   # Destructive action
-  zoa run delete_pod -n cert-manager --name cert-manager-webhook-abc123 --jira ROSAENG-1234
+  zoa run delete_pod -n cert-manager --name cert-manager-webhook-abc123 --reason ROSAENG-1234
 
   # Fire and forget (don't wait for completion)
-  zoa run get_resource --resource nodes --jira ROSAENG-1234 --no-wait -o json`,
+  zoa run get_resource --resource nodes --reason ROSAENG-1234 --no-wait -o json`,
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
-				return fmt.Errorf("missing action name\n\n  Usage: zoa run <action> --jira <ticket>\n  Run 'zoa actions' to see available actions")
+				return fmt.Errorf("missing action name\n\n  Usage: zoa run <action> --reason <ticket>\n  Run 'zoa actions' to see available actions")
 			}
 			if len(args) > 1 {
-				return fmt.Errorf("unexpected argument %q — action parameters must be passed as flags\n\n  Example: zoa run %s --resource %s --jira <ticket>\n  Run 'zoa describe %s' to see available parameters",
+				return fmt.Errorf("unexpected argument %q — action parameters must be passed as flags\n\n  Example: zoa run %s --resource %s --reason <ticket>\n  Run 'zoa describe %s' to see available parameters",
 					args[1], args[0], args[1], args[0])
 			}
 			return nil
@@ -78,8 +78,8 @@ On failure, logs are printed to stderr. Use --no-wait to fire and forget.`,
 	}
 
 	parambind.RegisterTAParamFlags(cmd, &opts.ta)
-	cmd.Flags().StringVar(&opts.jira, "jira", "",
-		fmt.Sprintf("Jira ticket (required; env: %s)", jira.EnvVar))
+	cmd.Flags().StringVar(&opts.reason, "reason", "",
+		fmt.Sprintf("Required; env %s (%s)", reason.EnvVar, reason.FormatHint))
 	cmd.Flags().BoolVar(&opts.force, "force", false, parambind.RunFlagHelp("force"))
 	cmd.Flags().BoolVar(&opts.dryRun, "dry-run", false, parambind.RunFlagHelp("dry-run"))
 	cmd.Flags().BoolVar(&opts.noWait, "no-wait", false, parambind.RunFlagHelp("no-wait"))
@@ -117,7 +117,7 @@ func runAction(ctx context.Context, global *GlobalOptions, opts *runOptions, act
 		return err
 	}
 
-	jiraTicket, err := jira.Resolve(opts.jira)
+	reasonValue, err := reason.Resolve(opts.reason)
 	if err != nil {
 		return err
 	}
@@ -125,7 +125,7 @@ func runAction(ctx context.Context, global *GlobalOptions, opts *runOptions, act
 	params := parambind.ToAPIParams(opts.ta, opts.params)
 
 	req := &client.DispatchRequest{
-		Jira:           jiraTicket,
+		Reason:         reasonValue,
 		Params:         params,
 		Force:          opts.force,
 		DryRun:         opts.dryRun,

@@ -30,8 +30,8 @@ type target struct {
 }
 
 var (
-	jiraTicket = envOrDefault("E2E_JIRA_TICKET", "ZOAE2E-1")
-	zoaBin     = envOrDefault("ZOA_BIN", "zoa")
+	reasonValue = envOrDefault("E2E_REASON", envOrDefault("E2E_JIRA_TICKET", "ZOAE2E-1"))
+	zoaBin      = envOrDefault("ZOA_BIN", "zoa")
 
 	// coredns is the standard EKS system Deployment used for delete_pod and
 	// rollout_restart real (non-dry-run) tests. Pods are always owned by a
@@ -148,7 +148,7 @@ func filterEnv(env []string, keys ...string) []string {
 // loops where a transient failure (e.g. a Lambda cold start) should be
 // retried rather than hard-failing the spec immediately.
 func runActionResult(tgt target, action string, extra ...string) (map[string]interface{}, error) {
-	args := append([]string{"run", action, "--jira", jiraTicket}, extra...)
+	args := append([]string{"run", action, "--reason", reasonValue}, extra...)
 	args = append(args, "-o", "json")
 
 	out, err := runZoa(tgt, args...)
@@ -226,7 +226,7 @@ func runAction(tgt target, action string, extra ...string) map[string]interface{
 // (parameter validation, RBAC denial, HCP namespace protection, ...) and
 // returns the combined CLI output for substring assertions on the error.
 func runActionExpectFailure(tgt target, action string, extra ...string) string {
-	args := append([]string{"run", action, "--jira", jiraTicket}, extra...)
+	args := append([]string{"run", action, "--reason", reasonValue}, extra...)
 	out, err := runZoa(tgt, args...)
 	ExpectWithOffset(1, err).To(HaveOccurred(), "zoa run %s %v unexpectedly succeeded:\n%s", action, extra, out)
 	return out

@@ -32,10 +32,10 @@ func (g *getResource) Metadata() ActionMetadata {
 		DeploymentTargets: []string{DeploymentTargetRC, DeploymentTargetMC},
 		TimeoutSeconds:    60,
 		Examples: []string{
-			"zoa run get_resource --resource pods -n openshift-ingress --jira ROSAENG-1234",
-			"zoa run get_resource --resource pods -A -l app=nginx --jira ROSAENG-1234",
-			"zoa run get_resource --resource nodes --jira ROSAENG-1234",
-			"zoa run get_resource --resource events --param field_selector=involvedObject.name=my-pod -n default --jira ROSAENG-1234",
+			"zoa run get_resource --resource pods -n openshift-ingress --reason ROSAENG-1234",
+			"zoa run get_resource --resource pods -A -l app=nginx --reason ROSAENG-1234",
+			"zoa run get_resource --resource nodes --reason ROSAENG-1234",
+			"zoa run get_resource --resource events --param field_selector=involvedObject.name=my-pod -n default --reason ROSAENG-1234",
 		},
 		Parameters: []ParameterDef{
 			{Name: "resource", Required: true, Description: "Resource type (e.g. pods, deployments, hostedclusters, CRDs). Not secrets — use get_secret."},

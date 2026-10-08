@@ -28,8 +28,8 @@ func (d *deletePod) Metadata() ActionMetadata {
 		DryRunAction:         "get_resource",
 		DryRunExtraParams:    Params{"resource": "pods"},
 		Examples: []string{
-			"zoa run delete_pod -n openshift-ingress --name router-default-abc12 --jira ROSAENG-1234",
-			"zoa run delete_pod -n cert-manager --name cert-manager-webhook-xyz --jira ROSAENG-1234 --dry-run",
+			"zoa run delete_pod -n openshift-ingress --name router-default-abc12 --reason ROSAENG-1234",
+			"zoa run delete_pod -n cert-manager --name cert-manager-webhook-xyz --reason ROSAENG-1234 --dry-run",
 		},
 		Parameters: []ParameterDef{
 			{Name: "namespace", Required: true, Description: "Pod namespace"},

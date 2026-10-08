@@ -21,7 +21,7 @@ var _ = Describe("async execution", func() {
 			// for EventBridge reconciler (~60s each) — keeping smoke fast (~2min).
 			It("dispatches async and waits for completion", Label("smoke"), func() {
 				out, err := runZoa(tgt, "run", "get_resource",
-					"--jira", jiraTicket,
+					"--reason", reasonValue,
 					"--resource", "nodes",
 					"--execution-mode", "async",
 					"--wait",
@@ -42,7 +42,7 @@ var _ = Describe("async execution", func() {
 
 			It("dispatches async fire-and-forget (no --wait)", func() {
 				out, err := runZoa(tgt, "run", "get_resource",
-					"--jira", jiraTicket,
+					"--reason", reasonValue,
 					"--resource", "nodes",
 					"--execution-mode", "async",
 					"-o", "json")
@@ -74,7 +74,7 @@ var _ = Describe("async execution", func() {
 
 			It("async write TA with --wait", func() {
 				out, err := runZoa(tgt, "run", "rollout_restart",
-					"--jira", jiraTicket,
+					"--reason", reasonValue,
 					"--namespace", coreDNSNamespace,
 					"--resource", "deployment",
 					"--name", coreDNSName,

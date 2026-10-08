@@ -57,7 +57,7 @@ All Access routes use the same `/api/v0` prefix and error envelope as Trusted Ac
 | `GET`  | `/api/v0/targets`            | List targets (RC + MC) for the deployment |
 | `POST` | `/api/v0/sessions/start`     | Start a boundary session                  |
 | `GET`  | `/api/v0/sessions`           | List sessions                             |
-| `POST` | `/api/v0/sessions/stop/{id}` | Stop a session                            |
+| `POST` | `/api/v0/sessions/terminate/{id}` | Terminate a session                       |
 | `POST` | `/api/v0/sessions/join/{id}` | Join a session (ECS Exec credentials)     |
 | `POST` | `/api/v0/approve/{id}`       | Approve request (stub)                    |
 | `POST` | `/api/v0/reject/{id}`        | Reject request (stub)                     |
@@ -81,7 +81,7 @@ Execute a Trusted Action.
 
 ```json
 {
-  "jira": "OSD-12345",
+  "reason": "OSD-12345",
   "params": {
     "namespace": "kube-system",
     "resource": "pods"
@@ -95,7 +95,7 @@ Execute a Trusted Action.
 
 | Field             | Type   | Required                | Description                                                                                                                                      |
 | ----------------- | ------ | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `jira`            | string | Yes (if TA requires it) | Jira ticket for audit (format: `PROJECT-123`)                                                                                                    |
+| `reason`          | string | Yes                     | Jira issue (`PROJECT-123`) or PagerDuty incident (`#digits`, e.g. `#123456`)                                                                     |
 | `params`          | object | Depends on TA           | Key-value parameters for the TA                                                                                                                  |
 | `force`           | bool   | No                      | Bypass write cooldown (write TAs), max concurrent limit (all TAs), and TA-level safety checks (e.g., owner reference protection in `delete_pod`) |
 | `dry_run`         | bool   | No                      | Execute the TA's DryRunAction instead                                                                                                            |
@@ -132,7 +132,7 @@ Execute a Trusted Action.
 | ---- | ------------------ | ----------------------------------------------------- |
 | 400  | `invalid_body`     | Request body parse failure                            |
 | 400  | `invalid_params`   | Missing required param or unknown param               |
-| 400  | `invalid-jira`     | Jira ticket format invalid                            |
+| 400  | `invalid_reason`     | Reason format invalid (Jira issue or PagerDuty incident) |
 | 400  | `missing_account`  | `X-Account-ID` header missing                         |
 | 400  | `timeout_exceeded` | Requested timeout exceeds server maximum              |
 | 404  | `action_not_found` | TA not registered                                     |
@@ -157,7 +157,7 @@ Get execution details.
   "scope": "kube-api",
   "type": "read",
   "dry_run": false,
-  "jira": "OSD-123",
+  "reason": "OSD-123",
   "operator": "slopezma",
   "params": { "namespace": "kube-system", "resource": "pods" },
   "revision": "df90d53",
@@ -236,7 +236,7 @@ Query the audit trail.
       "operator": "slopezma",
       "action": "list_eks_clusters",
       "target_cluster": "eph-994026fc-regional",
-      "jira": "TEST-1",
+      "reason": "TEST-1",
       "execution_id": "d5b57bf2-1bdb-42bf-9607-8abf47d5331c"
     }
   ]

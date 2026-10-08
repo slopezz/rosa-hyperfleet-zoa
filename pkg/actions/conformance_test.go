@@ -60,11 +60,11 @@ func TestAllRegisteredActions_Conformance(t *testing.T) {
 				t.Error("Description must not be empty — explain what the TA does")
 			}
 			if len(meta.Examples) == 0 {
-				t.Error("Examples must include at least one zoa run command with --jira")
+				t.Error("Examples must include at least one zoa run command with --reason")
 			}
 			for i, ex := range meta.Examples {
-				if !strings.Contains(ex, "--jira") {
-					t.Errorf("Examples[%d] must include --jira: %q", i, ex)
+				if !strings.Contains(ex, "--reason") {
+					t.Errorf("Examples[%d] must include --reason: %q", i, ex)
 				}
 				if !strings.HasPrefix(ex, "zoa run ") {
 					t.Errorf("Examples[%d] must start with 'zoa run ': %q", i, ex)

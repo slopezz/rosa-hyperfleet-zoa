@@ -26,8 +26,8 @@ func NormalizeRoute(method, path string) string {
 		return method + " /api/v0/sessions"
 	case path == "/api/v0/sessions/start":
 		return method + " /api/v0/sessions/start"
-	case strings.HasPrefix(path, "/api/v0/sessions/stop/"):
-		return method + " /api/v0/sessions/stop/{id}"
+	case strings.HasPrefix(path, "/api/v0/sessions/terminate/"):
+		return method + " /api/v0/sessions/terminate/{id}"
 	case strings.HasPrefix(path, "/api/v0/sessions/join/"):
 		return method + " /api/v0/sessions/join/{id}"
 	case strings.HasPrefix(path, "/api/v0/approve/"):

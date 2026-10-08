@@ -34,18 +34,18 @@ setup() {
   [ "${output}" = "sessionId:us-east-1-eph-046f5f15/0414dd71-ccc7-40bc-8c5b-072cd5982e96" ]
 }
 
-@test "session stop hint includes deployment and session id" {
+@test "session terminate hint includes deployment and session id" {
   run env \
     ZOA_DEPLOYMENT="us-east-1-eph" \
     ZOA_SESSION_ID="sess-abc123" \
     bash -c '
       source "$1"
       source "$2"
-      zoa_boundary_print_session_stop_hint
+      zoa_boundary_print_session_terminate_hint
     ' bash "${SESSION_ID_RC}" "${REMINDER}"
 
   [ "${status}" -eq 0 ]
-  [[ "${output}" == *"zoa session stop us-east-1-eph/sess-abc123"* ]]
+  [[ "${output}" == *"zoa session terminate us-east-1-eph/sess-abc123"* ]]
   [[ "${output}" == *"zoa session join us-east-1-eph/sess-abc123"* ]]
   [[ "${output}" == *"Your sessions:   zoa session list us-east-1-eph"* ]]
   [[ "${output}" == *"All operators sessions: zoa session history us-east-1-eph"* ]]
@@ -53,13 +53,13 @@ setup() {
   [[ "${output}" != *"-d "* ]]
 }
 
-@test "session stop hint is silent when ZOA_SESSION_ID unset" {
+@test "session terminate hint is silent when ZOA_SESSION_ID unset" {
   run env \
     ZOA_DEPLOYMENT="us-east-1-eph" \
     bash -c '
       source "$1"
       source "$2"
-      zoa_boundary_print_session_stop_hint
+      zoa_boundary_print_session_terminate_hint
     ' bash "${SESSION_ID_RC}" "${REMINDER}"
 
   [ "${status}" -eq 0 ]
@@ -75,20 +75,20 @@ setup() {
     ' bash "${REMINDER}"
 
   [ "${status}" -eq 0 ]
-  [[ "${output}" != *"zoa_boundary_print_session_stop_hint"* ]]
+  [[ "${output}" != *"zoa_boundary_print_session_terminate_hint"* ]]
 }
 
-@test "EXIT trap prints session stop hint on shell exit" {
+@test "EXIT trap prints session terminate hint on shell exit" {
   run env \
     ZOA_DEPLOYMENT="us-east-1-eph" \
     ZOA_SESSION_ID="sess-abc123" \
     bash -c '
       source "$1"
       source "$2"
-      trap zoa_boundary_print_session_stop_hint EXIT
+      trap zoa_boundary_print_session_terminate_hint EXIT
       exit
     ' bash "${SESSION_ID_RC}" "${REMINDER}"
 
   [ "${status}" -eq 0 ]
-  [[ "${output}" == *"zoa session stop us-east-1-eph/sess-abc123"* ]]
+  [[ "${output}" == *"zoa session terminate us-east-1-eph/sess-abc123"* ]]
 }

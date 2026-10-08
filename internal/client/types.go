@@ -18,7 +18,7 @@ type Execution struct {
 	Type            string            `json:"type"`
 	DryRun          bool              `json:"dry_run"`
 	Force           bool              `json:"force"`
-	Jira            string            `json:"jira,omitempty"`
+	Reason          string            `json:"reason,omitempty"`
 	Operator        string            `json:"operator,omitempty"`
 	SignerARN       string            `json:"signer_arn,omitempty"`
 	SessionID       string            `json:"session_id,omitempty"`
@@ -77,7 +77,7 @@ type ExecutionList struct {
 }
 
 type DispatchRequest struct {
-	Jira           string            `json:"jira"`
+	Reason         string            `json:"reason"`
 	Params         map[string]string `json:"params,omitempty"`
 	Force          bool              `json:"force"`
 	DryRun         bool              `json:"dry_run"`
@@ -144,7 +144,7 @@ type AuditEntry struct {
 	SourceIP      string `json:"source_ip,omitempty"`
 	RequestID     string `json:"request_id,omitempty"`
 	UserAgent     string `json:"user_agent,omitempty"`
-	Jira          string `json:"jira,omitempty"`
+	Reason        string `json:"reason,omitempty"`
 	Force         bool   `json:"force,omitempty"`
 	DryRun        bool   `json:"dry_run,omitempty"`
 	ApprovalState string `json:"approval_state,omitempty"`
@@ -277,7 +277,7 @@ type Session struct {
 	SignerARN      string   `json:"signer_arn,omitempty"`
 	AccountID      string   `json:"account_id,omitempty"`
 	TaskID         string   `json:"task_id,omitempty"`
-	Jira           string   `json:"jira,omitempty"`
+	Reason         string   `json:"reason,omitempty"`
 	TargetCluster  string   `json:"target_cluster"`
 	Status         string   `json:"status"`
 	Region         string   `json:"region,omitempty"`
@@ -298,7 +298,7 @@ type SessionList struct {
 type SessionStartRequest struct {
 	DeploymentName string `json:"deployment_name"`
 	Target         string `json:"target"`
-	Jira           string `json:"jira"`
+	Reason         string `json:"reason"`
 }
 
 type SessionStartResponse struct {

@@ -279,9 +279,9 @@ func TestResolveIdentity_TableDriven_ItShouldCoverAttributionPaths(t *testing.T)
 	taskARN := "arn:aws:sts::123456:assumed-role/zoa-boundary-task-role/" + testECSTaskID
 
 	tests := []struct {
-		name      string
-		arn       string
-		store     store.SessionStore
+		name     string
+		arn      string
+		store    store.SessionStore
 		wantOp   string
 		wantSess string
 	}{
@@ -293,18 +293,18 @@ func TestResolveIdentity_TableDriven_ItShouldCoverAttributionPaths(t *testing.T)
 			wantSess: "",
 		},
 		{
-			name:   "boundary hit",
-			arn:    taskARN,
-			store:  &mockSessionStore{getByTaskIDFn: func(_ context.Context, _ string) (*store.Session, error) {
+			name: "boundary hit",
+			arn:  taskARN,
+			store: &mockSessionStore{getByTaskIDFn: func(_ context.Context, _ string) (*store.Session, error) {
 				return &store.Session{Operator: "slopezma", SessionID: "s-1"}, nil
 			}},
 			wantOp:   "slopezma",
 			wantSess: "s-1",
 		},
 		{
-			name:   "boundary miss",
-			arn:    taskARN,
-			store:  &mockSessionStore{getByTaskIDFn: func(_ context.Context, _ string) (*store.Session, error) {
+			name: "boundary miss",
+			arn:  taskARN,
+			store: &mockSessionStore{getByTaskIDFn: func(_ context.Context, _ string) (*store.Session, error) {
 				return nil, nil
 			}},
 			wantOp: testECSTaskID,

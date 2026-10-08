@@ -38,8 +38,8 @@ func (a *getSecretAction) Metadata() ActionMetadata {
 		DeploymentTargets: []string{DeploymentTargetRC, DeploymentTargetMC},
 		TimeoutSeconds:    60,
 		Examples: []string{
-			"zoa run get_secret -n openshift-config --name pull-secret --jira ROSAENG-1234",
-			"zoa run get_secret -n grafana -l app=grafana --jira ROSAENG-1234",
+			"zoa run get_secret -n openshift-config --name pull-secret --reason ROSAENG-1234",
+			"zoa run get_secret -n grafana -l app=grafana --reason ROSAENG-1234",
 		},
 		Parameters: []ParameterDef{
 			{Name: "namespace", Required: true, Description: "Target namespace (HCP namespaces blocked)"},

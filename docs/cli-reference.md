@@ -82,7 +82,7 @@ For **discovery and boundary sessions** (`deployments`, `targets`, `session`), u
 | `completion` | Generate shell completion scripts |
 | `session start` | Start a boundary session (default: ECS Exec shell; `--no-connect` for metadata only) |
 | `session join` | Join an existing session via ECS Exec |
-| `session stop` | Stop a session |
+| `session terminate` | Terminate a session |
 | `session list` | List your active sessions |
 | `session history` | Audit view of sessions across operators |
 
@@ -101,30 +101,30 @@ zoa actions --offline -o markdown   # boundary / Claude; uses ZOA_TARGET_TYPE wh
 zoa catalog --offline --target-type mc
 
 # Read resources (sync, default)
-zoa run get_resource --jira OSD-123 --namespace kube-system --resource pods
-zoa run get_resource --jira OSD-123 --resource nodes
-zoa run get_resource --jira OSD-123 --namespace cert-manager --resource deployments
+zoa run get_resource --reason OSD-123 --namespace kube-system --resource pods
+zoa run get_resource --reason OSD-123 --resource nodes
+zoa run get_resource --reason OSD-123 --namespace cert-manager --resource deployments
 
 # Read with verbose output (full API objects)
-zoa run get_resource --jira OSD-123 --resource pods -A --verbose
+zoa run get_resource --reason OSD-123 --resource pods -A --verbose
 
 # AWS API reads
-zoa run list_eks_clusters --jira OSD-123
-zoa run describe_eks_cluster --jira OSD-123 --name my-cluster
+zoa run list_eks_clusters --reason OSD-123
+zoa run describe_eks_cluster --reason OSD-123 --name my-cluster
 
 # Write actions (have cooldown)
-zoa run delete_pod --jira OSD-123 --namespace grafana --name grafana-abc123
-zoa run rollout_restart --jira OSD-123 --namespace cert-manager --resource deployment --name cert-manager
+zoa run delete_pod --reason OSD-123 --namespace grafana --name grafana-abc123
+zoa run rollout_restart --reason OSD-123 --namespace cert-manager --resource deployment --name cert-manager
 
 # Dry-run a write action (executes the read preview)
-zoa run delete_pod --jira OSD-123 --namespace grafana --name grafana-abc123 --dry-run
+zoa run delete_pod --reason OSD-123 --namespace grafana --name grafana-abc123 --dry-run
 
 # Force (bypass cooldown)
-zoa run delete_pod --jira OSD-123 --namespace grafana --name grafana-abc123 --force
+zoa run delete_pod --reason OSD-123 --namespace grafana --name grafana-abc123 --force
 
 # Async execution (for longer-running operations)
-zoa run get_resource --jira OSD-123 --namespace kube-system --resource pods --async
-zoa run get_resource --jira OSD-123 --namespace kube-system --resource pods --async --wait
+zoa run get_resource --reason OSD-123 --namespace kube-system --resource pods --async
+zoa run get_resource --reason OSD-123 --namespace kube-system --resource pods --async --wait
 
 # View results
 zoa runs --limit 10
@@ -160,7 +160,7 @@ zoa audit --since 2026-08-01 --until 2026-08-15
 
 | Flag | Short | Description |
 |------|-------|-------------|
-| `--jira` | | Jira ticket (required, e.g. ROSAENG-1234) |
+| `--reason` | | Jira issue or PagerDuty incident (required; e.g. ROSAENG-1234, #123456) |
 | `--namespace` | `-n` | Target namespace |
 | `--all-namespaces` | `-A` | All namespaces |
 | `--name` | | Resource name |
@@ -193,13 +193,13 @@ Read-only. Produces `output.tar.gz` (`zoa download`). Mode is async (see MODE co
 
 ```bash
 # MC platform
-zoa run must_gather --jira OSD-123 --gather mc --wait
+zoa run must_gather --reason OSD-123 --gather mc --wait
 
 # RC platform
-zoa run must_gather --jira OSD-123 --gather rc --wait
+zoa run must_gather --reason OSD-123 --gather rc --wait
 
 # Hosted cluster (MC ZOA only)
-zoa run must_gather --jira OSD-123 --gather hcp --cluster-id <uuid> --wait
+zoa run must_gather --reason OSD-123 --gather hcp --cluster-id <uuid> --wait
 
 zoa describe must_gather   # full parameter reference
 zoa download <exec-id> -f /tmp/must-gather.tar.gz

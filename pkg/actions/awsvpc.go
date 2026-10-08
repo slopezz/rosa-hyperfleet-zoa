@@ -31,7 +31,7 @@ func (l *listVPCEndpoints) Metadata() ActionMetadata {
 		DeploymentTargets: []string{DeploymentTargetRC, DeploymentTargetMC},
 		TimeoutSeconds:    60,
 		Examples: []string{
-			"zoa run list_vpc_endpoints --jira ROSAENG-1234",
+			"zoa run list_vpc_endpoints --reason ROSAENG-1234",
 		},
 		Parameters: []ParameterDef{},
 	}
@@ -94,7 +94,7 @@ func (d *describeVPCEndpoint) Metadata() ActionMetadata {
 		DeploymentTargets: []string{DeploymentTargetRC, DeploymentTargetMC},
 		TimeoutSeconds:    60,
 		Examples: []string{
-			"zoa run describe_vpc_endpoint --name vpce-0123456789abcdef0 --jira ROSAENG-1234",
+			"zoa run describe_vpc_endpoint --name vpce-0123456789abcdef0 --reason ROSAENG-1234",
 		},
 		Parameters: []ParameterDef{
 			{Name: "name", Required: true, Description: "VPC endpoint ID (e.g. vpce-0123456789abcdef0)"},

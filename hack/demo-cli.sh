@@ -135,17 +135,17 @@ fi
 
 if requires_api; then
   run_cmd "Kube read — pods in kube-system" \
-    $ZOA run get_resource --jira DEMO-001 --namespace kube-system --resource pods
+    $ZOA run get_resource --reason DEMO-001 --namespace kube-system --resource pods
 
   run_cmd "Kube read — deployments in argocd" \
-    $ZOA run get_resource --jira DEMO-002 --namespace argocd --resource deployments
+    $ZOA run get_resource --reason DEMO-002 --namespace argocd --resource deployments
 
   run_cmd "Kube read — nodes" \
-    $ZOA run get_resource --jira DEMO-003 --resource nodes
+    $ZOA run get_resource --reason DEMO-003 --resource nodes
 
   # get_secret shows metadata only by default; add -v/--verbose to see base64 key names
   run_cmd "Kube read — secret (metadata only; use -v for values)" \
-    $ZOA run get_secret --jira DEMO-004 --namespace argocd --name argocd-secret
+    $ZOA run get_secret --reason DEMO-004 --namespace argocd --name argocd-secret
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -154,17 +154,17 @@ fi
 
 if requires_api; then
   run_cmd "AWS read — list EKS clusters" \
-    $ZOA run list_eks_clusters --jira DEMO-010
+    $ZOA run list_eks_clusters --reason DEMO-010
 
   # Use the target from version output to get a valid cluster name
   CLUSTER_NAME=$($ZOA version 2>&1 | grep "Target:" | awk '{print $2}')
   if [[ -n "$CLUSTER_NAME" ]]; then
     run_cmd "AWS read — describe EKS cluster" \
-      $ZOA run describe_eks_cluster --jira DEMO-011 --name "$CLUSTER_NAME"
+      $ZOA run describe_eks_cluster --reason DEMO-011 --name "$CLUSTER_NAME"
   fi
 
   run_cmd "AWS read — describe VPC endpoint (invalid ID → expected error)" \
-    $ZOA run describe_vpc_endpoint --jira DEMO-012 --name vpce-does-not-exist
+    $ZOA run describe_vpc_endpoint --reason DEMO-012 --name vpce-does-not-exist
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -173,16 +173,16 @@ fi
 
 if requires_api; then
   run_cmd "Write — rollout_restart dry-run (preview via get_resource)" \
-    $ZOA run rollout_restart --jira DEMO-020 --namespace kube-system --resource deployment --name coredns --dry-run
+    $ZOA run rollout_restart --reason DEMO-020 --namespace kube-system --resource deployment --name coredns --dry-run
 
   run_cmd "Write — rollout_restart (real)" \
-    $ZOA run rollout_restart --jira DEMO-021 --namespace kube-system --resource deployment --name coredns
+    $ZOA run rollout_restart --reason DEMO-021 --namespace kube-system --resource deployment --name coredns
 
   run_cmd "Write — rollout_restart (hits write cooldown)" \
-    $ZOA run rollout_restart --jira DEMO-022 --namespace kube-system --resource deployment --name coredns
+    $ZOA run rollout_restart --reason DEMO-022 --namespace kube-system --resource deployment --name coredns
 
   run_cmd "Write — rollout_restart with --force (bypass cooldown + max concurrent)" \
-    $ZOA run rollout_restart --jira DEMO-023 --namespace kube-system --resource deployment --name coredns --force
+    $ZOA run rollout_restart --reason DEMO-023 --namespace kube-system --resource deployment --name coredns --force
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -191,12 +191,12 @@ fi
 
 if requires_api; then
   run_cmd_capture "Async — fire and forget (get nodes)" \
-    $ZOA run get_resource --jira DEMO-030 --resource nodes --execution-mode async
+    $ZOA run get_resource --reason DEMO-030 --resource nodes --execution-mode async
   ASYNC_ID="$EXEC_ID"
 
   # One --wait call (~1min for the EventBridge reconciler tick).
   run_cmd "Async — write TA (rollout_restart, forced)" \
-    $ZOA run rollout_restart --jira DEMO-033 --namespace kube-system --resource deployment --name coredns --execution-mode async --force --wait
+    $ZOA run rollout_restart --reason DEMO-033 --namespace kube-system --resource deployment --name coredns --execution-mode async --force --wait
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════

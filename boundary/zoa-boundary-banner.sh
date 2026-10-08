@@ -63,9 +63,9 @@ zoa_boundary_print_motd() {
   echo "    Audited container in the target VPC. Run Trusted Actions with zoa run;"
   echo "    operator attribution uses the identity bridge."
   echo ""
-  zoa_boundary_prompt_session_jira
+  zoa_boundary_prompt_session_reason
   echo "==> Quick start"
-  echo "    zoa run <action> ...   (session Jira above; or --jira TICKET)"
+  echo "    zoa run <action> ...   (session reason above; or --reason TICKET)"
   echo ""
   echo "==> Agent and session docs (Claude Code + humans)"
   echo "    ~/.claude/CLAUDE.md       — ROSA HyperFleet architecture, boundary rules, RC vs MC, identity bridge, TA workflow"
@@ -89,12 +89,12 @@ zoa_boundary_print_exit_hint() {
   echo ""
   echo "==> ZOA boundary — Exec ended (task still running)"
   if [[ -n "${ZOA_SESSION_DEADLINE:-}" ]]; then
-    zoa_boundary_print_deadline_line "    Hard stop (UTC):        "
+    zoa_boundary_print_deadline_line "    Hard termination (UTC): "
   fi
   if [[ -n "${ZOA_SESSION_IDLE_TIMEOUT_SECONDS:-}" ]]; then
-    printf '    Idle stop:              %s without Exec terminal activity\n' "$(zoa_boundary_format_idle_timeout "${ZOA_SESSION_IDLE_TIMEOUT_SECONDS}")"
+    printf '    Inactivity termination: %s without Exec terminal activity\n' "$(zoa_boundary_format_idle_timeout "${ZOA_SESSION_IDLE_TIMEOUT_SECONDS}")"
   fi
-  echo "    Stop session:             zoa session stop ${compound}"
+  echo "    Terminate session:        zoa session terminate ${compound}"
   echo "    Re-join session:          zoa session join ${compound}"
   echo "    Your sessions:            zoa session list ${deployment}"
   echo "    All operators (audit):    zoa session history ${deployment}"
@@ -169,34 +169,36 @@ zoa_boundary_deadline_human() {
 zoa_boundary_print_session_limits() {
   echo "==> ZOA Boundary session limits"
   if [[ -n "${ZOA_SESSION_DEADLINE:-}" ]]; then
-    printf '    Hard stop:  %s\n' "$(zoa_boundary_deadline_human "${ZOA_SESSION_DEADLINE}")"
-    echo "                — max session length from start"
+    printf '    Hard termination:  %s\n' "$(zoa_boundary_deadline_human "${ZOA_SESSION_DEADLINE}")"
+    echo "                      — max session length from start"
   else
-    echo "    Hard stop:  (see zoa session history on laptop)"
+    echo "    Hard termination:  (see zoa session history on laptop)"
   fi
   if [[ -n "${ZOA_SESSION_IDLE_TIMEOUT_SECONDS:-}" ]]; then
-    printf '    Idle stop:  %s without Exec terminal activity\n' "$(zoa_boundary_format_idle_timeout "${ZOA_SESSION_IDLE_TIMEOUT_SECONDS}")"
-    echo "                — task stopped even if before the hard stop"
+    printf '    Inactivity termination:  %s without Exec terminal activity\n' "$(zoa_boundary_format_idle_timeout "${ZOA_SESSION_IDLE_TIMEOUT_SECONDS}")"
+    echo "                      — task terminated even if before the hard deadline"
   fi
-  echo "    Note:        exit / Ctrl+D only disconnects Exec; stop from your laptop:"
+  echo "    Note:        exit / Ctrl+D only disconnects Exec; terminate from your laptop:"
   local compound=""
   if declare -F zoa_compound_session_id &>/dev/null; then
     compound="$(zoa_compound_session_id)"
   fi
   if [[ -n "${compound}" ]]; then
-    printf '                zoa session stop %s\n' "${compound}"
+    printf '                zoa session terminate %s\n' "${compound}"
   else
-    echo "                zoa session stop <deployment>/<session-id>"
+    echo "                zoa session terminate <deployment>/<session-id>"
   fi
   echo ""
 }
 
-zoa_boundary_jira_valid() {
-  local ticket="${1:-}"
-  [[ "${ticket}" =~ ^[A-Z][A-Z0-9]+-[0-9]+$ ]]
+zoa_boundary_reason_valid() {
+  local value="${1:-}"
+  [[ "${value}" =~ ^[A-Z][A-Z0-9]+-[0-9]+$ ]] && return 0
+  [[ "${value}" =~ ^#[0-9]+$ ]] && return 0
+  return 1
 }
 
-zoa_boundary_jira_get_from_md() {
+zoa_boundary_reason_get_from_md() {
   local path
   path="$(zoa_boundary_session_md_path)"
   if [[ ! -f "${path}" ]]; then
@@ -204,12 +206,12 @@ zoa_boundary_jira_get_from_md() {
   fi
   local line value
   while IFS= read -r line; do
-    if [[ "${line}" =~ ^\|[[:space:]]*Jira[[:space:]]*\| ]]; then
+    if [[ "${line}" =~ ^\|[[:space:]]*Reason[[:space:]]*\| ]]; then
       value="$(echo "${line}" | awk -F'|' '{print $3}' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
       if [[ -z "${value}" ]] || [[ "${value}" == "*(not set)*" ]] || [[ "${value,,}" == "not set" ]]; then
         return 1
       fi
-      if zoa_boundary_jira_valid "${value}"; then
+      if zoa_boundary_reason_valid "${value}"; then
         printf '%s' "${value}"
         return 0
       fi
@@ -219,108 +221,108 @@ zoa_boundary_jira_get_from_md() {
   return 1
 }
 
-zoa_boundary_jira_set_in_md() {
-  local ticket="${1:-}"
+zoa_boundary_reason_set_in_md() {
+  local value="${1:-}"
   local path
   path="$(zoa_boundary_session_md_path)"
   if [[ ! -f "${path}" ]]; then
     echo "Session file missing: ${path}" >&2
     return 1
   fi
-  sed -i --regexp-extended "s/\\|[[:space:]]*Jira[[:space:]]*\\|[^|]*\\|/| Jira | ${ticket} |/" "${path}"
+  sed -i --regexp-extended "s/\\|[[:space:]]*Reason[[:space:]]*\\|[^|]*\\|/| Reason | ${value} |/" "${path}"
 }
 
-# Session default for zoa run: export ZOA_JIRA (CLI) and mirror to ZOA_SESSION.md (Claude).
-zoa_boundary_jira_apply() {
-  local ticket="${1:-}"
-  export ZOA_JIRA="${ticket}"
-  zoa_boundary_jira_set_in_md "${ticket}"
+# Session default for zoa run: export ZOA_REASON (CLI) and mirror to ZOA_SESSION.md (Claude).
+zoa_boundary_reason_apply() {
+  local value="${1:-}"
+  export ZOA_REASON="${value}"
+  zoa_boundary_reason_set_in_md "${value}"
 }
 
-# Rejoin: new shell — reload ZOA_JIRA from md written on this task.
-zoa_boundary_jira_hydrate_from_md() {
-  local ticket=""
-  if ! ticket="$(zoa_boundary_jira_get_from_md)"; then
+# Rejoin: new shell — reload ZOA_REASON from md written on this task.
+zoa_boundary_reason_hydrate_from_md() {
+  local value=""
+  if ! value="$(zoa_boundary_reason_get_from_md)"; then
     return 0
   fi
-  export ZOA_JIRA="${ticket}"
+  export ZOA_REASON="${value}"
 }
 
-zoa_boundary_prompt_session_jira() {
-  # Task env from RunTask (session start --jira) is authoritative; md is for Claude.
-  if [[ -n "${ZOA_JIRA:-}" ]] && zoa_boundary_jira_valid "${ZOA_JIRA}"; then
-    zoa_boundary_jira_set_in_md "${ZOA_JIRA}"
+zoa_boundary_prompt_session_reason() {
+  # Task env from RunTask (session start --reason) is authoritative; md is for Claude.
+  if [[ -n "${ZOA_REASON:-}" ]] && zoa_boundary_reason_valid "${ZOA_REASON}"; then
+    zoa_boundary_reason_set_in_md "${ZOA_REASON}"
   else
-    zoa_boundary_jira_hydrate_from_md
+    zoa_boundary_reason_hydrate_from_md
   fi
 
-  local current="${ZOA_JIRA:-}"
-  if [[ -n "${current}" ]] && zoa_boundary_jira_valid "${current}"; then
-    echo "==> Session Jira"
-    printf '    Using %s for zoa run (ZOA_JIRA; saved for this boundary task).\n' "${current}"
-    echo "    Change:  jira <ticket>     One-off:  zoa run ... --jira <ticket>"
+  local current="${ZOA_REASON:-}"
+  if [[ -n "${current}" ]] && zoa_boundary_reason_valid "${current}"; then
+    echo "==> Session reason"
+    printf '    Using %s for zoa run (ZOA_REASON; saved for this boundary task).\n' "${current}"
+    echo "    Change:  reason <ticket>     One-off:  zoa run ... --reason <ticket>"
     echo ""
     return 0
   fi
 
-  echo "==> Session Jira"
+  echo "==> Session reason"
   echo "    Default for every zoa run in this session (including Claude)."
-  echo "    Press Enter to skip — then use zoa run ... --jira TICKET each time."
+  echo "    Press Enter to skip — then use zoa run ... --reason each time."
   echo ""
   local reply=""
   if [[ -t 0 ]]; then
-    read -r -p "    Jira (e.g. ROSAENG-1234): " reply </dev/tty || read -r -p "    Jira (e.g. ROSAENG-1234): " reply
+    read -r -p "    Reason (e.g. Jira ROSAENG-1234 or PagerDuty #123456): " reply </dev/tty || read -r -p "    Reason (e.g. Jira ROSAENG-1234 or PagerDuty #123456): " reply
   else
-    read -r -p "    Jira (e.g. ROSAENG-1234): " reply
+    read -r -p "    Reason (e.g. Jira ROSAENG-1234 or PagerDuty #123456): " reply
   fi
   reply="$(echo "${reply}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
   if [[ -z "${reply}" ]]; then
-    echo "    No session Jira set."
+    echo "    No session reason set."
     echo ""
     return 0
   fi
-  if ! zoa_boundary_jira_valid "${reply}"; then
-    echo "    Invalid format (use PROJECT-123). No session Jira set." >&2
+  if ! zoa_boundary_reason_valid "${reply}"; then
+    echo "    Not a valid reason (Jira issue ROSAENG-1234 or PagerDuty incident #123456). Session default not set." >&2
     echo ""
     return 1
   fi
-  zoa_boundary_jira_apply "${reply}"
-  printf '    Set session Jira to %s (exported ZOA_JIRA).\n' "${reply}"
-  echo "    Change:  jira <ticket>     One-off:  zoa run ... --jira <ticket>"
+  zoa_boundary_reason_apply "${reply}"
+  printf '    Set session reason to %s (exported ZOA_REASON).\n' "${reply}"
+  echo "    Change:  reason <ticket>     One-off:  zoa run ... --reason <ticket>"
   echo ""
 }
 
-jira() {
+reason() {
   if [[ $# -eq 0 ]]; then
-    zoa_boundary_jira_hydrate_from_md
-    if [[ -n "${ZOA_JIRA:-}" ]]; then
-      printf 'Session Jira: %s (ZOA_JIRA)\n' "${ZOA_JIRA}"
+    zoa_boundary_reason_hydrate_from_md
+    if [[ -n "${ZOA_REASON:-}" ]]; then
+      printf 'Session reason: %s (ZOA_REASON)\n' "${ZOA_REASON}"
       return 0
     fi
-    echo "No session Jira set. Example: jira ROSAENG-1234"
+    echo "No session reason set. Try: reason ROSAENG-1234  or  reason #123456"
     return 0
   fi
-  local ticket="${1}"
-  ticket="$(echo "${ticket}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
-  if ! zoa_boundary_jira_valid "${ticket}"; then
-    echo "Invalid Jira format (use PROJECT-123, e.g. ROSAENG-1234)" >&2
+  local value="${1}"
+  value="$(echo "${value}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+  if ! zoa_boundary_reason_valid "${value}"; then
+    echo "Not a valid reason (Jira issue ROSAENG-1234 or PagerDuty incident #123456)" >&2
     return 1
   fi
-  local previous="${ZOA_JIRA:-}"
+  local previous="${ZOA_REASON:-}"
   if [[ -z "${previous}" ]]; then
-    previous="$(zoa_boundary_jira_get_from_md)" || previous=""
+    previous="$(zoa_boundary_reason_get_from_md)" || previous=""
   fi
-  if [[ "${previous}" == "${ticket}" ]]; then
-    zoa_boundary_jira_apply "${ticket}"
-    printf 'Already using session Jira %s.\n' "${ticket}"
+  if [[ "${previous}" == "${value}" ]]; then
+    zoa_boundary_reason_apply "${value}"
+    printf 'Already using session reason %s.\n' "${value}"
     return 0
   fi
-  zoa_boundary_jira_apply "${ticket}"
+  zoa_boundary_reason_apply "${value}"
   if [[ -n "${previous}" ]]; then
-    printf 'Switched session Jira: %s → %s\n' "${previous}" "${ticket}"
+    printf 'Switched session reason: %s → %s\n' "${previous}" "${value}"
     return 0
   fi
-  printf 'Set session Jira to %s.\n' "${ticket}"
+  printf 'Set session reason to %s.\n' "${value}"
 }
 
 zoa_boundary_print_container_startup_banner() {
@@ -356,10 +358,10 @@ zoa_boundary_print_container_startup_banner() {
 
   echo "=== Boundary ready for connections ==="
   echo "Docs: CLAUDE.md, ZOA_SESSION.md, ZOA_ACTIONS.md under /home/sre/.claude/"
-  echo "Execute TAs:   zoa run <action> ... --jira ROSAENG-1234"
+  echo "Execute TAs:   zoa run <action> ... --reason ROSAENG-1234"
   echo "List actions:  zoa actions  |  zoa catalog --offline  |  zoa describe <action>"
   echo ""
   echo "Boundary is ready. Waiting for ECS Exec connections..."
-  echo "Container will stay running until the task is stopped."
+  echo "Container will stay running until the task is terminated."
   echo ""
 }

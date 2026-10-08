@@ -54,7 +54,7 @@ func printDescribeHuman(action *client.Action, w io.Writer) {
 		}
 		tw.Flush()
 	} else {
-		fmt.Fprintf(w, "\nPARAMETERS:  (none — only --jira and run modifiers apply)\n")
+		fmt.Fprintf(w, "\nPARAMETERS:  (none — only --reason and run modifiers apply)\n")
 	}
 
 	if len(view.Examples) > 0 {

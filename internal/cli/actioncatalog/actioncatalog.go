@@ -51,7 +51,7 @@ func Markdown(targetType string) (string, error) {
 	writeEnvironmentContext(&b, targetType)
 	b.WriteString("Use `zoa describe <action>` when connected for the live API view, or `zoa run` with the flags below.\n\n")
 	b.WriteString("## Quick rules\n\n")
-	b.WriteString("- Every `zoa run` **must** include `--jira TICKET`.\n")
+	b.WriteString("- Every `zoa run` **must** include `--reason TICKET`.\n")
 	b.WriteString("- Parameters map to CLI flags where listed; otherwise `--param name=value`.\n")
 	b.WriteString("- **kube-api** TAs talk to **this session's EKS cluster** (RC or MC). **aws-api** TAs talk to **that cluster's AWS account/region**.\n")
 	b.WriteString("- Clusters are **EKS**, not in-cluster OpenShift control planes — discover namespaces with `get_resource --resource namespaces` before guessing.\n\n")
@@ -125,12 +125,12 @@ func writeEnvironmentContext(b *strings.Builder, targetType string) {
 	case actions.DeploymentTargetRC:
 		b.WriteString("This catalog is for a **Regional Cluster (RC)** boundary: one RC per region per deployment, running regional services (Platform API, hyperfleet-operator, GitOps, observability).\n\n")
 		b.WriteString("**Discovery example** (find where a component runs):\n\n")
-		b.WriteString("```bash\nzoa run get_resource --resource namespaces --jira TICKET\nzoa run get_resource --resource pods -n platform-api --jira TICKET\n```\n\n")
+		b.WriteString("```bash\nzoa run get_resource --resource namespaces --reason TICKET\nzoa run get_resource --resource pods -n platform-api --reason TICKET\n```\n\n")
 		b.WriteString("**Namespaces often relevant on RC (hints only):** `platform-api`, `hyperfleet`, `argocd`, `thanos`, `grafana`, `loki`, `monitoring`, `vector`, `cert-manager`.\n\n")
 	case actions.DeploymentTargetMC:
 		b.WriteString("This catalog is for a **Management Cluster (MC)** boundary: a region may have **multiple MCs**; this session is attached to **one** MC EKS cluster running HyperShift and hosted control planes.\n\n")
 		b.WriteString("**Discovery example:**\n\n")
-		b.WriteString("```bash\nzoa run get_resource --resource namespaces --jira TICKET\nzoa run get_resource --resource pods -n hypershift --jira TICKET\n```\n\n")
+		b.WriteString("```bash\nzoa run get_resource --resource namespaces --reason TICKET\nzoa run get_resource --resource pods -n hypershift --reason TICKET\n```\n\n")
 		b.WriteString("**Namespaces often relevant on MC (hints only):** `hypershift`, `hypershift-install`, `kube-applier`, `vector`, `external-secrets`, and customer HCP namespaces `cluster-*`. `get_secret` refuses HCP namespaces.\n\n")
 	default:
 		b.WriteString("Unknown target type.\n\n")

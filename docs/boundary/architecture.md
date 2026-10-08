@@ -16,7 +16,7 @@ It is **not** a persistent workstation (no EFS). TA artifacts live in **S3** via
 | ----------------- | ---------------------- | ------------------------------------------------------------------------------- |
 | **Access Lambda** | RC account, **no VPC** | Session start/stop/list, `ecs:RunTask`, target discovery, future approve/reject |
 | **API Lambda**    | **Each** target VPC    | `zoa run`, TA execution, audit for API calls                                    |
-| **Worker Lambda** | Each target VPC        | Reconciler, GC, **boundary reaper** (session **deadline** + **idle**)           |
+| **Worker Lambda** | Each target VPC        | Reconciler, GC, **boundary reaper** (hard termination deadline + inactivity)   |
 | **Boundary ECS**  | Each target VPC        | Interactive shell + Claude assist                                               |
 
 **From your laptop** you talk to **Access** only for sessions (`zoa session *`, `zoa deployments`, `zoa targets`).
@@ -36,8 +36,8 @@ Three separate credential layers: **invoker + SigV4** to Access on the laptop, *
 1. **Start** — Access creates a DynamoDB session row (`creating`), returns `deployment/target/session-uuid`.
 2. **Join** — Access starts the Fargate task (if needed), vends ECS Exec credentials, returns `exec_command` (default `runuser -u sre -- /bin/bash -l`). After `ExecuteCommand`, the CLI registers the SSM exec session id with Access (`exec-attached`; best-effort if Access is down).
 3. **Work** — SRE uses ECS Exec; shell prompt shows `sessionId:<deployment>/<uuid>` and `operator@zoa:deployment/target`. Entrypoint writes `ZOA_SESSION.md` and **`ZOA_ACTIONS.md`** via `zoa actions --offline -o markdown` (`ZOA_TARGET_TYPE`).
-4. **Stop** — From the laptop: `zoa session stop <deployment>/<session-id>` (use the session line from the prompt or `zoa session list`).
-5. **Reaper** — Worker stops tasks when **`deadline`** passes (`SESSION_MAX_DURATION_HOURS` on Access at start) or when **idle** exceeds **`SESSION_IDLE_TIMEOUT_SECONDS`** (SSM + CloudWatch exec logs; unused tasks with no join use `createdAt`). See [session reaper](../design/boundary-session-reaper.md).
+4. **Terminate** — From the laptop: `zoa session terminate <deployment>/<session-id>` (use the session line from the prompt or `zoa session list`).
+5. **Reaper** — Worker terminates tasks when **`deadline`** passes (`SESSION_MAX_DURATION_HOURS` on Access at start) or when **inactivity** exceeds **`SESSION_IDLE_TIMEOUT_SECONDS`** (no Exec terminal activity; SSM + CloudWatch exec logs; unused tasks with no join use `createdAt`). See [session reaper](../design/boundary-session-reaper.md).
 
 Session stop is an **Access** API operation today. It does not belong on the API Lambda (TA plane).
 

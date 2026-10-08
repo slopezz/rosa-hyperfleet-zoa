@@ -18,7 +18,7 @@ import (
 	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/boundaryexec"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/config"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/execcreds"
-	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/jiraticket"
+	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/reason"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/store"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/targetroles"
 )
@@ -118,7 +118,7 @@ func (h *AccessHandler) registerRoutes() {
 
 	h.mux.HandleFunc("POST "+PathSessionsStart, h.handleSessionStart)
 	h.mux.HandleFunc("GET "+PathSessions, h.handleSessionList)
-	h.mux.HandleFunc("POST "+PathSessionsStop+"{id}", h.handleSessionStop)
+	h.mux.HandleFunc("POST "+PathSessionsTerminate+"{id}", h.handleSessionTerminate)
 	h.mux.HandleFunc("POST "+PathSessionsJoin+"{id}", h.handleSessionJoin)
 	h.mux.HandleFunc("POST "+PathSessionsExecAttach+"{id}", h.handleSessionExecAttached)
 
@@ -135,7 +135,7 @@ func (h *AccessHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 type sessionStartRequest struct {
 	DeploymentName string `json:"deployment_name"`
 	Target         string `json:"target"`
-	Jira           string `json:"jira"`
+	Reason         string `json:"reason"`
 	TimeoutHours   int    `json:"timeout_hours,omitempty"`
 }
 
@@ -185,9 +185,13 @@ func (h *AccessHandler) handleSessionStart(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	jiraTicket, err := jiraticket.Require(req.Jira)
+	reasonValue, err := reason.Require(req.Reason)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "missing_jira", err.Error())
+		code := "missing_reason"
+		if req.Reason != "" {
+			code = "invalid_reason"
+		}
+		writeError(w, http.StatusBadRequest, code, err.Error())
 		return
 	}
 
@@ -227,7 +231,7 @@ func (h *AccessHandler) handleSessionStart(w http.ResponseWriter, r *http.Reques
 		Deadline:       deadline.Format(time.RFC3339Nano),
 		VpcId:          target.VpcId,
 		DeploymentName: req.DeploymentName,
-		Jira:           jiraTicket,
+		Reason:         reasonValue,
 	}
 
 	if err := h.sessionStore.Put(ctx, session); err != nil {
@@ -236,7 +240,7 @@ func (h *AccessHandler) handleSessionStart(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	h.recordAccessAudit(r, http.StatusOK, "session_start", sessionID, jiraTicket)
+	h.recordAccessAudit(r, http.StatusOK, "session_start", sessionID, reasonValue)
 
 	writeJSON(w, http.StatusOK, sessionStartResponse{
 		SessionID: sessionID,
@@ -275,15 +279,15 @@ func (h *AccessHandler) ensureBoundaryTask(ctx context.Context, session *store.S
 		Subnets:        subnets,
 		SecurityGroup:  target.SecurityGroupId,
 		Environment: map[string]string{
-			"ZOA_API_URL":                        target.FunctionUrl,
-			"ZOA_TARGET":                         session.TargetCluster,
-			"ZOA_DEPLOYMENT":                     session.DeploymentName,
-			"ZOA_TARGET_TYPE":                    strings.ToLower(target.TargetType),
-			"ZOA_SESSION_ID":                     session.SessionID,
-			"ZOA_OPERATOR":                       session.Operator,
-			"ZOA_SESSION_DEADLINE":               session.Deadline,
-			"ZOA_SESSION_IDLE_TIMEOUT_SECONDS":   fmt.Sprintf("%d", h.cfg.SessionIdleTimeoutSeconds),
-			"ZOA_JIRA":                           session.Jira,
+			"ZOA_API_URL":                      target.FunctionUrl,
+			"ZOA_TARGET":                       session.TargetCluster,
+			"ZOA_DEPLOYMENT":                   session.DeploymentName,
+			"ZOA_TARGET_TYPE":                  strings.ToLower(target.TargetType),
+			"ZOA_SESSION_ID":                   session.SessionID,
+			"ZOA_OPERATOR":                     session.Operator,
+			"ZOA_SESSION_DEADLINE":             session.Deadline,
+			"ZOA_SESSION_IDLE_TIMEOUT_SECONDS": fmt.Sprintf("%d", h.cfg.SessionIdleTimeoutSeconds),
+			"ZOA_REASON":                       session.Reason,
 		},
 		Tags: map[string]string{
 			"Component":  "zoa",
@@ -388,7 +392,7 @@ func (h *AccessHandler) handleSessionList(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, map[string]interface{}{"items": sessions, "count": len(sessions)})
 }
 
-func (h *AccessHandler) handleSessionStop(w http.ResponseWriter, r *http.Request) {
+func (h *AccessHandler) handleSessionTerminate(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	sessionID := r.PathValue("id")
 	operatorARN := r.Header.Get("X-Operator")
@@ -411,14 +415,14 @@ func (h *AccessHandler) handleSessionStop(w http.ResponseWriter, r *http.Request
 	}
 
 	if session.Operator != username {
-		writeError(w, http.StatusForbidden, "forbidden", "only the session owner can stop it")
+		writeError(w, http.StatusForbidden, "forbidden", "only the session owner can terminate it")
 		return
 	}
 
 	switch session.Status {
 	case store.SessionStatusActive, store.SessionStatusCreating:
 	default:
-		writeError(w, http.StatusConflict, "invalid_status", fmt.Sprintf("session is %s, not stoppable", session.Status))
+		writeError(w, http.StatusConflict, "invalid_status", fmt.Sprintf("session is %s, cannot terminate", session.Status))
 		return
 	}
 
@@ -432,7 +436,7 @@ func (h *AccessHandler) handleSessionStop(w http.ResponseWriter, r *http.Request
 		ecs, eErr := h.ecsForTarget(ctx, target)
 		if eErr != nil {
 			h.logger.Error("cannot stop session: ECS client", "session_id", sessionID, "error", eErr)
-			writeError(w, http.StatusServiceUnavailable, "task_stop_failed", "cannot stop boundary task")
+			writeError(w, http.StatusServiceUnavailable, "task_terminate_failed", "cannot terminate boundary task")
 			return
 		}
 		if err := ecs.StopTask(ctx, &StopTaskInput{
@@ -441,7 +445,7 @@ func (h *AccessHandler) handleSessionStop(w http.ResponseWriter, r *http.Request
 			Reason:  store.StopReasonOperatorStop,
 		}); err != nil {
 			h.logger.Error("failed to stop ECS task", "session_id", sessionID, "task_arn", session.TaskArn, "error", err)
-			writeError(w, http.StatusBadGateway, "task_stop_failed", "failed to stop boundary ECS task; session is still active")
+			writeError(w, http.StatusBadGateway, "task_terminate_failed", "failed to terminate boundary ECS task; session is still active")
 			return
 		}
 	}
@@ -454,7 +458,7 @@ func (h *AccessHandler) handleSessionStop(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	h.recordAccessAudit(r, http.StatusOK, "session_stop", sessionID, session.Jira)
+	h.recordAccessAudit(r, http.StatusOK, "session_terminate", sessionID, session.Reason)
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "terminated", "session_id": sessionID})
 }
@@ -541,7 +545,7 @@ func (h *AccessHandler) handleSessionJoin(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	h.recordAccessAudit(r, http.StatusOK, "session_join", sessionID, session.Jira)
+	h.recordAccessAudit(r, http.StatusOK, "session_join", sessionID, session.Reason)
 
 	writeJSON(w, http.StatusOK, sessionJoinResponse{
 		SessionID:       sessionID,
@@ -612,7 +616,7 @@ func (h *AccessHandler) handleSessionExecAttached(w http.ResponseWriter, r *http
 		return
 	}
 
-	h.recordAccessAudit(r, http.StatusOK, "session_exec_attached", sessionID, session.Jira)
+	h.recordAccessAudit(r, http.StatusOK, "session_exec_attached", sessionID, session.Reason)
 
 	writeJSON(w, http.StatusOK, map[string]string{
 		"status":          "ok",
@@ -645,7 +649,7 @@ func (h *AccessHandler) handleRejectStub(w http.ResponseWriter, r *http.Request)
 	writeError(w, http.StatusNotImplemented, "not_implemented", "approval workflow not yet enabled")
 }
 
-func (h *AccessHandler) recordAccessAudit(r *http.Request, statusCode int, action, sessionID, jira string) {
+func (h *AccessHandler) recordAccessAudit(r *http.Request, statusCode int, action, sessionID, reasonValue string) {
 	if h.auditStore == nil {
 		return
 	}
@@ -675,7 +679,7 @@ func (h *AccessHandler) recordAccessAudit(r *http.Request, statusCode int, actio
 		RequestID:   r.Header.Get("X-Request-ID"),
 		UserAgent:   r.Header.Get("User-Agent"),
 		ExecutionID: sessionID,
-		Jira:        jira,
+		Reason:      reasonValue,
 	}
 	if err := h.auditStore.Record(r.Context(), entry); err != nil {
 		h.logger.Error("failed to record audit entry", "error", err)

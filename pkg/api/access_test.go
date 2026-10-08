@@ -302,7 +302,7 @@ func TestAccessHandler_WhenSessionStart_ItShouldCreateSession(t *testing.T) {
 	body := sessionStartRequest{
 		DeploymentName: "us-east-1",
 		Target:         "mc01",
-		Jira:           "ROSAENG-1234",
+		Reason:         "ROSAENG-1234",
 	}
 
 	rr := doAccessRequest(h, "POST", "/api/v0/sessions/start", body, accessHeaders())
@@ -323,8 +323,8 @@ func TestAccessHandler_WhenSessionStart_ItShouldCreateSession(t *testing.T) {
 	if sessions.sessions[0].AccountID != "123456789012" {
 		t.Errorf("expected account_id from X-Account-ID, got %q", sessions.sessions[0].AccountID)
 	}
-	if sessions.sessions[0].Jira != "ROSAENG-1234" {
-		t.Errorf("expected jira ROSAENG-1234, got %q", sessions.sessions[0].Jira)
+	if sessions.sessions[0].Reason != "ROSAENG-1234" {
+		t.Errorf("expected reason ROSAENG-1234, got %q", sessions.sessions[0].Reason)
 	}
 	if sessions.sessions[0].Status != store.SessionStatusCreating {
 		t.Errorf("expected status creating, got %q", sessions.sessions[0].Status)
@@ -354,7 +354,7 @@ func TestAccessHandler_WhenSessionJoinFromCreating_ItShouldRunTask(t *testing.T)
 				Operator:       "slopezma",
 				TargetCluster:  "mc01",
 				DeploymentName: "us-east-1",
-				Jira:           "ROSAENG-5678",
+				Reason:         "ROSAENG-5678",
 				Status:         store.SessionStatusCreating,
 				Deadline:       "2030-01-01T00:00:00Z",
 			},
@@ -386,12 +386,12 @@ func TestAccessHandler_WhenSessionJoinFromCreating_ItShouldRunTask(t *testing.T)
 	if ecs.lastRun.Environment["ZOA_SESSION_IDLE_TIMEOUT_SECONDS"] != "3600" {
 		t.Errorf("expected idle timeout env on task, got %v", ecs.lastRun.Environment)
 	}
-	if ecs.lastRun.Environment["ZOA_JIRA"] != "ROSAENG-5678" {
-		t.Errorf("expected ZOA_JIRA on task, got %v", ecs.lastRun.Environment)
+	if ecs.lastRun.Environment["ZOA_REASON"] != "ROSAENG-5678" {
+		t.Errorf("expected ZOA_REASON on task, got %v", ecs.lastRun.Environment)
 	}
 }
 
-func TestAccessHandler_WhenSessionStartMissingJira_ItShouldReturn400(t *testing.T) {
+func TestAccessHandler_WhenSessionStartMissingReason_ItShouldReturn400(t *testing.T) {
 	h := testAccessHandler(&mockSessionStoreAccess{}, &mockTargetStoreAccess{
 		targets: []*store.Target{{TargetID: "mc01", Region: "us-east-1"}},
 	})
@@ -420,7 +420,7 @@ func TestAccessHandler_WhenSessionStartTargetNotFound_ItShouldReturn404(t *testi
 	body := sessionStartRequest{
 		DeploymentName: "us-east-1",
 		Target:         "nonexistent",
-		Jira:           "ROSAENG-1234",
+		Reason:         "ROSAENG-1234",
 	}
 
 	rr := doAccessRequest(h, "POST", "/api/v0/sessions/start", body, accessHeaders())
@@ -430,7 +430,7 @@ func TestAccessHandler_WhenSessionStartTargetNotFound_ItShouldReturn404(t *testi
 	}
 }
 
-func TestAccessHandler_WhenSessionStop_ItShouldTerminateOwnSession(t *testing.T) {
+func TestAccessHandler_WhenSessionTerminate_ItShouldTerminateOwnSession(t *testing.T) {
 	sessions := &mockSessionStoreAccess{
 		sessions: []*store.Session{
 			{
@@ -442,7 +442,7 @@ func TestAccessHandler_WhenSessionStop_ItShouldTerminateOwnSession(t *testing.T)
 	}
 	h := testAccessHandler(sessions, &mockTargetStoreAccess{})
 
-	rr := doAccessRequest(h, "POST", "/api/v0/sessions/stop/session-123", nil, accessHeaders())
+	rr := doAccessRequest(h, "POST", "/api/v0/sessions/terminate/session-123", nil, accessHeaders())
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
@@ -452,7 +452,7 @@ func TestAccessHandler_WhenSessionStop_ItShouldTerminateOwnSession(t *testing.T)
 	}
 }
 
-func TestAccessHandler_WhenSessionStopTaskFails_ItShouldKeepSessionActive(t *testing.T) {
+func TestAccessHandler_WhenSessionTerminateTaskFails_ItShouldKeepSessionActive(t *testing.T) {
 	sessions := &mockSessionStoreAccess{
 		sessions: []*store.Session{
 			{
@@ -473,7 +473,7 @@ func TestAccessHandler_WhenSessionStopTaskFails_ItShouldKeepSessionActive(t *tes
 	h := testAccessHandlerWithECS(sessions, targets)
 	h.ecsClient = &mockECSAccess{stopErr: fmt.Errorf("AccessDenied")}
 
-	rr := doAccessRequest(h, "POST", "/api/v0/sessions/stop/session-123", nil, accessHeaders())
+	rr := doAccessRequest(h, "POST", "/api/v0/sessions/terminate/session-123", nil, accessHeaders())
 
 	if rr.Code != http.StatusBadGateway {
 		t.Fatalf("expected 502, got %d: %s", rr.Code, rr.Body.String())
@@ -483,7 +483,7 @@ func TestAccessHandler_WhenSessionStopTaskFails_ItShouldKeepSessionActive(t *tes
 	}
 }
 
-func TestAccessHandler_WhenSessionStopByNonOwner_ItShouldReturn403(t *testing.T) {
+func TestAccessHandler_WhenSessionTerminateByNonOwner_ItShouldReturn403(t *testing.T) {
 	sessions := &mockSessionStoreAccess{
 		sessions: []*store.Session{
 			{
@@ -495,7 +495,7 @@ func TestAccessHandler_WhenSessionStopByNonOwner_ItShouldReturn403(t *testing.T)
 	}
 	h := testAccessHandler(sessions, &mockTargetStoreAccess{})
 
-	rr := doAccessRequest(h, "POST", "/api/v0/sessions/stop/session-123", nil, accessHeaders())
+	rr := doAccessRequest(h, "POST", "/api/v0/sessions/terminate/session-123", nil, accessHeaders())
 
 	if rr.Code != http.StatusForbidden {
 		t.Errorf("expected 403, got %d: %s", rr.Code, rr.Body.String())
@@ -661,10 +661,10 @@ func TestAccessHandler_WhenSessionStartInvalidIdentity_ItShouldReturn400(t *test
 	}
 }
 
-func TestAccessHandler_WhenSessionStopNotFound_ItShouldReturn404(t *testing.T) {
+func TestAccessHandler_WhenSessionTerminateNotFound_ItShouldReturn404(t *testing.T) {
 	h := testAccessHandler(&mockSessionStoreAccess{}, &mockTargetStoreAccess{})
 
-	rr := doAccessRequest(h, "POST", "/api/v0/sessions/stop/nonexistent", nil, accessHeaders())
+	rr := doAccessRequest(h, "POST", "/api/v0/sessions/terminate/nonexistent", nil, accessHeaders())
 
 	if rr.Code != http.StatusNotFound {
 		t.Errorf("expected 404, got %d: %s", rr.Code, rr.Body.String())
@@ -683,7 +683,7 @@ func TestAccessHandler_WhenSessionStartStoreFails_ItShouldReturn500(t *testing.T
 	body := sessionStartRequest{
 		DeploymentName: "us-east-1",
 		Target:         "mc01",
-		Jira:           "ROSAENG-1234",
+		Reason:         "ROSAENG-1234",
 	}
 
 	rr := doAccessRequest(h, "POST", "/api/v0/sessions/start", body, accessHeaders())

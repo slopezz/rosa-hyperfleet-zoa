@@ -30,7 +30,7 @@ func (l *listEKSClusters) Metadata() ActionMetadata {
 		DeploymentTargets: []string{DeploymentTargetRC, DeploymentTargetMC},
 		TimeoutSeconds:    60,
 		Examples: []string{
-			"zoa run list_eks_clusters --jira ROSAENG-1234",
+			"zoa run list_eks_clusters --reason ROSAENG-1234",
 		},
 		Parameters: []ParameterDef{},
 	}
@@ -91,7 +91,7 @@ func (d *describeEKSCluster) Metadata() ActionMetadata {
 		DeploymentTargets: []string{DeploymentTargetRC, DeploymentTargetMC},
 		TimeoutSeconds:    60,
 		Examples: []string{
-			"zoa run describe_eks_cluster --name my-eks-cluster --jira ROSAENG-1234",
+			"zoa run describe_eks_cluster --name my-eks-cluster --reason ROSAENG-1234",
 		},
 		Parameters: []ParameterDef{
 			{Name: "name", Required: true, Description: "EKS cluster name"},

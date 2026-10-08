@@ -15,7 +15,7 @@ const (
 	PathTargets            = V0Prefix + "/targets"
 	PathSessions           = V0Prefix + "/sessions"
 	PathSessionsStart      = V0Prefix + "/sessions/start"
-	PathSessionsStop       = V0Prefix + "/sessions/stop/"
+	PathSessionsTerminate  = V0Prefix + "/sessions/terminate/"
 	PathSessionsJoin       = V0Prefix + "/sessions/join/"
 	PathSessionsExecAttach = V0Prefix + "/sessions/exec-attached/"
 	PathApprove            = V0Prefix + "/approve/"

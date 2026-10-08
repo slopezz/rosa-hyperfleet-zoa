@@ -103,11 +103,11 @@ func (m *mockClient) SessionStart(ctx context.Context, req *client.SessionStartR
 	return nil, fmt.Errorf("SessionStart not mocked")
 }
 
-func (m *mockClient) SessionStop(ctx context.Context, sessionID string) error {
+func (m *mockClient) SessionTerminate(ctx context.Context, sessionID string) error {
 	if m.sessionStopFn != nil {
 		return m.sessionStopFn(ctx, sessionID)
 	}
-	return fmt.Errorf("SessionStop not mocked")
+	return fmt.Errorf("SessionTerminate not mocked")
 }
 
 func (m *mockClient) SessionJoin(ctx context.Context, sessionID string) (*client.SessionJoinResponse, error) {

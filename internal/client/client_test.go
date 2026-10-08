@@ -112,7 +112,7 @@ func TestClientDispatch(t *testing.T) {
 		}
 
 		resp, err := c.Dispatch(context.Background(), "get_nodes", &DispatchRequest{
-			Jira: "TEST-123",
+			Reason: "TEST-123",
 		})
 		if err != nil {
 			t.Fatalf("Dispatch() error = %v", err)
@@ -141,7 +141,7 @@ func TestClientDispatch(t *testing.T) {
 		}
 
 		_, err := c.Dispatch(context.Background(), "rollout_restart", &DispatchRequest{
-			Jira: "TEST-123",
+			Reason: "TEST-123",
 		})
 		if err == nil {
 			t.Fatal("expected error, got nil")

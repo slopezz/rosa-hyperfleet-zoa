@@ -1,6 +1,6 @@
 # ZOA Boundary — SRE access guide
 
-End-to-end flow for audited access: laptop identity → discover deployments/targets → start a boundary session → work inside the container (TAs, optional Claude) → disconnect Exec → stop the session from the laptop. Session **terminal I/O** is recorded to CloudWatch (ECS Exec PTY); see [session logging](../design/boundary-session-logging.md#what-ecs-exec-pty-logging-is).
+End-to-end flow for audited access: laptop identity → discover deployments/targets → start a boundary session → work inside the container (TAs, optional Claude) → disconnect Exec → terminate the session from the laptop. Session **terminal I/O** is recorded to CloudWatch (ECS Exec PTY); see [session logging](../design/boundary-session-logging.md#what-ecs-exec-pty-logging-is).
 
 ## Prerequisites
 
@@ -46,7 +46,7 @@ Each parameter is one boundary-capable cluster: **RC** (`eph-…-regional`) and 
 ### 4. Start session, join Exec, and ownership
 
 ```bash
-zoa session start <deployment> <target> --jira ROSAENG-1234
+zoa session start <deployment> <target> --reason ROSAENG-1234
 ```
 
 **Default:** after Access accepts the request, the CLI **waits for the boundary task**, performs a **hidden `session join`**, and opens **ECS Exec** — you land in the shell without a separate join command. Use **`--no-connect`** (or `-o json`) to only create the session and print metadata.
@@ -54,9 +54,9 @@ zoa session start <deployment> <target> --jira ROSAENG-1234
 **On `session start`, Access:**
 
 - Re-validates **Central account + invoker role + operator** (same as other Access APIs).
-- Requires **`jira`** in the JSON body (CLI: **`--jira ROSAENG-1234`**). Stores it on the session row and Access audit.
-- Creates a row in **`zoa-boundary-sessions`** (DynamoDB): `operator`, deployment, target, `jira`, deadline, etc.
-- Starts an **ECS Fargate** boundary task in the target VPC with env metadata (`ZOA_SESSION_ID`, `ZOA_OPERATOR`, `ZOA_TARGET`, `ZOA_API_URL`, `ZOA_TARGET_TYPE`, **`ZOA_JIRA`**, …).
+- Requires **`reason`** in the JSON body (CLI: **`--reason ROSAENG-1234`** or **`--reason '#123456'`** for a PagerDuty incident). Stores it on the session row and Access audit.
+- Creates a row in **`zoa-boundary-sessions`** (DynamoDB): `operator`, deployment, target, `reason`, deadline, etc.
+- Starts an **ECS Fargate** boundary task in the target VPC with env metadata (`ZOA_SESSION_ID`, `ZOA_OPERATOR`, `ZOA_TARGET`, `ZOA_API_URL`, `ZOA_TARGET_TYPE`, **`ZOA_REASON`**, …).
 
 **On join (automatic or `zoa session join <deployment>/<session-id>`):**
 
@@ -64,7 +64,7 @@ zoa session start <deployment> <target> --jira ROSAENG-1234
 - Returns **vended STS credentials** scoped to **`ecs:ExecuteCommand` on that task only** (plus SSM messages and Exec KMS) — not deployment-admin power on your laptop.
 - CLI runs **session-manager-plugin** → interactive shell as user **`sre`** (`runuser -u sre -- /bin/bash -l`).
 
-Only **you** (the session owner) can **join** or **stop** that session. `zoa session list <deployment>` shows **your** sessions; `zoa session history <deployment>` is the **audit view across all operators**.
+Only **you** (the session owner) can **join** or **terminate** that session. `zoa session list <deployment>` shows **your** sessions; `zoa session history <deployment>` is the **audit view across all operators**.
 
 ```mermaid
 sequenceDiagram
@@ -96,9 +96,9 @@ On first interactive login:
 - **`~/.claude/ZOA_ACTIONS.md`** — offline TA catalog (`zoa actions --offline`, filtered by RC vs MC).
 - **`~/.claude/CLAUDE.md`** — HyperFleet architecture, boundary rules, TA workflow, observability pointers, namespace conventions.
 
-**Session limits (MOTD):** hard stop time (from session `deadline` in DynamoDB) and idle stop (no Exec terminal activity for the configured window — whichever comes first). **`exit`** only disconnects Exec; the task keeps running until **`zoa session stop`**, idle reap, or hard stop.
+**Session limits (MOTD):** hard termination time (from session `deadline` in DynamoDB) and inactivity termination (no Exec terminal activity for the configured window — whichever comes first). **`exit`** only disconnects Exec; the task keeps running until **`zoa session terminate`**, inactivity reap, or hard termination.
 
-**Session Jira:** after MOTD, login prompts for a default Jira (Enter to skip). **`jira TICKET`** (or the prompt) sets **`export ZOA_JIRA`** and updates **`~/.claude/ZOA_SESSION.md`** for Claude. On rejoin, the shell reloads **`ZOA_JIRA`** from that file. **`zoa run`** uses **`--jira`** if set, else **`ZOA_JIRA`**, else CLI error (API also rejects missing `jira`).
+**Session reason:** after MOTD, login may prompt for a default reason (Enter to skip). **`reason TICKET`** (or the prompt) sets **`export ZOA_REASON`** and updates **`~/.claude/ZOA_SESSION.md`** for Claude. On rejoin, the shell reloads **`ZOA_REASON`** from that file. **`zoa run`** uses **`--reason`** if set, else **`ZOA_REASON`**, else CLI error (API also rejects missing `reason`). Valid values: Jira issue `ROSAENG-1234` or PagerDuty incident `#123456`.
 
 **Work:**
 
@@ -107,13 +107,13 @@ On first interactive login:
 
 ### 6. Leave the shell vs end the session
 
-- **`exit` / Ctrl+D** — disconnects **ECS Exec only**. The **ECS task keeps running** until you stop it or the **reaper** fires (deadline / idle).
-- The shell prints **`==>` exit hints** (from `99-session-exit-reminder.bashrc`) on graceful `exit`. The **laptop `zoa` CLI** prints the same stop/join hints when ECS Exec ends (including SSM idle disconnect).
+- **`exit` / Ctrl+D** — disconnects **ECS Exec only**. The **ECS task keeps running** until you terminate it or the **reaper** fires (deadline / inactivity).
+- The shell prints **`==>` exit hints** (from `99-session-exit-reminder.bashrc`) on graceful `exit`. The **laptop `zoa` CLI** prints the same terminate/join hints when ECS Exec ends (including SSM inactivity disconnect).
 
 From the **laptop**:
 
 ```bash
-zoa session stop <deployment>/<session-id>
+zoa session terminate <deployment>/<session-id>
 ```
 
 Exec disconnect flushes the **PTY transcript** to CloudWatch (often within **1–2 minutes**). Correlate streams via **`exec_session_ids`** on `zoa session history -o json` — see [Grafana Explorer](../design/boundary-session-logging.md#viewing-session-logs-in-grafana-explorer).
@@ -158,7 +158,7 @@ flowchart TB
 
 ### Laptop path (summary)
 
-The numbered steps above are the canonical flow. In short: **Central SSM** for deployments → **invoker + Access** for targets and sessions → **vended exec creds** for one task only. Cross-account **RunTask / stop** in the deployment account is performed by **Access** service roles — not by handing broad STS power to your laptop.
+The numbered steps above are the canonical flow. In short: **Central SSM** for deployments → **invoker + Access** for targets and sessions → **vended exec creds** for one task only. Cross-account **RunTask / terminate** in the deployment account is performed by **Access** service roles — not by handing broad STS power to your laptop.
 
 ### Who can Exec into which ECS task?
 
@@ -226,8 +226,8 @@ Access + RC Parameter Store — see [§3 above](#3-discover-targets-access-lambd
 See [§4 above](#4-start-session-join-exec-and-ownership). Quick reference:
 
 ```bash
-zoa session start <deployment> <target> --jira ROSAENG-1234
-zoa session start <deployment> <target> --jira ROSAENG-1234 --no-connect
+zoa session start <deployment> <target> --reason ROSAENG-1234
+zoa session start <deployment> <target> --reason ROSAENG-1234 --no-connect
 zoa session join <deployment>/<session-id>       # reconnect later
 ```
 
@@ -235,7 +235,7 @@ zoa session join <deployment>/<session-id>       # reconnect later
 
 On **ECS Exec login**, a plain-text **MOTD** prints once (Unicode **ZOA** banner, `Hello, <operator>`, session fields, and pointers to **`~/.claude/CLAUDE.md`**, **`ZOA_SESSION.md`**, **`ZOA_ACTIONS.md`**). Requires a UTF-8 terminal (standard for modern SSH/ECS Exec). The shell then uses a **two-line prompt**:
 
-- Line 1: `sessionId:<deployment>/<uuid>` — copy this for `zoa session stop`.
+- Line 1: `sessionId:<deployment>/<uuid>` — copy this for `zoa session terminate`.
 - Line 2: `<operator>@zoa:<deployment>/<target>` — who and where.
 
 Session facts and **`ZOA_ACTIONS.md`** (rendered at task start via `zoa actions --offline -o markdown`, filtered by **`ZOA_TARGET_TYPE` / TYPE in `zoa targets`**) live under `/home/sre/.claude/` with **`CLAUDE.md`**. The embedded offline catalog is a hint; the **live API** is authoritative when connected (`zoa actions`, `zoa describe` without `--offline`).
@@ -245,10 +245,10 @@ Session facts and **`ZOA_ACTIONS.md`** (rendered at task start via `zoa actions 
 ```bash
 zoa actions
 zoa describe get_resource
-zoa run get_resource --resource pods -n openshift-ingress --jira ROSAENG-1234
+zoa run get_resource --resource pods -n openshift-ingress --reason ROSAENG-1234
 ```
 
-**`--jira` is required** on every `zoa run` (e.g. `ROSAENG-1234`, `HPSTRAT-62`).
+**`--reason` is required** on every `zoa run` (Jira issue or PagerDuty incident, e.g. `ROSAENG-1234`, `#123456`).
 
 Read [Trusted Actions guide](../trusted-actions.md) for authoring; [CLAUDE.md](https://github.com/openshift-online/rosa-hyperfleet-zoa/blob/main/boundary/home-sre/.claude/CLAUDE.md) in the image explains Claude + TA rules.
 
@@ -259,14 +259,14 @@ See [§6 above](#6-leave-the-shell-vs-end-the-session). From the **laptop**:
 ```bash
 zoa session list <deployment>      # your sessions (last 24h default)
 zoa session history <deployment>   # all operators (audit)
-zoa session stop <deployment>/<session-id>
+zoa session terminate <deployment>/<session-id>
 ```
 
-Reaper rules (deadline / idle): [Session reaper](../design/boundary-session-reaper.md).
+Reaper rules (deadline / inactivity): [Session reaper](../design/boundary-session-reaper.md).
 
-## Stop from inside the boundary?
+## Terminate from inside the boundary?
 
-**Not supported.** Session lifecycle belongs to **Access**; the boundary task role is scoped to **API** Lambda (TAs). Running `zoa session stop` inside the container would require Access routes and task-role wiring we deliberately avoid. Use the **exit reminder**, the **prompt**, `session list`, and **laptop stop** instead.
+**Not supported.** Session lifecycle belongs to **Access**; the boundary task role is scoped to **API** Lambda (TAs). Running `zoa session terminate` inside the container would require Access routes and task-role wiring we deliberately avoid. Use the **exit reminder**, the **prompt**, `session list`, and **laptop terminate** instead.
 
 ## Troubleshooting
 

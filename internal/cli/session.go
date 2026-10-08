@@ -11,7 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/openshift-online/rosa-hyperfleet-zoa/internal/cli/jira"
+	"github.com/openshift-online/rosa-hyperfleet-zoa/internal/cli/reason"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/internal/client"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/internal/output"
 	"github.com/openshift-online/rosa-hyperfleet-zoa/pkg/boundaryexec"
@@ -21,14 +21,14 @@ func newSessionCommand(opts *GlobalOptions) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "session",
 		Short: "Manage boundary sessions",
-		Long: `Start, stop, join, and list boundary sessions for audited SRE access.
+		Long: `Start, terminate, join, and list boundary sessions for audited SRE access.
 
 Session IDs use the form <deployment>/<session-id> (see 'zoa session start').`,
 	}
 
 	cmd.AddCommand(
 		newSessionStartCommand(opts),
-		newSessionStopCommand(opts),
+		newSessionTerminateCommand(opts),
 		newSessionJoinCommand(opts),
 		newSessionListCommand(opts),
 		newSessionHistoryCommand(opts),
@@ -39,7 +39,7 @@ Session IDs use the form <deployment>/<session-id> (see 'zoa session start').`,
 
 func newSessionStartCommand(opts *GlobalOptions) *cobra.Command {
 	var flagDeployment, flagTarget string
-	var flagJira string
+	var flagReason string
 	var flagNoConnect bool
 
 	cmd := &cobra.Command{
@@ -57,13 +57,13 @@ By default, after the task is active the CLI connects via ECS Exec (same as
 ECS Exec uses scoped credentials returned by the Access API on join (not
 deployment-account admin roles).
 
-A Jira ticket is required and is stored on the session, Access audit, and the
-boundary task (ZOA_JIRA) for zoa run.`,
-		Example: `  zoa session start us-east-1 mc01 --jira ROSAENG-1234
+A reason is required (Jira issue or PagerDuty incident). It is stored
+on the session, Access audit, and the boundary task (ZOA_REASON) for zoa run.`,
+		Example: `  zoa session start us-east-1 mc01 --reason ROSAENG-1234
 
-  zoa session start us-east-1 mc01 --jira ROSAENG-1234 --no-connect
+  zoa session start us-east-1 mc01 --reason '#123456' --no-connect
 
-  zoa session start -d us-east-1 -t mc01 --jira ROSAENG-1234 --no-connect -o json`,
+  zoa session start -d us-east-1 -t mc01 --reason ROSAENG-1234 --no-connect -o json`,
 		Args: cobra.MaximumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			deployment, target := resolveDeploymentTarget(args, flagDeployment, flagTarget)
@@ -78,7 +78,7 @@ boundary task (ZOA_JIRA) for zoa run.`,
 				opts.Deployment = deployment
 			}
 
-			jiraTicket, err := jira.RequireFlag(flagJira)
+			reasonValue, err := reason.Resolve(flagReason)
 			if err != nil {
 				return err
 			}
@@ -91,7 +91,7 @@ boundary task (ZOA_JIRA) for zoa run.`,
 			resp, err := c.SessionStart(cmd.Context(), &client.SessionStartRequest{
 				DeploymentName: deployment,
 				Target:         target,
-				Jira:           jiraTicket,
+				Reason:         reasonValue,
 			})
 			if err != nil {
 				return fmt.Errorf("starting session: %w", err)
@@ -153,46 +153,48 @@ boundary task (ZOA_JIRA) for zoa run.`,
 
 	cmd.Flags().StringVarP(&flagDeployment, "deployment", "d", "", "Deployment name (e.g. us-east-1)")
 	cmd.Flags().StringVarP(&flagTarget, "target", "t", "", "Target ID (e.g. mc01)")
-	cmd.Flags().StringVar(&flagJira, "jira", "", "Jira ticket for this session (required, e.g. ROSAENG-1234)")
+	cmd.Flags().StringVar(&flagReason, "reason", "", "Reason for this session (required: Jira issue or PagerDuty incident, e.g. ROSAENG-1234 or #123456)")
 	cmd.Flags().BoolVar(&flagNoConnect, "no-connect", false, "Print session metadata only; do not open ECS Exec (same idea as zoa run --no-wait)")
 
 	return cmd
 }
 
-func newSessionStopCommand(opts *GlobalOptions) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "stop <deployment/session-id>",
-		Short: "Stop a boundary session",
-		Long: `Stop a boundary session by its compound ID (deployment/session-id).
+func newSessionTerminateCommand(opts *GlobalOptions) *cobra.Command {
+	run := func(cmd *cobra.Command, args []string) error {
+		deployment, rawID, err := ParseSessionID(args[0])
+		if err != nil {
+			return err
+		}
 
-The compound ID is returned by 'zoa session start' and 'zoa session list'.`,
-		Example: `  zoa session stop us-east-1/sess-abc123`,
-		Args:    cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			deployment, rawID, err := ParseSessionID(args[0])
-			if err != nil {
-				return err
-			}
+		if opts.APIURL == "" {
+			opts.Deployment = deployment
+		}
 
-			if opts.APIURL == "" {
-				opts.Deployment = deployment
-			}
+		c, err := getClient(opts)
+		if err != nil {
+			return fmt.Errorf("creating client: %w", err)
+		}
 
-			c, err := getClient(opts)
-			if err != nil {
-				return fmt.Errorf("creating client: %w", err)
-			}
+		if err := c.SessionTerminate(cmd.Context(), rawID); err != nil {
+			return fmt.Errorf("terminating session: %w", err)
+		}
 
-			if err := c.SessionStop(cmd.Context(), rawID); err != nil {
-				return fmt.Errorf("stopping session: %w", err)
-			}
-
-			fmt.Printf("Session %s terminated\n", args[0])
-			return nil
-		},
+		fmt.Printf("Session %s terminated\n", args[0])
+		return nil
 	}
 
-	return cmd
+	return &cobra.Command{
+		Use:   "terminate <deployment/session-id>",
+		Short: "Terminate a boundary session",
+		Long: `Terminate a boundary session by its compound ID (deployment/session-id).
+
+Stops the ECS task and marks the session terminated in DynamoDB. This is final —
+the task cannot be restarted. The compound ID is returned by 'zoa session start'
+and 'zoa session list'.`,
+		Example: `  zoa session terminate us-east-1/sess-abc123`,
+		Args:    cobra.ExactArgs(1),
+		RunE:    run,
+	}
 }
 
 func newSessionJoinCommand(opts *GlobalOptions) *cobra.Command {
@@ -415,18 +417,16 @@ func printSessionTable(w io.Writer, opts *GlobalOptions, deployment string, list
 	wide := opts.OutputFormat == output.FormatWide
 	tw := output.NewTable(w)
 	if wide {
-		if history {
-			fmt.Fprintln(tw, "SESSION ID\tOPERATOR\tSIGNER_ARN\tACCOUNT_ID\tTASK_ID\tTARGET\tSTATUS\tSTOP REASON\tEXEC SESSIONS\tCREATED\tENDED\tDEADLINE")
-		} else {
-			fmt.Fprintln(tw, "SESSION ID\tOPERATOR\tSIGNER_ARN\tACCOUNT_ID\tTASK_ID\tTARGET\tSTATUS\tSTOP REASON\tEXEC SESSIONS\tCREATED\tENDED\tDEADLINE")
-		}
+		header := "SESSION ID\tOPERATOR\tSIGNER_ARN\tACCOUNT_ID\tTASK_ID\tTARGET\tREASON\tSTATUS\tSTOP REASON\tEXEC SESSIONS\tCREATED\tENDED\tDEADLINE"
+		fmt.Fprintln(tw, header)
 	} else if history {
-		fmt.Fprintln(tw, "SESSION ID\tOPERATOR\tTARGET\tSTATUS\tSTOP REASON\tEXEC SESSIONS\tCREATED\tENDED\tDEADLINE")
+		fmt.Fprintln(tw, "SESSION ID\tOPERATOR\tTARGET\tREASON\tSTATUS\tSTOP REASON\tEXEC SESSIONS\tCREATED\tENDED\tDEADLINE")
 	} else {
-		fmt.Fprintln(tw, "SESSION ID\tTARGET\tSTATUS\tSTOP REASON\tEXEC SESSIONS\tCREATED\tENDED\tDEADLINE")
+		fmt.Fprintln(tw, "SESSION ID\tTARGET\tREASON\tSTATUS\tSTOP REASON\tEXEC SESSIONS\tCREATED\tENDED\tDEADLINE")
 	}
 	for _, s := range list.Items {
 		sessionID := FormatSessionID(deployment, s.SessionID)
+		reasonCol := output.Dash(s.Reason)
 		stopReason := output.Dash(s.StopReason)
 		execSessions := formatExecSessionsForTable(s.ExecSessionIDs)
 		created := output.Dash(s.CreatedAt)
@@ -434,18 +434,18 @@ func printSessionTable(w io.Writer, opts *GlobalOptions, deployment string, list
 		deadline := output.Dash(s.Deadline)
 		target := s.TargetCluster
 		if wide {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 				sessionID, s.Operator, s.SignerARN, output.Dash(s.AccountID), output.Dash(s.TaskID),
-				target, s.Status, stopReason, execSessions, created, ended, deadline)
+				target, reasonCol, s.Status, stopReason, execSessions, created, ended, deadline)
 			continue
 		}
 		if history {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-				sessionID, s.Operator, target, s.Status,
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+				sessionID, s.Operator, target, reasonCol, s.Status,
 				stopReason, execSessions, created, ended, deadline)
 		} else {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-				sessionID, target, s.Status,
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+				sessionID, target, reasonCol, s.Status,
 				stopReason, execSessions, created, ended, deadline)
 		}
 	}

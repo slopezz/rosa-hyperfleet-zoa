@@ -63,7 +63,7 @@ Entrypoint copies runtime **`ZOA_ACTIONS.md`** via `zoa actions --offline -o mar
 
 ## Operational notes
 
-- **Leaving the Exec shell** does not stop the task; only **session stop**, **deadline reaper**, or **idle reaper** does.
+- **Leaving the Exec shell** does not terminate the task; only **`zoa session terminate`**, **deadline reaper**, or **inactivity reaper** does.
 - **Idle baseline `createdAt`** includes task provisioning time; very slow `RunTask` reduces time-to-idle-reap before first join.
 - **SSM history pagination** is capped (20 pages); sufficient for dev/ephemeral; revisit at high join churn.
 - Roll back feature bundle: git parent before `feat(boundary): idle reaper, exec session tracking, and CLI/catalog UX` on `feat/zoa-boundary`.

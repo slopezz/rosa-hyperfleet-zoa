@@ -25,7 +25,7 @@ This document is the **agreed implementation plan** for uniform operator attribu
 | `session_id` | Boundary session UUID                               | **Table PK** (`sessionId`)                    | If from boundary   | When known                          |
 | `account_id` | Caller AWS account (`X-Account-ID`)                 | **Add at start**                              | Yes                | Yes (`accountId` PK on audit table) |
 
-**Not identity:** `jira` (change ticket on TA dispatch), `task_id` / `task_arn` (ECS resources on **session row** only).
+**Not identity:** `reason` (change ticket or incident on TA dispatch), `task_id` / `task_arn` (ECS resources on **session row** only).
 
 ---
 
@@ -162,10 +162,10 @@ Single config source; no duplicate literals in `main.tf`.
 
 ---
 
-## Jira (boundary + CLI) — settled
+## Reason (boundary + CLI) — settled
 
-- `zoa run`: `--jira` → `ZOA_JIRA` → error (`internal/cli/jira`); CLI **does not** read `ZOA_SESSION.md`.
-- Boundary: `jira` helper + login hydrate/prompt; MOTD shows session limits + Jira.
+- `zoa run`: `--reason` → `ZOA_REASON` → error (`internal/cli/reason`); CLI **does not** read `ZOA_SESSION.md`.
+- Boundary: `reason` helper + login hydrate/prompt; MOTD shows session limits + reason (Jira or `#incident`).
 
 ---
 

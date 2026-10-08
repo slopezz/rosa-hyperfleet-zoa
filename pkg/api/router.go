@@ -427,15 +427,15 @@ func writeError(w http.ResponseWriter, status int, code, message string) {
 }
 
 type auditOpts struct {
-	jira   string
+	reason string
 	force  bool
 	dryRun bool
 }
 
 type AuditOption func(*auditOpts)
 
-func withJira(jira string) AuditOption {
-	return func(o *auditOpts) { o.jira = jira }
+func withReason(reason string) AuditOption {
+	return func(o *auditOpts) { o.reason = reason }
 }
 
 func withForce(force bool) AuditOption {
@@ -475,7 +475,7 @@ func (h *Handler) recordAudit(r *http.Request, statusCode int, action, execution
 		RequestID:     r.Header.Get("X-Request-ID"),
 		UserAgent:     r.Header.Get("User-Agent"),
 		ExecutionID:   executionID,
-		Jira:          o.jira,
+		Reason:        o.reason,
 		Force:         o.force,
 		DryRun:        o.dryRun,
 	}

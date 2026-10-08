@@ -26,7 +26,7 @@ This repository is the single source of truth for ZOA: the API server, execution
 - **SRE muscle memory** — CLI mirrors kubectl/aws-cli conventions (`-n`, `-o json`, `-A`, `--force`) so operators are productive in seconds
 - **Per-execution RBAC** — each dispatch creates a scoped ServiceAccount + Role, destroyed on completion
 - **Direct Lambda-to-EKS** — Lambda connects directly to the EKS API server in the same VPC
-- **Immutable audit trail** — caller identity (AWS ARN), target, action, jira, duration; 365-day retention
+- **Immutable audit trail** — caller identity (AWS ARN), target, action, reason, duration; 365-day retention
 - **Write cooldown** — rate-limited per target to prevent cascading changes; bypassable with `--force`
 - **Max concurrent** — limits active executions per target (all modes); bypassable with `--force`
 - **HCP namespace protection** — secrets in customer namespaces (`cluster-*`) are blocked
@@ -132,7 +132,7 @@ graph TD
     WORKER_MC -.->|"cross-account"| STATE
 ```
 
-> **Note:** Laptop flow: connect **RH VPN** (needed for **`kinit`** only), **`kinit`**, then **`rh-aws-saml-login`** into the environment **Central** account — after that, VPN is not required for ZOA/AWS CLI work. Discovery: **`zoa deployments`** (Central SSM, no Access Lambda) then **`zoa targets <deployment>`** (Access invoker + SigV4) before **`zoa session start <deployment> <target> --jira TICKET`**. ZOA Access is a **Function URL** with IAM auth (not API Gateway). TA execution from boundary uses the per-VPC API Lambda (`ZOA_API_URL`). Break-glass kubectl and approval-gated TAs are not implemented yet.
+> **Note:** Laptop flow: connect **RH VPN** (needed for **`kinit`** only), **`kinit`**, then **`rh-aws-saml-login`** into the environment **Central** account — after that, VPN is not required for ZOA/AWS CLI work. Discovery: **`zoa deployments`** (Central SSM, no Access Lambda) then **`zoa targets <deployment>`** (Access invoker + SigV4) before **`zoa session start <deployment> <target> --reason TICKET`** (Jira issue or PagerDuty incident, e.g. `ROSAENG-1234`, `#123456`). ZOA Access is a **Function URL** with IAM auth (not API Gateway). TA execution from boundary uses the per-VPC API Lambda (`ZOA_API_URL`). Break-glass kubectl and approval-gated TAs are not implemented yet.
 
 ### Execution Modes
 
@@ -173,7 +173,7 @@ make all                           # fmt → vet → lint → test → build
 export ZOA_API_URL="https://<id>.lambda-url.<region>.on.aws"
 ./bin/zoa version                  # Verify connectivity
 ./bin/zoa actions                  # List available TAs
-./bin/zoa run get_resource --jira OSD-123 --namespace kube-system --resource pods
+./bin/zoa run get_resource --reason OSD-123 --namespace kube-system --resource pods
 ./hack/demo-cli.sh                 # Full capability walkthrough (--step for interactive)
 ```
 

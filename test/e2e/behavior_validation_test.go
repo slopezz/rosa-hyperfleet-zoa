@@ -44,12 +44,12 @@ var _ = Describe("parameter validation", func() {
 			))
 		})
 
-		It("rejects invalid JIRA ticket format", func() {
+		It("rejects invalid reason format", func() {
 			tgt := targets[0]
-			// Run without the helper (which auto-adds valid JIRA)
+			// Run without the helper (which auto-adds valid reason)
 			out, err := runZoa(tgt, "run", "get_resource",
 				"--resource", "nodes",
-				"--jira", "invalid-format")
+				"--reason", "invalid-format")
 			Expect(err).To(HaveOccurred())
 			Expect(out).To(ContainSubstring("PROJECT-123"))
 		})

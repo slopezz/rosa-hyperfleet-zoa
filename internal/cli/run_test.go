@@ -150,8 +150,8 @@ func TestRunAction_WhenSyncSucceeds_ItShouldReturnNilError(t *testing.T) {
 			if action != "get_pods" {
 				t.Errorf("expected action 'get_pods', got %q", action)
 			}
-			if req.Jira != "ROSAENG-1234" {
-				t.Errorf("expected jira 'ROSAENG-1234', got %q", req.Jira)
+			if req.Reason != "ROSAENG-1234" {
+				t.Errorf("expected reason 'ROSAENG-1234', got %q", req.Reason)
 			}
 			if req.Params["namespace"] != "grafana" {
 				t.Errorf("expected namespace=grafana, got %q", req.Params["namespace"])
@@ -176,8 +176,8 @@ func TestRunAction_WhenSyncSucceeds_ItShouldReturnNilError(t *testing.T) {
 
 	global := newMockGlobalOpts(mock)
 	opts := &runOptions{
-		ta:   parambind.RunTAParams{Namespace: "grafana"},
-		jira: "ROSAENG-1234",
+		ta:     parambind.RunTAParams{Namespace: "grafana"},
+		reason: "ROSAENG-1234",
 	}
 	err := runAction(context.Background(), global, opts, "get_pods")
 	if err != nil {
@@ -199,7 +199,7 @@ func TestRunAction_WhenNoWait_ItShouldReturnImmediately(t *testing.T) {
 
 	global := newMockGlobalOpts(mock)
 	opts := &runOptions{
-		jira:   "ROSAENG-1234",
+		reason: "ROSAENG-1234",
 		noWait: true,
 	}
 	err := runAction(context.Background(), global, opts, "get_resource")
@@ -223,7 +223,7 @@ func TestRunAction_WhenNoWaitJSON_ItShouldReturnDispatchResponse(t *testing.T) {
 	global := newMockGlobalOpts(mock)
 	global.OutputFormat = output.FormatJSON
 	opts := &runOptions{
-		jira:   "ROSAENG-1234",
+		reason: "ROSAENG-1234",
 		noWait: true,
 	}
 	err := runAction(context.Background(), global, opts, "get_resource")
@@ -240,7 +240,7 @@ func TestRunAction_WhenDispatchFails_ItShouldReturnError(t *testing.T) {
 	}
 
 	global := newMockGlobalOpts(mock)
-	opts := &runOptions{jira: "ROSAENG-1234"}
+	opts := &runOptions{reason: "ROSAENG-1234"}
 	err := runAction(context.Background(), global, opts, "delete_pod")
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -270,7 +270,7 @@ func TestRunAction_WhenSyncFails_ItShouldReturnError(t *testing.T) {
 	}
 
 	global := newMockGlobalOpts(mock)
-	opts := &runOptions{jira: "ROSAENG-1234"}
+	opts := &runOptions{reason: "ROSAENG-1234"}
 	err := runAction(context.Background(), global, opts, "delete_pod")
 	if err == nil {
 		t.Fatal("expected error for failed execution, got nil")
@@ -576,7 +576,7 @@ func TestRunAction_WhenWaitCompletesWithDownloadHint_ItShouldAutoDownload(t *tes
 
 	global := newMockGlobalOpts(mock)
 	opts := &runOptions{
-		jira: "ROSAENG-1234",
+		reason: "ROSAENG-1234",
 		ta: parambind.RunTAParams{
 			ClusterID: "1600392f-9a94-4957-b672-eff8dc2be0bb",
 			Gather:    "hcp",

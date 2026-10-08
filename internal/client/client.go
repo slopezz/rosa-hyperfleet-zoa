@@ -250,8 +250,8 @@ func (c *Client) SessionStart(ctx context.Context, req *SessionStartRequest) (*S
 	return &resp, nil
 }
 
-func (c *Client) SessionStop(ctx context.Context, sessionID string) error {
-	return c.doV0(ctx, http.MethodPost, "/sessions/stop/"+url.PathEscape(sessionID), nil, nil)
+func (c *Client) SessionTerminate(ctx context.Context, sessionID string) error {
+	return c.doV0(ctx, http.MethodPost, "/sessions/terminate/"+url.PathEscape(sessionID), nil, nil)
 }
 
 func (c *Client) SessionJoin(ctx context.Context, sessionID string) (*SessionJoinResponse, error) {

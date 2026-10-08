@@ -21,7 +21,7 @@ var _ = Describe("zoa run flags", func() {
 		Describe(tgt.Name, func() {
 			It("--timeout overrides server-side execution timeout", func() {
 				out, err := runZoa(tgt, "run", "get_resource",
-					"--jira", jiraTicket,
+					"--reason", reasonValue,
 					"--resource", "nodes",
 					"--timeout", "60s",
 					"-o", "json")
@@ -37,7 +37,7 @@ var _ = Describe("zoa run flags", func() {
 
 			It("--no-wait returns ID without fetching output", func() {
 				out, err := runZoa(tgt, "run", "get_resource",
-					"--jira", jiraTicket,
+					"--reason", reasonValue,
 					"--resource", "nodes",
 					"--no-wait")
 				Expect(err).NotTo(HaveOccurred(), out)
@@ -48,7 +48,7 @@ var _ = Describe("zoa run flags", func() {
 
 			It("--verbose returns full JSON output from the action", func() {
 				out, err := runZoa(tgt, "run", "get_resource",
-					"--jira", jiraTicket,
+					"--reason", reasonValue,
 					"--resource", "nodes",
 					"--verbose",
 					"-o", "json")
@@ -67,7 +67,7 @@ var _ = Describe("zoa run flags", func() {
 				// On sync these have no practical effect (sync returns inline),
 				// but they should be accepted without error
 				out, err := runZoa(tgt, "run", "get_resource",
-					"--jira", jiraTicket,
+					"--reason", reasonValue,
 					"--resource", "nodes",
 					"--wait-timeout", "30s",
 					"--wait-poll-interval", "5s",
@@ -84,7 +84,7 @@ var _ = Describe("zoa run flags", func() {
 
 			It("--timeout rejects values exceeding server max", func() {
 				out, err := runZoa(tgt, "run", "get_resource",
-					"--jira", jiraTicket,
+					"--reason", reasonValue,
 					"--resource", "nodes",
 					"--timeout", "600s")
 				Expect(err).To(HaveOccurred())
@@ -93,7 +93,7 @@ var _ = Describe("zoa run flags", func() {
 
 			It("-o json includes all dispatch response fields [smoke]", func() {
 				out, err := runZoa(tgt, "run", "get_resource",
-					"--jira", jiraTicket,
+					"--reason", reasonValue,
 					"--resource", "nodes",
 					"-o", "json")
 				Expect(err).NotTo(HaveOccurred(), out)

@@ -27,7 +27,7 @@ setup() {
     ZOA_DEPLOYMENT="us-east-1-eph" \
     ZOA_TARGET="mc01" \
     ZOA_TARGET_TYPE="mc" \
-    ZOA_JIRA="ROSAENG-99" \
+    ZOA_REASON="ROSAENG-99" \
     AWS_REGION="us-east-1" \
     bash -c '
       zoa_compound_session_id() { printf "us-east-1-eph/d77d58c8-1111-2222"; }
@@ -42,7 +42,7 @@ setup() {
   [[ "${output}" == *"ROSA HyperFleet architecture"* ]]
   [[ "${output}" != *"not env vars alone"* ]]
   [[ "${output}" == *"==> ZOA Boundary session"* ]]
-  [[ "${output}" == *"==> Session Jira"* ]]
+  [[ "${output}" == *"==> Session reason"* ]]
   [[ "${output}" == *"ROSAENG-99"* ]]
   [[ "${output}" == *"us-east-1-eph/d77d58c8-1111-2222"* ]]
   [[ "${output}" != *"==> Remember"* ]]
@@ -50,7 +50,7 @@ setup() {
   [[ "${output}" == *"ZOA_SESSION.md"* ]]
 }
 
-@test "zoa_boundary_print_session_limits includes stop hint and renamed header" {
+@test "zoa_boundary_print_session_limits includes terminate hint and renamed header" {
   run env \
     ZOA_SESSION_ID="d77d58c8-1111-2222" \
     ZOA_DEPLOYMENT="us-east-1-eph" \
@@ -64,10 +64,12 @@ setup() {
 
   [ "${status}" -eq 0 ]
   [[ "${output}" == *"==> ZOA Boundary session limits"* ]]
-  [[ "${output}" == *"zoa session stop us-east-1-eph/d77d58c8-1111-2222"* ]]
+  [[ "${output}" == *"zoa session terminate us-east-1-eph/d77d58c8-1111-2222"* ]]
+  [[ "${output}" == *"Hard termination"* ]]
+  [[ "${output}" == *"Inactivity termination"* ]]
 }
 
-@test "zoa_boundary_print_exit_hint uses aligned stop and join lines" {
+@test "zoa_boundary_print_exit_hint uses aligned terminate and join lines" {
   run env \
     ZOA_DEPLOYMENT="dep-a" \
     bash -c '
@@ -78,7 +80,7 @@ setup() {
 
   [ "${status}" -eq 0 ]
   [[ "${output}" == *"==> ZOA boundary — Exec ended"* ]]
-  [[ "${output}" == *"zoa session stop dep-a/sess-1"* ]]
+  [[ "${output}" == *"zoa session terminate dep-a/sess-1"* ]]
   [[ "${output}" == *"zoa session join dep-a/sess-1"* ]]
 }
 

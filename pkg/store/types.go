@@ -34,7 +34,7 @@ type Execution struct {
 	DryRun          bool              `json:"dry_run" dynamodbav:"dryRun"`
 	Force           bool              `json:"force" dynamodbav:"force"`
 	Params          map[string]string `json:"params,omitempty" dynamodbav:"params,omitempty"`
-	Jira            string            `json:"jira,omitempty" dynamodbav:"jira,omitempty"`
+	Reason          string            `json:"reason,omitempty" dynamodbav:"reason,omitempty"`
 
 	Revision string `json:"revision,omitempty" dynamodbav:"revision,omitempty"`
 
@@ -81,7 +81,7 @@ type AuditEntry struct {
 	SourceIP      string `json:"source_ip,omitempty" dynamodbav:"sourceIp,omitempty"`
 	RequestID     string `json:"request_id,omitempty" dynamodbav:"requestId,omitempty"`
 	UserAgent     string `json:"user_agent,omitempty" dynamodbav:"userAgent,omitempty"`
-	Jira          string `json:"jira,omitempty" dynamodbav:"jira,omitempty"`
+	Reason        string `json:"reason,omitempty" dynamodbav:"reason,omitempty"`
 	Force         bool   `json:"force,omitempty" dynamodbav:"force,omitempty"`
 	DryRun        bool   `json:"dry_run,omitempty" dynamodbav:"dryRun,omitempty"`
 	ExecutionID   string `json:"execution_id,omitempty" dynamodbav:"executionId,omitempty"`

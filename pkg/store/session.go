@@ -39,7 +39,7 @@ type Session struct {
 	Operator       string        `json:"operator" dynamodbav:"operator"`
 	SignerARN      string        `json:"signer_arn" dynamodbav:"signerARN"`
 	AccountID      string        `json:"account_id,omitempty" dynamodbav:"accountId,omitempty"`
-	Jira           string        `json:"jira" dynamodbav:"jira"`
+	Reason         string        `json:"reason" dynamodbav:"reason"`
 	TargetCluster  string        `json:"target_cluster" dynamodbav:"targetCluster"`
 	Region         string        `json:"region" dynamodbav:"region"`
 	TaskArn        string        `json:"task_arn,omitempty" dynamodbav:"taskArn,omitempty"`

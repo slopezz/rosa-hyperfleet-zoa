@@ -10,7 +10,7 @@ You are running inside a **ZOA Boundary** container: a time-boxed, audited ECS F
 | `/home/sre/.claude/ZOA_ACTIONS.md` | **Baked TA catalog** for this deployment target (`rc` or `mc`); use `zoa describe` for live API details |
 | This `CLAUDE.md`                   | **Agent essentials** table, rules, RC/MC platform, observability, control plane, ZOA execution          |
 
-The shell prompt is two lines: **`sessionId:<deployment>/<uuid>`** (audit handle — copy for `zoa session stop`) and **`operator@zoa:deployment/target`**. Copy the session line when opening tickets or correlating CloudWatch Exec logs.
+The shell prompt is two lines: **`sessionId:<deployment>/<uuid>`** (audit handle — copy for `zoa session terminate`) and **`operator@zoa:deployment/target`**. Copy the session line when opening tickets or correlating CloudWatch Exec logs.
 
 ## Agent context (essentials)
 
@@ -24,7 +24,7 @@ Quick map of what matters in this environment — details in the sections below.
 | **How `zoa run` works**                          | Boundary → **API Lambda** → impersonation or AWS role — **not** in-shell **`kubectl`**. → [How zoa run works](#how-zoa-run-works-from-this-container)                                                                            |
 | **Identity bridge**                              | **`ZOA_OPERATOR`** / prompt env is **UX only**; TA audit uses SigV4 task ARN → DynamoDB session → human **operator**. Do not treat env as audit truth. → same section                                                            |
 | **TA read / write / cooldown / dry-run / async** | Safer change suggestions; write TAs need cooldown; use **`--dry-run`** / **`--force`** per **`zoa describe`**. → [Trusted Action safety](#trusted-action-safety-read-vs-write)                                                   |
-| **Session lifecycle**                            | **Exit Exec ≠ stop task**; stop from **laptop** with **`zoa session stop <deployment>/<uuid>`**. Two audits: CloudWatch Exec transcript vs **`zoa runs`** / audit. → [Session lifecycle](#session-lifecycle-boundary)            |
+| **Session lifecycle**                            | **Exit Exec ≠ terminate task**; terminate from **laptop** with **`zoa session terminate <deployment>/<uuid>`**. Two audits: CloudWatch Exec transcript vs **`zoa runs`** / audit. → [Session lifecycle](#session-lifecycle-boundary) |
 | **Break-glass**                                  | **`kubectl`** / **`aws`** in the image have **no creds** today — not production; use **`zoa run`** only. → [How zoa run works](#how-zoa-run-works-from-this-container)                                                           |
 
 **Laptop vs boundary:** `zoa session list <deployment>` = **your** sessions; `zoa session history <deployment>` = **all operators** (audit). Not available inside the container.
@@ -176,8 +176,8 @@ Always **`zoa describe <action>`** for modifiers. If a write fails with cooldown
 
 ## Session lifecycle (boundary)
 
-- **Exiting the Exec shell** (`exit`, Ctrl+D) **does not** stop the ECS task or close the ZOA session — the operator must run **`zoa session stop <deployment>/<session-id>`** from a **laptop** (or wait for idle/deadline reapers). On exit, the shell prints copy-paste hints (stop, re-join, **your** `session list`, **all operators** `session history`).
-- This container stays up for **join/rejoin** until the task is stopped.
+- **Exiting the Exec shell** (`exit`, Ctrl+D) **does not** terminate the ECS task or close the ZOA session — the operator must run **`zoa session terminate <deployment>/<session-id>`** from a **laptop** (or wait for inactivity/deadline reapers). On exit, the shell prints copy-paste hints (terminate, re-join, **your** `session list`, **all operators** `session history`).
+- This container stays up for **join/rejoin** until the task is terminated.
 - **Two audit streams:** CloudWatch **Exec** logs (shell transcript; stream `ecs-execute-command-<id>` under `/ecs/<target>/zoa-boundary/ssm-sessions`) vs ZOA **audit** / **`zoa runs`** (API and TA executions). Correlate using **`sessionId:`** line from the prompt and **`ZOA_SESSION.md`**.
 
 ## Authentication and audit
@@ -189,15 +189,15 @@ Always **`zoa describe <action>`** for modifiers. If a write fails with cooldown
 
 Do **not** store long-lived credentials, kubeconfig with static tokens, or customer secrets in this home directory.
 
-## Jira ticket (session start and every `zoa run`)
+## Reason (session start and every `zoa run`)
 
-- From a **laptop**, **`zoa session start … --jira ROSAENG-1234`** is required. The ticket is stored on the session, Access audit, and injected as **`ZOA_JIRA`** on the boundary ECS task.
-- **`zoa run`** resolves Jira: **`--jira`** first, else **`ZOA_JIRA`** env, else the CLI errors (API also requires `jira` on dispatch).
-- In boundary, **`ZOA_JIRA`** is set from the task env on first login; **`jira TICKET`** can change the env and **Jira** row in **`ZOA_SESSION.md`** (for you and Claude — the CLI does not read that file).
-- On rejoin, the shell prefers **`ZOA_JIRA`** from the task env, then syncs **`ZOA_SESSION.md`**.
-- Override one run with **`zoa run ... --jira OTHER`**.
+- From a **laptop**, **`zoa session start … --reason ROSAENG-1234`** (or **`--reason '#123456'`** for PagerDuty) is required. The value is stored on the session, Access audit, and injected as **`ZOA_REASON`** on the boundary ECS task.
+- **`zoa run`** resolves reason: **`--reason`** first, else **`ZOA_REASON`** env, else the CLI errors (API also requires `reason` on dispatch).
+- In boundary, **`ZOA_REASON`** is set from the task env on first login; **`reason TICKET`** can change the env and **Reason** row in **`ZOA_SESSION.md`** (for you and Claude — the CLI does not read that file).
+- On rejoin, the shell prefers **`ZOA_REASON`** from the task env, then syncs **`ZOA_SESSION.md`**.
+- Override one run with **`zoa run ... --reason OTHER`**.
 
-Session **deadline** and **idle stop** are in **`ZOA_SESSION.md`** and the login MOTD.
+Session **deadline** and **inactivity termination** are in **`ZOA_SESSION.md`** and the login MOTD.
 
 ## ZOA CLI (inside the boundary)
 
@@ -209,7 +209,7 @@ You do **not** need `zoa deployments`, `zoa targets`, or `zoa session *` here �
 | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
 | **`zoa actions`**                              | List TAs for **this** environment (also in `ZOA_ACTIONS.md`).                                                                        |
 | **`zoa describe <action>`**                    | Param → CLI flag mapping, run modifiers (`--force`, `--dry-run`, …), examples; `-o json` for automation.                             |
-| **`zoa run <action> … --jira TICKET`**         | **Primary path.** Sync mode waits and prints output. **`--no-wait`** for async → then **`zoa get`** / **`output`** / **`download`**. |
+| **`zoa run <action> … --reason TICKET`**         | **Primary path.** Sync mode waits and prints output. **`--no-wait`** for async → then **`zoa get`** / **`output`** / **`download`**. |
 | **`zoa runs`**                                 | List TA executions (`--since`, `--until`, `-o json`).                                                                                |
 | **`zoa get <exec-id>`**                        | Status/metadata; **`--include-output`** for payload.                                                                                 |
 | **`zoa output` / `zoa logs` / `zoa download`** | Re-fetch or save artifacts from S3.                                                                                                  |
@@ -223,7 +223,7 @@ Use **`-o json`** and **`jq`** for scripting.
 1. Read **`ZOA_ACTIONS.md`** (baked catalog for **`rc` or `mc`** — no need to run `zoa actions` for the list if the file is present).
 2. Match the problem to **scope** and **type**: e.g. need a Secret in a non-HCP namespace → **`get_secret`** (read); need pod list → **`get_resource`** with `--resource pods`; AWS networking → **`list_vpc_endpoints`** / **`describe_vpc_endpoint`**.
 3. Run **`zoa describe <action>`** when parameters are unclear (live API view with flag bindings).
-4. Execute with **`zoa run …`** (uses **`ZOA_JIRA`** / **`ZOA_SESSION.md`** context) or **`--jira TICKET`** when overriding.
+4. Execute with **`zoa run …`** (uses **`ZOA_REASON`** / **`ZOA_SESSION.md`** context) or **`--reason TICKET`** when overriding.
 5. Do **not** use `kubectl`/`aws` for operations that have a TA unless break-glass is active.
 
 ### Kubernetes discovery (when the namespace is unknown)
@@ -260,7 +260,7 @@ For bundle collection, see **`must_gather`** in **`ZOA_ACTIONS.md`** (`--gather 
 
 1. Confirm context in **`ZOA_SESSION.md`** (session id, **`ZOA_TARGET_TYPE`**, target) — know whether you are on **RC** or **MC** before choosing TAs or interpreting namespaces.
 2. For kube problems with unknown location: **namespace discovery first**, then resource-specific **`get_resource`** (see above).
-3. Pick a TA from **`ZOA_ACTIONS.md`** → **`zoa describe`** if needed → **`zoa run …`** (session **`ZOA_JIRA`**).
+3. Pick a TA from **`ZOA_ACTIONS.md`** → **`zoa describe`** if needed → **`zoa run …`** (session **`ZOA_REASON`**).
 4. Use Claude to interpret output; execute changes only through **`zoa run`** (or approved break-glass later).
 
 ## Common mistakes to avoid
@@ -268,5 +268,5 @@ For bundle collection, see **`must_gather`** in **`ZOA_ACTIONS.md`** (`--gather 
 - Assuming **OpenShift** namespace/layout on HyperFleet **EKS** clusters.
 - Skipping **namespace listing** and guessing (`openshift-apiserver`, etc.).
 - Using **`kubectl`** instead of **`zoa run`** for inventory or changes.
-- Inventing **`--jira`** placeholders without operator approval.
+- Inventing **`--reason`** placeholders without operator approval.
 - Expecting **EKS control plane pods** inside the cluster (use **`aws-api`** EKS describe/list instead).

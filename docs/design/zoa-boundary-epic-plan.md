@@ -208,7 +208,7 @@ stateDiagram-v2
     creating --> active: ECS task RUNNING
     creating --> failed: ECS task failed to start
 
-    active --> terminated: zoa session stop
+    active --> terminated: zoa session terminate
     active --> terminated: reaper (4h deadline)
 
     failed --> [*]
@@ -319,7 +319,7 @@ This epic delivers the target ZOA access model: SREs authenticate via their AWS 
 | 7   | Session ID derived server-side from identity bridge (task ARN → `task-id-index` GSI → session record) — no client-supplied env vars or headers trusted for session linkage                                                                                                                                                            |
 | 8   | Reaper (Worker Lambda scheduled task) terminates sessions past 4h deadline using `status-deadline-index` GSI                                                                                                                                                                                                                          |
 | 9   | `zoa approve` / `zoa reject` routes return `501 Not Implemented` on both Access and API Lambda                                                                                                                                                                                                                                        |
-| 10  | `zoa session stop` and `zoa session join` enforce ownership (server-side 403 if caller != session.operator)                                                                                                                                                                                                                           |
+| 10  | `zoa session terminate` and `zoa session join` enforce ownership (server-side 403 if caller != session.operator)                                                                                                                                                                                                                           |
 | 11  | All new code has unit tests; conformance test updated for new handler mode                                                                                                                                                                                                                                                            |
 | 12  | `make all` passes (verify → test → build)                                                                                                                                                                                                                                                                                             |
 
@@ -333,7 +333,7 @@ The `zoa-lambda` container image serves all three Lambda roles. The `HANDLER_MOD
 
 | Mode     | Routes                                                                                                                                       | Caller                                              | Deployment                       |
 | -------- | -------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- | -------------------------------- |
-| `access` | `/api/v0/sessions/start`, `/api/v0/sessions`, `/api/v0/sessions/stop/{id}`, `/api/v0/targets`, `/api/v0/approve/{id}`, `/api/v0/reject/{id}` | Laptop (invoker role via Function URL)              | RC account, no VPC, 1 per region |
+| `access` | `/api/v0/sessions/start`, `/api/v0/sessions`, `/api/v0/sessions/terminate/{id}`, `/api/v0/targets`, `/api/v0/approve/{id}`, `/api/v0/reject/{id}` | Laptop (invoker role via Function URL)              | RC account, no VPC, 1 per region |
 | `api`    | `/run`, `/runs`, `/actions`, `/audit`, `/version`, `/approve/{id}`, `/reject/{id}`                                                           | Boundary container (ECS task role via Function URL) | Per-VPC (RC + each MC)           |
 | `worker` | EventBridge reconciler/GC/reaper events, self-invoke `execute` events                                                                        | EventBridge + Lambda self-invoke                    | Per-VPC (RC + each MC)           |
 
@@ -341,7 +341,7 @@ The `zoa-lambda` container image serves all three Lambda roles. The `HANDLER_MOD
 
 Access Lambda handles:
 
-- **Session lifecycle**: `POST /api/v0/sessions/start`, `GET /api/v0/sessions`, `POST /api/v0/sessions/stop/{id}`
+- **Session lifecycle**: `POST /api/v0/sessions/start`, `GET /api/v0/sessions`, `POST /api/v0/sessions/terminate/{id}`
 - **Target listing**: `GET /api/v0/targets` (reads SSM `/zoa/targets/<deployment>/` parameters, RC-local)
 - **Placement routing**: resolve target cluster → VPC → Function URL from SSM target parameters
 - **Cross-account session creation**: `sts:AssumeRole` into MC account to `ecs:RunTask` there
@@ -521,7 +521,7 @@ mc02      MC      us-east-1   vpc-0ghi789...   ready
 | Command                                    | Purpose                                              | Endpoint                     | Audit logged |
 | ------------------------------------------ | ---------------------------------------------------- | ---------------------------- | ------------ |
 | `zoa session start <deployment> <target>`  | Create ECS task, wait RUNNING                        | Access Lambda (invoker role) | **Yes**      |
-| `zoa session stop <deployment/session-id>` | Stop session (immediate `ecs:StopTask`)              | Access Lambda (invoker role) | **Yes**      |
+| `zoa session terminate <deployment/session-id>` | Terminate session (immediate `ecs:StopTask`)              | Access Lambda (invoker role) | **Yes**      |
 | `zoa session join <deployment/session-id>` | Reconnect via SSM                                    | Access Lambda (invoker role) | **Yes**      |
 | `zoa session list <deployment>`            | **Your sessions** (last 24h; default `--status all`) | Access Lambda (invoker role) | No           |
 | `zoa session history <deployment>`         | **All operators** (audit / situational awareness)    | Access Lambda (invoker role) | No           |
@@ -562,7 +562,7 @@ $ zoa session history us-east-1 --status active
 $ zoa session join us-east-1/sess-abc123
 
 # Stop (same — compound ID is self-routing)
-$ zoa session stop us-east-1/sess-abc123
+$ zoa session terminate us-east-1/sess-abc123
 ```
 
 **Approval commands** (top-level — approver should NOT need to create a session just to approve):
@@ -609,7 +609,7 @@ The deployment context is always provided per-command (positional arg or compoun
 | ---------------------------------- | ------------------------------------------ | --------------------------------------------------------- |
 | `zoa session list <deployment>`    | **Caller only** (`scope=mine`, 24h window) | None                                                      |
 | `zoa session history <deployment>` | **All operators**                          | None — situational awareness / audit                      |
-| `zoa session stop <deployment/id>` | Own sessions only                          | Server-side: Access Lambda validates `operator == caller` |
+| `zoa session terminate <deployment/id>` | Own sessions only                          | Server-side: Access Lambda validates `operator == caller` |
 | `zoa session join <deployment/id>` | Own sessions only                          | Server-side: Access Lambda validates `operator == caller` |
 
 `zoa session list` supports `--status`, `--target`. Default status filter: **`all`** (within 24h). `zoa session history` adds `--since`, `--until`, `--operator`, `--target`, `--status` for audit-style queries.

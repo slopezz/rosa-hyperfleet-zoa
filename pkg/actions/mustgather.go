@@ -129,9 +129,9 @@ func (m *mustGather) Metadata() ActionMetadata {
 		TimeoutSeconds:                mustGatherTimeout,
 		DeploymentTargets:             []string{DeploymentTargetRC, DeploymentTargetMC},
 		Examples: []string{
-			"zoa run must_gather --gather mc --jira ROSAENG-1234 --wait",
-			"zoa run must_gather --gather hcp --cluster-id 01234567-89ab-cdef-0123-456789abcdef --jira ROSAENG-1234 --wait",
-			"zoa run must_gather --gather rc --jira ROSAENG-1234 --wait",
+			"zoa run must_gather --gather mc --reason ROSAENG-1234 --wait",
+			"zoa run must_gather --gather hcp --cluster-id 01234567-89ab-cdef-0123-456789abcdef --reason ROSAENG-1234 --wait",
+			"zoa run must_gather --gather rc --reason ROSAENG-1234 --wait",
 		},
 		Parameters: []ParameterDef{
 			{Name: "gather", Required: true, Description: "Scope: hcp (hosted cluster + control plane), mc (management platform namespaces), rc (regional platform + HyperFleet CRs). Comma-separated; must match this ZOA endpoint."},
