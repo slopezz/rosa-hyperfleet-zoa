@@ -47,8 +47,11 @@ setup() {
   [ "${status}" -eq 0 ]
   [[ "${output}" == *"zoa session terminate us-east-1-eph/sess-abc123"* ]]
   [[ "${output}" == *"zoa session join us-east-1-eph/sess-abc123"* ]]
-  [[ "${output}" == *"Your sessions:   zoa session list us-east-1-eph"* ]]
-  [[ "${output}" == *"All operators sessions: zoa session history us-east-1-eph"* ]]
+  [[ "${output}" == *"zoa session list us-east-1-eph"* ]]
+  [[ "${output}" == *"All operators (audit):"* ]]
+  [[ "${output}" == *"zoa session history us-east-1-eph"* ]]
+  [[ "${output}" == *"Hard termination:"* ]]
+  [[ "${output}" == *"Inactivity termination:"* ]]
   [[ "${output}" == *"still running"* ]]
   [[ "${output}" != *"-d "* ]]
 }

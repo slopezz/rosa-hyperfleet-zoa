@@ -64,9 +64,7 @@ zoa_boundary_print_motd() {
   echo "    operator attribution uses the identity bridge."
   echo ""
   zoa_boundary_prompt_session_reason
-  echo "==> Quick start"
-  echo "    zoa run <action> ...   (session reason above; or --reason TICKET)"
-  echo ""
+  zoa_boundary_print_quick_start
   echo "==> Agent and session docs (Claude Code + humans)"
   echo "    ~/.claude/CLAUDE.md       — ROSA HyperFleet architecture, boundary rules, RC vs MC, identity bridge, TA workflow"
   echo "    ~/.claude/ZOA_SESSION.md  — this session (deployment, target, target type)"
@@ -88,12 +86,7 @@ zoa_boundary_print_exit_hint() {
 
   echo ""
   echo "==> ZOA boundary — Exec ended (task still running)"
-  if [[ -n "${ZOA_SESSION_DEADLINE:-}" ]]; then
-    zoa_boundary_print_deadline_line "    Hard termination (UTC): "
-  fi
-  if [[ -n "${ZOA_SESSION_IDLE_TIMEOUT_SECONDS:-}" ]]; then
-    printf '    Inactivity termination: %s without Exec terminal activity\n' "$(zoa_boundary_format_idle_timeout "${ZOA_SESSION_IDLE_TIMEOUT_SECONDS}")"
-  fi
+  zoa_boundary_print_hard_and_inactivity_termination 1
   echo "    Terminate session:        zoa session terminate ${compound}"
   echo "    Re-join session:          zoa session join ${compound}"
   echo "    Your sessions:            zoa session list ${deployment}"
@@ -128,17 +121,57 @@ zoa_boundary_format_idle_timeout() {
   printf '%s seconds' "${seconds}"
 }
 
-zoa_boundary_print_deadline_line() {
-  local prefix="${1:-}"
-  local deadline="${ZOA_SESSION_DEADLINE:-}"
-  if [[ -z "${deadline}" ]]; then
-    return 0
+# Column alignment for session limits / exit timeout lines (after 4-space indent).
+zoa_boundary_session_limits_label_width() {
+  echo 26
+}
+
+zoa_boundary_print_session_limits_continuation() {
+  local text="${1:-}"
+  local width
+  width="$(zoa_boundary_session_limits_label_width)"
+  printf '%*s%s\n' $((4 + width)) '' "${text}"
+}
+
+zoa_boundary_print_session_limits_label_value() {
+  local label="${1:-}"
+  local value="${2:-}"
+  local width
+  width="$(zoa_boundary_session_limits_label_width)"
+  # shellcheck disable=SC2059
+  printf '    %-'"${width}"'s%s\n' "${label}" "${value}"
+}
+
+# compact=1: one line each (Exec exit hint); compact=0: sub-lines (login limits).
+zoa_boundary_print_hard_and_inactivity_termination() {
+  local compact="${1:-0}"
+  if [[ -n "${ZOA_SESSION_DEADLINE:-}" ]]; then
+    zoa_boundary_print_session_limits_label_value "Hard termination:" "$(zoa_boundary_deadline_human "${ZOA_SESSION_DEADLINE}")"
+    if [[ "${compact}" != "1" ]]; then
+      zoa_boundary_print_session_limits_continuation "Max wall-clock from session start."
+    fi
+  elif [[ "${compact}" != "1" ]]; then
+    zoa_boundary_print_session_limits_label_value "Hard termination:" "(see zoa session history on laptop)"
+    zoa_boundary_print_session_limits_continuation "Max wall-clock from session start."
   fi
-  local human
-  human="$(zoa_boundary_deadline_human "${deadline}")"
-  if [[ -n "${human}" ]]; then
-    printf '%s%s\n' "${prefix}" "${human}"
+  if [[ -n "${ZOA_SESSION_IDLE_TIMEOUT_SECONDS:-}" ]]; then
+    local idle_text
+    idle_text="$(zoa_boundary_format_idle_timeout "${ZOA_SESSION_IDLE_TIMEOUT_SECONDS}") without Exec terminal activity"
+    zoa_boundary_print_session_limits_label_value "Inactivity termination:" "${idle_text}"
+    if [[ "${compact}" != "1" ]]; then
+      zoa_boundary_print_session_limits_continuation "Task ends even if before the hard termination deadline."
+    fi
   fi
+}
+
+zoa_boundary_print_quick_start() {
+  echo "==> Quick start"
+  if [[ -n "${ZOA_REASON:-}" ]] && zoa_boundary_reason_valid "${ZOA_REASON}"; then
+    echo "    zoa run <action> ..."
+  else
+    echo "    zoa run <action> ... --reason ROSAENG-1234"
+  fi
+  echo ""
 }
 
 zoa_boundary_deadline_human() {
@@ -168,25 +201,16 @@ zoa_boundary_deadline_human() {
 
 zoa_boundary_print_session_limits() {
   echo "==> ZOA Boundary session limits"
-  if [[ -n "${ZOA_SESSION_DEADLINE:-}" ]]; then
-    printf '    Hard termination:  %s\n' "$(zoa_boundary_deadline_human "${ZOA_SESSION_DEADLINE}")"
-    echo "                      — max session length from start"
-  else
-    echo "    Hard termination:  (see zoa session history on laptop)"
-  fi
-  if [[ -n "${ZOA_SESSION_IDLE_TIMEOUT_SECONDS:-}" ]]; then
-    printf '    Inactivity termination:  %s without Exec terminal activity\n' "$(zoa_boundary_format_idle_timeout "${ZOA_SESSION_IDLE_TIMEOUT_SECONDS}")"
-    echo "                      — task terminated even if before the hard deadline"
-  fi
-  echo "    Note:        exit / Ctrl+D only disconnects Exec; terminate from your laptop:"
+  zoa_boundary_print_hard_and_inactivity_termination 0
+  zoa_boundary_print_session_limits_label_value "Note:" "exit / Ctrl+D only disconnects Exec; terminate from laptop:"
   local compound=""
   if declare -F zoa_compound_session_id &>/dev/null; then
     compound="$(zoa_compound_session_id)"
   fi
   if [[ -n "${compound}" ]]; then
-    printf '                zoa session terminate %s\n' "${compound}"
+    zoa_boundary_print_session_limits_continuation "zoa session terminate ${compound}"
   else
-    echo "                zoa session terminate <deployment>/<session-id>"
+    zoa_boundary_print_session_limits_continuation "zoa session terminate <deployment>/<session-id>"
   fi
   echo ""
 }
@@ -259,14 +283,16 @@ zoa_boundary_prompt_session_reason() {
   local current="${ZOA_REASON:-}"
   if [[ -n "${current}" ]] && zoa_boundary_reason_valid "${current}"; then
     echo "==> Session reason"
-    printf '    Using %s for zoa run (ZOA_REASON; saved for this boundary task).\n' "${current}"
-    echo "    Change:  reason <ticket>     One-off:  zoa run ... --reason <ticket>"
+    printf '    %s — default for every zoa run on this task (ZOA_REASON).\n' "${current}"
+    echo ""
+    printf '    %-32s%s\n' "reason <ticket>" "new session default"
+    printf '    %-32s%s\n' "zoa run ... --reason <ticket>" "one-off override only"
     echo ""
     return 0
   fi
 
   echo "==> Session reason"
-  echo "    Default for every zoa run in this session (including Claude)."
+  echo "    Set a default for all zoa run in this session (including agents)."
   echo "    Press Enter to skip — then use zoa run ... --reason each time."
   echo ""
   local reply=""
@@ -277,7 +303,7 @@ zoa_boundary_prompt_session_reason() {
   fi
   reply="$(echo "${reply}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
   if [[ -z "${reply}" ]]; then
-    echo "    No session reason set."
+    echo "    No session default — use zoa run ... --reason <ticket> each time."
     echo ""
     return 0
   fi
@@ -288,7 +314,9 @@ zoa_boundary_prompt_session_reason() {
   fi
   zoa_boundary_reason_apply "${reply}"
   printf '    Set session reason to %s (exported ZOA_REASON).\n' "${reply}"
-  echo "    Change:  reason <ticket>     One-off:  zoa run ... --reason <ticket>"
+  echo ""
+  printf '    %-32s%s\n' "reason <ticket>" "new session default"
+  printf '    %-32s%s\n' "zoa run ... --reason <ticket>" "one-off override only"
   echo ""
 }
 
