@@ -79,7 +79,7 @@ config:
 ---
 graph TD
     subgraph laptop["SRE Laptop"]
-        L["RH VPN → kinit<br/>rh-aws-saml-login (Central)<br/>zoa deployments · targets<br/>zoa session start · join"]
+        L["RH VPN → kinit → rh-aws-saml-login (Central)<br/>→ zoa deployments → zoa targets<br/>→ zoa session start · join"]
     end
 
     subgraph rc["RC Account"]
