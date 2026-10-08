@@ -79,7 +79,9 @@ config:
 ---
 graph TD
     subgraph laptop["SRE Laptop"]
-        L["RH VPN → kinit → rh-aws-saml-login (Central)<br/>→ zoa deployments → zoa targets<br/>→ zoa session start · join"]
+        LAPTOP_AUTH["RH VPN → kinit<br/>→ rh-aws-saml-login"]
+        LAPTOP_ZOA["Central AWS creds<br/>→ zoa deployments → zoa targets<br/>→ zoa session start · join"]
+        LAPTOP_AUTH --> LAPTOP_ZOA
     end
 
     subgraph rc["RC Account"]
@@ -104,13 +106,13 @@ graph TD
         end
     end
 
-    L -->|"SigV4: session start/stop/list"| ACCESS
+    LAPTOP_ZOA -->|"SigV4: session start/stop/list"| ACCESS
     ACCESS -->|"sessions, RunTask"| STATE
     ACCESS -->|"ecs:RunTask"| BOUNDARY_RC
     ACCESS -->|"ecs:RunTask (cross-account)"| BOUNDARY_MC
 
-    L -.->|"ECS Exec (session-manager-plugin)"| BOUNDARY_RC
-    L -.->|"ECS Exec"| BOUNDARY_MC
+    LAPTOP_ZOA -.->|"ECS Exec (session-manager-plugin)"| BOUNDARY_RC
+    LAPTOP_ZOA -.->|"ECS Exec"| BOUNDARY_MC
 
     BOUNDARY_RC -->|"zoa run (SigV4)"| API_RC
     BOUNDARY_MC -->|"zoa run (SigV4)"| API_MC
