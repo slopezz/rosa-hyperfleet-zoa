@@ -49,11 +49,11 @@ Access injects at `RunTask` (in addition to task-definition defaults):
 
 | Env                                           | Purpose                                                                        |
 | --------------------------------------------- | ------------------------------------------------------------------------------ |
-| `ZOA_TARGET_TYPE`                       | `rc` or `mc` (lowercased from target metadata) — TA registry filter; legacy `ZOA_DEPLOYMENT_TARGET` |
+| `ZOA_DEPLOYMENT_TARGET`                       | `rc` or `mc` (lowercased from target metadata) — selects baked TA catalog file |
 | `ZOA_SESSION_ID` / `ZOA_OPERATOR`             | Session facts in `ZOA_SESSION.md`                                              |
 | `ZOA_API_URL`, `ZOA_TARGET`, `ZOA_DEPLOYMENT` | Existing boundary wiring                                                       |
 
-Entrypoint copies runtime **`ZOA_ACTIONS.md`** via `zoa actions --offline -o markdown` (embedded CLI registry; **`ZOA_TARGET_TYPE`**).
+Entrypoint copies `/usr/share/zoa/catalog/ZOA_ACTIONS.{rc|mc}.md` → `/home/sre/.claude/ZOA_ACTIONS.md`. Regenerate catalogs with `go run ./hack/generate-boundary-catalog/` after TA metadata changes.
 
 ## Terraform / IAM (rosa-hyperfleet)
 
@@ -63,7 +63,7 @@ Entrypoint copies runtime **`ZOA_ACTIONS.md`** via `zoa actions --offline -o mar
 
 ## Operational notes
 
-- **Leaving the Exec shell** does not terminate the task; only **`zoa session terminate`**, **deadline reaper**, or **inactivity reaper** does.
+- **Leaving the Exec shell** does not stop the task; only **session stop**, **deadline reaper**, or **idle reaper** does.
 - **Idle baseline `createdAt`** includes task provisioning time; very slow `RunTask` reduces time-to-idle-reap before first join.
 - **SSM history pagination** is capped (20 pages); sufficient for dev/ephemeral; revisit at high join churn.
 - Roll back feature bundle: git parent before `feat(boundary): idle reaper, exec session tracking, and CLI/catalog UX` on `feat/zoa-boundary`.

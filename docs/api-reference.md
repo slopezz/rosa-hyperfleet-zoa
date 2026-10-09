@@ -6,7 +6,7 @@ The ZOA API is exposed via an AWS Lambda Function URL with IAM authentication (S
 
 All requests must be signed with AWS SigV4. The Lambda Function URL uses `authorization_type = "AWS_IAM"`. The **`zoa` CLI** sets **`X-Operator`** to `sts:GetCallerIdentity().Arn` for the credentials that signed the request.
 
-On the **API** Lambda, the server resolves **operator** and **session_id** via the **identity bridge** (`task-id-index` GSI), then falls back to the invoker session name for laptop `zoa run` until IAM restricts API invoke. On **Access**, **operator**, **signer_arn**, and **account_id** are set at **session start** from the invoker ARN and `X-Account-ID`. See [boundary identity and storage](design/boundary-identity-and-storage.md) and [SRE access guide — Identity](boundary/sre-access-guide.md#identity-and-sigv4).
+On the **API** Lambda, boundary callers use the **ECS task role**; the server resolves the human **operator** and **session id** via the **identity bridge** (task id in the ARN → DynamoDB session lookup). On **Access**, the operator is taken from the **invoker** ARN for session ownership. See [Boundary SRE access guide — Identity and SigV4](boundary/sre-access-guide.md#identity-and-sigv4).
 
 ## Base URL
 
@@ -20,47 +20,47 @@ Each cluster has a unique Function URL. Set `ZOA_API_URL` to the target cluster'
 
 ### Health & Version
 
-| Method | Path       | Description                                        |
-| ------ | ---------- | -------------------------------------------------- |
-| `GET`  | `/health`  | Health check (200 OK)                              |
-| `GET`  | `/version` | Server version, commit, build time, target cluster |
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/health` | Health check (200 OK) |
+| `GET` | `/version` | Server version, commit, build time, target cluster |
 
 ### Trusted Actions
 
-| Method | Path                                   | Description                                  |
-| ------ | -------------------------------------- | -------------------------------------------- |
-| `GET`  | `/api/v0/trusted-actions`              | List all registered TAs                      |
-| `GET`  | `/api/v0/trusted-actions/{action}`     | Describe a specific TA (params, scope, RBAC) |
-| `POST` | `/api/v0/trusted-actions/{action}/run` | Execute a TA                                 |
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v0/trusted-actions` | List all registered TAs |
+| `GET` | `/api/v0/trusted-actions/{action}` | Describe a specific TA (params, scope, RBAC) |
+| `POST` | `/api/v0/trusted-actions/{action}/run` | Execute a TA |
 
 ### Executions
 
-| Method | Path                                       | Description                           |
-| ------ | ------------------------------------------ | ------------------------------------- |
-| `GET`  | `/api/v0/trusted-actions/runs`             | List executions (with filters)        |
-| `GET`  | `/api/v0/trusted-actions/runs/{id}`        | Get execution details                 |
-| `GET`  | `/api/v0/trusted-actions/runs/{id}/output` | Download execution output (streaming) |
-| `GET`  | `/api/v0/trusted-actions/runs/{id}/logs`   | Download execution logs (streaming)   |
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v0/trusted-actions/runs` | List executions (with filters) |
+| `GET` | `/api/v0/trusted-actions/runs/{id}` | Get execution details |
+| `GET` | `/api/v0/trusted-actions/runs/{id}/output` | Download execution output (streaming) |
+| `GET` | `/api/v0/trusted-actions/runs/{id}/logs` | Download execution logs (streaming) |
 
 ### Audit
 
-| Method | Path                            | Description       |
-| ------ | ------------------------------- | ----------------- |
-| `GET`  | `/api/v0/trusted-actions/audit` | Query audit trail |
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v0/trusted-actions/audit` | Query audit trail |
 
 ### Access (boundary sessions)
 
 All Access routes use the same `/api/v0` prefix and error envelope as Trusted Actions. Served by the regional Access Lambda (`HANDLER_MODE=access`).
 
-| Method | Path                         | Description                               |
-| ------ | ---------------------------- | ----------------------------------------- |
-| `GET`  | `/api/v0/targets`            | List targets (RC + MC) for the deployment |
-| `POST` | `/api/v0/sessions/start`     | Start a boundary session                  |
-| `GET`  | `/api/v0/sessions`           | List sessions                             |
-| `POST` | `/api/v0/sessions/terminate/{id}` | Terminate a session                       |
-| `POST` | `/api/v0/sessions/join/{id}` | Join a session (ECS Exec credentials)     |
-| `POST` | `/api/v0/approve/{id}`       | Approve request (stub)                    |
-| `POST` | `/api/v0/reject/{id}`        | Reject request (stub)                     |
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v0/targets` | List targets (RC + MC) for the deployment |
+| `POST` | `/api/v0/sessions/start` | Start a boundary session |
+| `GET` | `/api/v0/sessions` | List sessions |
+| `POST` | `/api/v0/sessions/stop/{id}` | Stop a session |
+| `POST` | `/api/v0/sessions/join/{id}` | Join a session (ECS Exec credentials) |
+| `POST` | `/api/v0/approve/{id}` | Approve request (stub) |
+| `POST` | `/api/v0/reject/{id}` | Reject request (stub) |
 
 Session and target routes require `X-Operator` (assumed-role ARN) and `X-Account-ID`, same as TA execution.
 
@@ -72,16 +72,16 @@ Execute a Trusted Action.
 
 ### Headers
 
-| Header         | Required  | Description                                                                          |
-| -------------- | --------- | ------------------------------------------------------------------------------------ |
-| `X-Account-ID` | Yes       | AWS account ID of the caller (set by CLI from STS)                                   |
-| `X-Operator`   | Yes (CLI) | Caller ARN from `GetCallerIdentity` (API: identity bridge maps task role → operator) |
+| Header | Required | Description |
+|--------|----------|-------------|
+| `X-Account-ID` | Yes | AWS account ID of the caller (set by CLI from STS) |
+| `X-Operator` | Yes (CLI) | Caller ARN from `GetCallerIdentity` (API: identity bridge maps task role → operator) |
 
 ### Request Body
 
 ```json
 {
-  "reason": "OSD-12345",
+  "jira": "OSD-12345",
   "params": {
     "namespace": "kube-system",
     "resource": "pods"
@@ -93,14 +93,14 @@ Execute a Trusted Action.
 }
 ```
 
-| Field             | Type   | Required                | Description                                                                                                                                      |
-| ----------------- | ------ | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `reason`          | string | Yes                     | Jira issue (`PROJECT-123`) or PagerDuty incident (`#digits`, e.g. `#123456`)                                                                     |
-| `params`          | object | Depends on TA           | Key-value parameters for the TA                                                                                                                  |
-| `force`           | bool   | No                      | Bypass write cooldown (write TAs), max concurrent limit (all TAs), and TA-level safety checks (e.g., owner reference protection in `delete_pod`) |
-| `dry_run`         | bool   | No                      | Execute the TA's DryRunAction instead                                                                                                            |
-| `execution_mode`  | string | No                      | Override TA's default mode (`sync` or `async`)                                                                                                   |
-| `timeout_seconds` | int    | No                      | Override TA's default timeout (bounded by server max)                                                                                            |
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `jira` | string | Yes (if TA requires it) | Jira ticket for audit (format: `PROJECT-123`) |
+| `params` | object | Depends on TA | Key-value parameters for the TA |
+| `force` | bool | No | Bypass write cooldown (write TAs), max concurrent limit (all TAs), and TA-level safety checks (e.g., owner reference protection in `delete_pod`) |
+| `dry_run` | bool | No | Execute the TA's DryRunAction instead |
+| `execution_mode` | string | No | Override TA's default mode (`sync` or `async`) |
+| `timeout_seconds` | int | No | Override TA's default timeout (bounded by server max) |
 
 ### Response (sync, success)
 
@@ -128,16 +128,16 @@ Execute a Trusted Action.
 
 ### Error Responses
 
-| Code | Reason             | Description                                           |
-| ---- | ------------------ | ----------------------------------------------------- |
-| 400  | `invalid_body`     | Request body parse failure                            |
-| 400  | `invalid_params`   | Missing required param or unknown param               |
-| 400  | `invalid_reason`     | Reason format invalid (Jira issue or PagerDuty incident) |
-| 400  | `missing_account`  | `X-Account-ID` header missing                         |
-| 400  | `timeout_exceeded` | Requested timeout exceeds server maximum              |
-| 404  | `action_not_found` | TA not registered                                     |
-| 429  | `write_cooldown`   | Write action executed too recently (use `force=true`) |
-| 429  | `max_concurrent`   | Too many active executions on target                  |
+| Code | Reason | Description |
+|------|--------|-------------|
+| 400 | `invalid_body` | Request body parse failure |
+| 400 | `invalid_params` | Missing required param or unknown param |
+| 400 | `invalid-jira` | Jira ticket format invalid |
+| 400 | `missing_account` | `X-Account-ID` header missing |
+| 400 | `timeout_exceeded` | Requested timeout exceeds server maximum |
+| 404 | `action_not_found` | TA not registered |
+| 429 | `write_cooldown` | Write action executed too recently (use `force=true`) |
+| 429 | `max_concurrent` | Too many active executions on target |
 
 ---
 
@@ -157,9 +157,9 @@ Get execution details.
   "scope": "kube-api",
   "type": "read",
   "dry_run": false,
-  "reason": "OSD-123",
+  "jira": "OSD-123",
   "operator": "slopezma",
-  "params": { "namespace": "kube-system", "resource": "pods" },
+  "params": {"namespace": "kube-system", "resource": "pods"},
   "revision": "df90d53",
   "created_at": "2026-08-17T10:08:29.123Z",
   "dispatched_at": "2026-08-17T10:08:29.123Z",
@@ -172,12 +172,12 @@ Get execution details.
 
 ### Statuses
 
-| Status       | Meaning                       |
-| ------------ | ----------------------------- |
-| `dispatched` | Created, awaiting execution   |
-| `succeeded`  | Completed successfully        |
-| `failed`     | Execution failed (check logs) |
-| `timed_out`  | Exceeded timeout deadline     |
+| Status | Meaning |
+|--------|---------|
+| `dispatched` | Created, awaiting execution |
+| `succeeded` | Completed successfully |
+| `failed` | Execution failed (check logs) |
+| `timed_out` | Exceeded timeout deadline |
 
 ---
 
@@ -187,11 +187,11 @@ List executions with optional filters.
 
 ### Query Parameters
 
-| Param    | Type   | Description              |
-| -------- | ------ | ------------------------ |
-| `status` | string | Filter by status         |
-| `action` | string | Filter by action name    |
-| `limit`  | int    | Max results (default 50) |
+| Param | Type | Description |
+|-------|------|-------------|
+| `status` | string | Filter by status |
+| `action` | string | Filter by action name |
+| `limit` | int | Max results (default 50) |
 
 ---
 
@@ -217,11 +217,11 @@ Query the audit trail.
 
 ### Query Parameters
 
-| Param      | Type   | Description              |
-| ---------- | ------ | ------------------------ |
-| `action`   | string | Filter by action         |
-| `operator` | string | Filter by operator       |
-| `limit`    | int    | Max results (default 50) |
+| Param | Type | Description |
+|-------|------|-------------|
+| `action` | string | Filter by action |
+| `operator` | string | Filter by operator |
+| `limit` | int | Max results (default 50) |
 
 ### Response
 
@@ -236,7 +236,7 @@ Query the audit trail.
       "operator": "slopezma",
       "action": "list_eks_clusters",
       "target_cluster": "eph-994026fc-regional",
-      "reason": "TEST-1",
+      "jira": "TEST-1",
       "execution_id": "d5b57bf2-1bdb-42bf-9607-8abf47d5331c"
     }
   ]
@@ -282,12 +282,8 @@ Describe a specific TA including parameters, RBAC, and metadata.
   "description": "Get or list Kubernetes resources...",
   "timeout_seconds": 60,
   "parameters": [
-    { "name": "resource", "required": true, "description": "Resource type" },
-    {
-      "name": "namespace",
-      "required": false,
-      "description": "Target namespace"
-    }
+    {"name": "resource", "required": true, "description": "Resource type"},
+    {"name": "namespace", "required": false, "description": "Target namespace"}
   ],
   "authorization": {
     "approval": "none"

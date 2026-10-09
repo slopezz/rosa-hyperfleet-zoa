@@ -26,11 +26,9 @@ Image: **`zoa-boundary`** (`Containerfile.boundary`). Published to Quay (`quay.i
 ## Shell
 
 - `/etc/bash_completion.d/` — `zoa`, `kubectl`, `aws`
-- `~/.bashrc.d/15-zoa-motd.bashrc` — UTF-8 **ZOA** banner + Hello + session context on Exec login (once per shell)
 - `~/.bashrc.d/10-zoa-prompt.bashrc` — two-line session prompt
-- `~/.bashrc.d/99-session-exit-reminder.bashrc` — on `exit`/Ctrl+D, `==>` hints to stop from laptop (task keeps running)
-- `/etc/zoa-boundary/banner.sh` — shared MOTD, exit hint, container startup log (no ANSI colors)
-- Entrypoint: `zoa-boundary-entrypoint.sh` — `ZOA_SESSION.md`, `ZOA_ACTIONS.md`, startup banner
+- `~/.bashrc.d/99-session-exit-reminder.bashrc` — on `exit`/Ctrl+D, prints `zoa session stop` for the laptop (task keeps running)
+- Entrypoint: `zoa-boundary-entrypoint.sh` — `ZOA_SESSION.md`, `ZOA_ACTIONS.md`, banner
 
 ## Build
 
@@ -47,10 +45,10 @@ Pass `VCS_REF` / `VERSION` via build-args when integrating with Konflux (see `do
 ```bash
 make test-shell   # bats — entrypoint.sh (requires bats-core)
 ```
-
 Wire into CI via openshift/release (planned).
 
 ## Related
 
 - [Session logging](../design/boundary-session-logging.md)
-- [Terraform module README](https://github.com/openshift-online/rosa-hyperfleet/blob/main/terraform/modules/zoa-boundary/README.md)
+- [zoa-lambda module README](https://github.com/openshift-online/rosa-hyperfleet/blob/main/terraform/modules/zoa-lambda/README.md) (boundary ECS: `boundary-ecs.tf`, `boundary-task.tf`)
+

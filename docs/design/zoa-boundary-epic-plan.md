@@ -6,7 +6,7 @@ Today, SREs call per-VPC Lambda Function URLs **directly from their laptop** (th
 
 The epic follows the format of [ROSAENG-65229](https://redhat.atlassian.net/browse/ROSAENG-65229) (ZOA Lambda Rearchitecture).
 
-**Last plan revision:** 2026-10-06 (aligned with `feat/zoa-boundary` in `rosa-hyperfleet` + `rosa-hyperfleet-zoa`).
+**Last plan revision:** 2026-10-09 (`feat/zoa-boundary` — `rosa-hyperfleet-zoa` @ `9133970`, matching image tags in `rosa-hyperfleet` config).
 
 ### Jira index
 
@@ -22,23 +22,30 @@ Child stories were defined in this document before Jira subtasks existed. Create
 | 6   | ZOA Boundary Documentation — architecture, CLI reference, SRE runbook               | both                                     | [ROSAENG-68810](https://redhat.atlassian.net/browse/ROSAENG-68810) |
 | 7   | App-interface: Central Account SAML role for ZOA Access invoker (dev, int, stage)   | app-interface + `rosa-hyperfleet` config | [ROSAENG-68811](https://redhat.atlassian.net/browse/ROSAENG-68811) |
 
-### Implementation status (2026-10-06)
+### Implementation status (2026-10-09)
 
-Work is on branch **`feat/zoa-boundary`**. Config pins container/Lambda tags to **`a1fa929`** (`rosa-hyperfleet/config/defaults.yaml`); images must exist in Quay before regions pick up UX fixes.
+Work on branch **`feat/zoa-boundary`**. HyperFleet config pins **`zoa_lambda_image`**, **`zoa_runner_image`**, and **`zoa_boundary_image`** to commit **`9133970`** (or newer) so regions pick up MOTD/reason UX; images must exist in Quay/ECR before apply.
+
+**Terraform as built (rosa-hyperfleet):** there is **no** standalone `terraform/modules/zoa-boundary/` module in the tree today. Boundary **ECS** (task definition, log groups, SG, boundary IAM) ships inside **`terraform/modules/zoa-lambda/`** (`boundary-ecs.tf`, `boundary-task.tf`, …). **`terraform/modules/zoa-access/`** is **RC only** — Access Lambda + session IAM (`ecs:RunTask` into per-VPC clusters); it does **not** run the boundary container. **`terraform/modules/zoa/`** holds DynamoDB (including **sessions**), S3, KMS, ECR.
 
 | Area                                                            | Status              | Notes                                                                                                                                                                   |
 | --------------------------------------------------------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Access / API / Worker Lambda (`HANDLER_MODE`)                   | **Shipped in code** | Same `zoa-lambda` image; Access deployed via `terraform/modules/zoa-access`                                                                                             |
-| ZOA CLI: deployments, targets, session, audit                   | **Shipped**         | `session list` = **your** sessions (`scope=mine`, default `--status all`, 24h window); `session history` = all operators                                                |
-| Session start / join                                            | **Shipped**         | Default **ECS Exec connect** after RUNNING; use `--no-connect` for metadata only                                                                                        |
-| Offline TA catalog                                              | **Shipped**         | `zoa actions --offline`, `zoa catalog`, `-o markdown`; `ZOA_TARGET_TYPE` (legacy `ZOA_DEPLOYMENT_TARGET`); entrypoint writes `~/.claude/ZOA_ACTIONS.md` at task start   |
-| Boundary image UX                                               | **Shipped in repo** | Compound PS1 `sessionId:<deployment>/<uuid>`, exit hints, expanded `CLAUDE.md` — requires **boundary image redeploy**                                                   |
-| Identity bridge + sessions DynamoDB                             | **Shipped**         | `task-id-index` GSI; operator from invoker SigV4 session name                                                                                                           |
-| Exec session ids (`exec-attached`)                              | **Partial**         | CLI registers SSM exec id on join; **HTTP 500** seen in ephemeral — redeploy Access Lambda with surfaced error reason; re-test                                          |
-| Session recording Layer 2 (auditd / PROMPT_COMMAND)             | **Not shipped**     | **SSM ECS Exec → CloudWatch** + **DynamoDB audit** only today; structured command layer tracked in [boundary-session-logging.md](../design/boundary-session-logging.md) |
+| Access / API / Worker Lambda (`HANDLER_MODE`)                   | **Shipped**         | One `zoa-lambda` image; Access function in RC via `zoa-access`; API+Worker per RC/MC VPC via `zoa-lambda`                                                                 |
+| ZOA CLI: deployments, targets, session, audit                   | **Shipped**         | `session list` = **your** sessions; `session history` = all operators (audit)                                                                                           |
+| Session start / join / **terminate**                            | **Shipped**         | Default **ECS Exec** after RUNNING; `--no-connect` for metadata only; **`zoa session terminate`** (no `session stop`); laptop terminate stops task, Exec exit does not   |
+| **`--reason` / `ZOA_REASON`**                                  | **Shipped**         | Session `--reason` + per-`zoa run`; boundary MOTD/quick-start (`zoa-boundary-banner.sh`)                                                                                |
+| Offline TA catalog                                              | **Shipped**         | `zoa actions --offline`, `catalog`, `-o markdown`; `ZOA_TARGET_TYPE`; entrypoint writes `~/.claude/ZOA_ACTIONS.md`                                                       |
+| Boundary image UX                                               | **Shipped in repo** | Compound PS1, session limits copy, exit hints, `CLAUDE.md` — needs **boundary image** deploy in target VPCs                                                             |
+| Identity bridge + sessions DynamoDB                             | **Shipped**         | `task-id-index` GSI; API resolves ECS task ARN → session → operator                                                                                                     |
+| Session reaper (hard + inactivity)                              | **Shipped in code** | Worker schedule; idle path uses Exec log activity — [boundary-session-reaper.md](../design/boundary-session-reaper.md)                                                  |
+| Exec session ids (`exec-attached`)                              | **Partial**         | CLI registers on join; re-validate in ephemeral after Access deploy                                                                                                       |
+| Session recording Layer 2 (auditd / PROMPT_COMMAND)             | **Not shipped**     | **SSM ECS Exec → CloudWatch** + **DynamoDB audit** only; see [boundary-session-logging.md](../design/boundary-session-logging.md)                                         |
 | Konflux boundary pipeline                                       | **Open**            | Story 3                                                                                                                                                                 |
-| Observability / E2E / full doc pass                             | **Partial**         | `docs/boundary/*` exists; epic AC 13–15 not fully closed                                                                                                                |
+| Observability (story 4)                                         | **Partial**         | TA metrics path exists; boundary/session dashboards & rules — story 4                                                                                                   |
+| E2E boundary + monitoring (story 5)                             | **Partial**         | `make test-e2e` chains functional + `test/e2e-monitoring`; dedicated boundary session e2e in hyperfleet — story 5                                                         |
+| Documentation (story 6)                                         | **In progress**     | Operator [workflow](../guides/operator-workflow.md), [storage](../architecture/storage.md), root README; hub `docs/README.md`; `runtime.md` + CLI/API polish remaining    |
 | SAML hub role for invoker (not `OrganizationAccountAccessRole`) | **Open**            | Story 7 — app-interface + `aws.zoa_access_trusted_assumer_role_names` per env                                                                                           |
+| Direct laptop → API Lambda (bootstrap)                          | **Still exists**    | IAM not yet restricted to boundary task roles only — future break-glass / hardening epic                                                                                  |
 
 ### Why this matters
 
@@ -242,7 +249,7 @@ This epic delivers the target ZOA access model: SREs authenticate via their AWS 
 
 - ZOA Access Lambda (Go, no VPC) with Function URL (IAM auth) + central-trusted invoker role per region
 - ZOA Boundary container image (`Containerfile.boundary`) with zoa CLI, aws CLI v2, kubectl, jq, Claude Code (Bedrock)
-- ZOA CLI commands for discovery (`zoa deployments`, `zoa targets <deployment>`) and session management (`zoa session start/stop/join/list/history`) with compound session IDs
+- ZOA CLI commands for discovery (`zoa deployments`, `zoa targets <deployment>`) and session management (`zoa session start/terminate/join/list/history`) with compound session IDs
 - SSM Parameter Store autodiscovery in Central Account (deployments, Function URLs, invoker role ARNs)
 - Tamper-proof identity bridge: SigV4 task UUID → `task-id-index` GSI → SRE username + session ID (no ABAC, scoped credentials model, no client-supplied headers)
 - DynamoDB `boundary-sessions` table for session state tracking (in `zoa/` module, consolidated storage, GSIs: `operator-index`, `status-deadline-index`, `date-bucket-index`, `task-id-index`)
@@ -250,7 +257,7 @@ This epic delivers the target ZOA access model: SREs authenticate via their AWS 
 - ECS task tags (tamper-proof): `sre`, `sessionId`, `deployment`, `target` — second independent SRE attribution path
 - Bedrock integration: regional-only IAM (no cross-region inference), model invocation logging (metadata only, no payloads)
 - Boundary session reaper (EventBridge-triggered on Worker Lambda, 4h timeout)
-- Terraform modules: `zoa-access` (Lambda + Function URL + invoker role), `zoa-boundary` (ECS task definition, IAM, SG)
+- Terraform modules: `zoa-access` (RC Access Lambda + Function URL + invoker role), `zoa-lambda` (per-VPC API/Worker + boundary ECS in `boundary-*.tf`), `zoa` (DynamoDB sessions, S3, KMS)
 - Konflux pipeline for ZOA Boundary container image (Enterprise Contract)
 - Per-region pipeline step to publish metadata to Central Account SSM Parameter Store
 - Full observability stack: EMF metrics, YACE scrape, alerting rules, recording rules, Grafana dashboard
@@ -271,9 +278,9 @@ This epic delivers the target ZOA access model: SREs authenticate via their AWS 
 | 6   | Session ID resolved server-side from the identity bridge (task ARN → sessions table → session ID) and stored in all TA execution and audit entries — complete audit chain from session to every operation, no client-supplied headers trusted            |
 | 7   | Sessions are time-boxed (4h default) and auto-terminated by the reaper                                                                                                                                                                                   |
 | 8   | SSM session logging captures full terminal I/O to CloudWatch Logs (KMS-encrypted)                                                                                                                                                                        |
-| 9   | `zoa session list <deployment>` shows **the caller's** sessions (last 24h, default `--status all`). `zoa session history <deployment>` shows **all operators** for situational awareness / audit. `stop` and `join` enforce ownership (server-side 403). |
+| 9   | `zoa session list <deployment>` shows **the caller's** sessions (last 24h, default `--status all`). `zoa session history <deployment>` shows **all operators** for situational awareness / audit. `terminate` and `join` enforce ownership (server-side 403). |
 | 10  | `zoa audit` shows unified audit trail across TA executions and session lifecycle events                                                                                                                                                                  |
-| 11  | All infrastructure is Terraform-managed (`zoa-access`, `zoa-boundary` modules) and GitOps-deployed                                                                                                                                                       |
+| 11  | All infrastructure is Terraform-managed (`zoa`, `zoa-access`, `zoa-lambda` including boundary ECS) and GitOps-deployed                                                                                                                                     |
 | 12  | Boundary container image is Konflux-built with Enterprise Contract                                                                                                                                                                                       |
 | 13  | Observability stack covers Access Lambda and boundary sessions (metrics, alerts, dashboards)                                                                                                                                                             |
 | 14  | E2E tests validate session lifecycle, identity bridge, reaper, and negative cases                                                                                                                                                                        |
@@ -298,7 +305,7 @@ This epic delivers the target ZOA access model: SREs authenticate via their AWS 
 
 - Access Lambda handler mode (`HANDLER_MODE=access`) with session and target routes
 - Boundary container image (`Containerfile.boundary`) — UBI9, zoa CLI, aws CLI v2, kubectl, jq, Claude Code (Bedrock). All binaries SHA256-verified. No curl/wget in final image.
-- CLI commands: `zoa deployments`, `zoa targets <deployment>`, `zoa session start/stop/join/list/history` (compound session IDs), `zoa audit`, offline catalog (`zoa actions --offline`, `zoa catalog`, `ZOA_TARGET_TYPE`)
+- CLI commands: `zoa deployments`, `zoa targets <deployment>`, `zoa session start/terminate/join/list/history` (compound session IDs), `zoa audit`, offline catalog (`zoa actions --offline`, `zoa catalog`, `ZOA_TARGET_TYPE`)
 - Tamper-proof identity bridge: SigV4 task UUID → `task-id-index` GSI on sessions table → SRE operator + session ID. Dual-field storage: resolved `operator` + raw `signerARN` in executions and audit tables.
 - Session ID resolved server-side: identity bridge lookup returns both operator and session ID from DynamoDB via `task-id-index` GSI (no env vars, no client-supplied headers — nothing the SRE can tamper with)
 - `zoa session list` returns **only the signed-in operator's** sessions (`scope=mine`, default `--status all`, 24h window). `zoa session history` lists **all operators** (audit view) with `--operator`, `--since`, etc.
@@ -313,7 +320,7 @@ This epic delivers the target ZOA access model: SREs authenticate via their AWS 
 | 1   | `HANDLER_MODE=access` is a third Lambda handler mode (alongside `api` and `worker`) with routes for session management, target listing, and approval stubs                                                                                                                                                                            |
 | 2   | `Containerfile.boundary` builds a UBI9 image with zoa CLI, aws CLI v2, kubectl, jq, Claude Code — minimal attack surface, all binaries SHA256-verified, no curl/wget in final image                                                                                                                                                   |
 | 3   | `zoa deployments` lists deployments from SSM; `zoa targets <deployment>` lists targets from ZOA Access Lambda (SSM-backed store)                                                                                                                                                                                                      |
-| 4   | `zoa session start/stop/join/list/history` manages boundary container lifecycle with SigV4 auth. Compound session IDs (`deployment/session-id`) for self-routing. **`list`** = your sessions; **`history`** = fleet-wide. `stop` and `join` enforce ownership. **`start`** connects via ECS Exec by default (`--no-connect` to skip). |
+| 4   | `zoa session start/terminate/join/list/history` manages boundary container lifecycle with SigV4 auth. Compound session IDs (`deployment/session-id`) for self-routing. **`list`** = your sessions; **`history`** = fleet-wide. `terminate` and `join` enforce ownership. **`start`** connects via ECS Exec by default (`--no-connect` to skip). |
 | 5   | `zoa audit` shows unified audit trail (TA executions + session lifecycle) with `--type` filter                                                                                                                                                                                                                                        |
 | 6   | Identity bridge resolves ECS task ARN → SRE username via tamper-proof SigV4 task UUID → DynamoDB session lookup. Both `operator` and `signerARN` stored in execution and audit records.                                                                                                                                               |
 | 7   | Session ID derived server-side from identity bridge (task ARN → `task-id-index` GSI → session record) — no client-supplied env vars or headers trusted for session linkage                                                                                                                                                            |
@@ -394,7 +401,7 @@ Based on the [original architecture design](https://gist.github.com/slopezz/ffda
 | ------------------------------------------------------ | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------- | ---------------------------------------------------- | ----------- |
 | **1. SSM session logging**                             | Built-in ECS Exec → SSM Agent                                                                 | Full terminal I/O (every character typed AND displayed — input + output) | CloudWatch Logs (`/ecs/zoa-boundary/ssm-sessions`), KMS-encrypted   | CW Logs Insights (raw text search). Forensic replay. | **Shipped** |
 | **2. auditd** (preferred) or PROMPT_COMMAND (fallback) | `auditd` kernel-level `execve` interception, targeted rules for `kubectl`, `zoa`, `aws`, `oc` | Per-binary execution: which command was invoked, arguments, exit code    | CloudWatch Logs (`/ecs/zoa-boundary/commands`) via CloudWatch agent | Yes — structured fields, SQL-like queries            | **Planned** |
-| **3. ZOA DynamoDB audit**                              | Application-level (already exists)                                                            | TA executions, session start/stop/join, approvals                        | DynamoDB `audit` table (existing)                                   | Yes — `zoa audit` CLI                                | **Shipped** |
+| **3. ZOA DynamoDB audit**                              | Application-level (already exists)                                                            | TA executions, session start/terminate/join, approvals                   | DynamoDB `audit` table (existing)                                   | Yes — `zoa audit` CLI                                | **Shipped** |
 
 **Layer 1 (SSM)** is zero-effort — configure `execute_command_configuration` on the ECS cluster with a CW Logs log group and KMS key (standard ECS Exec pattern). Every `ecs execute-command` session streams terminal I/O in real-time. This is the **immutable FedRAMP baseline** — complete evidence of everything that happened, including all command output.
 
@@ -415,7 +422,7 @@ CloudWatch agent streams these to a separate log group for structured queries. K
 
 **Why both SSM and auditd?** SSM captures what the SRE **saw** (input + output = forensic replay). auditd captures what the SRE **did** (structured, searchable, no output noise). One answers "show me the exact terminal at 14:32", the other answers "list all kubectl commands slopezma ran today."
 
-**Layer 3 (ZOA DynamoDB)** already exists — every `zoa run`, `zoa session start/stop/join`, and future `zoa approve/reject` writes to the `audit` DynamoDB table. This is the application-level trail.
+**Layer 3 (ZOA DynamoDB)** already exists — every `zoa run`, `zoa session start/terminate/join`, and future `zoa approve/reject` writes to the `audit` DynamoDB table. This is the application-level trail.
 
 **Future RH compliance integration**: All three layers' data can be exported to S3 (CW Logs via subscription filter, DynamoDB via export or stream). From S3, data can feed into Red Hat compliance tooling (RHACS, Splunk, or other SIEM) as requirements crystallize.
 
@@ -471,7 +478,7 @@ Discovery (from laptop — reads SSM / ZOA Access):
   targets      List targets within a deployment
 
 Sessions (from laptop — manages boundary containers):
-  session      Manage sessions (start, stop, join, list, history)
+  session      Manage sessions (start, terminate, join, list, history)
 
 Break-Glass (future):
   breakglass   Emergency direct access (request, connect, revoke, list)
@@ -526,7 +533,7 @@ mc02      MC      us-east-1   vpc-0ghi789...   ready
 | `zoa session list <deployment>`            | **Your sessions** (last 24h; default `--status all`) | Access Lambda (invoker role) | No           |
 | `zoa session history <deployment>`         | **All operators** (audit / situational awareness)    | Access Lambda (invoker role) | No           |
 
-**Compound session IDs**: Session IDs include the deployment prefix (`deployment/session-id`, e.g. `us-east-1/sess-abc123`). This embeds the routing key directly in the ID so `stop` and `join` auto-resolve which Access Lambda to talk to — no separate `--deployment` flag needed. The compound ID is displayed by `session start`, `session list`, and `session history`.
+**Compound session IDs**: Session IDs include the deployment prefix (`deployment/session-id`, e.g. `us-east-1/sess-abc123`). This embeds the routing key directly in the ID so `terminate` and `join` auto-resolve which Access Lambda to talk to — no separate `--deployment` flag needed. The compound ID is displayed by `session start`, `session list`, and `session history`.
 
 Positional args for `start`: `<deployment>` = `deployment_name`, `<target>` = target ID (rc, mc01). Also available as flags for scripts: `zoa session start -d us-east-1 -t mc01`.
 
@@ -574,7 +581,7 @@ $ zoa session terminate us-east-1/sess-abc123
 
 **Unified audit** — `zoa audit` covers ALL event types (TA executions + session lifecycle + future break-glass). Filter by `--type ta|session|breakglass` to narrow scope. Same filter flags as `zoa runs` (`--since`, `--until`, `--operator`, `--status`, `--limit`, `-o json`).
 
-**Audit logging policy**: The Access Lambda writes audit entries to the same `audit` DynamoDB table used for TA executions for `start`, `stop`, `join`, `approve`, `reject`. Discovery (`targets`) and read-only queries (`list`, `history`) are NOT audit-logged — they have no side effects and no sensitive data.
+**Audit logging policy**: The Access Lambda writes audit entries to the same `audit` DynamoDB table used for TA executions for `start`, `terminate`, `join`, `approve`, `reject`. Discovery (`targets`) and read-only queries (`list`, `history`) are NOT audit-logged — they have no side effects and no sensitive data.
 
 **Context auto-detection** — the CLI auto-detects where the SRE is:
 
@@ -591,7 +598,7 @@ The deployment context is always provided per-command (positional arg or compoun
 - **`targets`** (separate from `deployments`): Targets are EKS clusters within a deployment. Overloading one command for both concepts creates confusion. `zoa deployments` answers "where can I go?", `zoa targets <dep>` answers "what's in this deployment?".
 - **`session`** (not `boundary`): "Boundary" is internal project jargon. SREs understand "session" universally (SSH, SSM, tmux). Also avoids tab-completion collision with `breakglass` (both start with `b`).
 - **`session history`** (not `session sessions`): Avoids the awkward noun repetition that `boundary sessions` would have.
-- **Compound session IDs** (`deployment/session-id`): Follows the Google resource-name pattern (`projects/X/instances/Y`). Embeds routing info so `stop` and `join` are self-contained — no `--deployment` flag needed on every command. The CLI parses the deployment prefix and auto-resolves the correct Access Lambda.
+- **Compound session IDs** (`deployment/session-id`): Follows the Google resource-name pattern (`projects/X/instances/Y`). Embeds routing info so `terminate` and `join` are self-contained — no `--deployment` flag needed on every command. The CLI parses the deployment prefix and auto-resolves the correct Access Lambda.
 - **Positional args** for `session start`: `zoa session start us-east-1 mc01` reads like English and saves 16 characters vs `--deployment us-east-1 --target mc01`. Flags (`-d`, `-t`) available for scripts.
 - **TA commands stay top-level**: `zoa run` is 80%+ of CLI usage (inside sessions). No breaking change. Grouped visually in `--help` but flat in command path.
 
@@ -599,7 +606,7 @@ The deployment context is always provided per-command (positional arg or compoun
 
 - `zoa session start` **connects via ECS Exec by default** after the task is `active` (same path as `zoa session join`). Use `--no-connect` to print metadata only (JSON output never auto-connects).
 - `zoa session start` flags: `--no-connect`, `--no-wait`, `--timeout` (default 4h), `-d`/`-t` (flag alternatives to positional args for scripts)
-- **Compound session IDs**: `deployment/session-id` format (e.g. `us-east-1/sess-abc123`). The CLI constructs the compound ID from the deployment name and the raw session ID returned by the Access Lambda. On `stop`/`join`, the CLI parses the compound ID to extract the deployment (for routing) and the raw ID (for the API call). This follows the Google resource-name pattern and eliminates the need for `--deployment` flags on every command.
+- **Compound session IDs**: `deployment/session-id` format (e.g. `us-east-1/sess-abc123`). The CLI constructs the compound ID from the deployment name and the raw session ID returned by the Access Lambda. On `terminate`/`join`, the CLI parses the compound ID to extract the deployment (for routing) and the raw ID (for the API call). This follows the Google resource-name pattern and eliminates the need for `--deployment` flags on every command.
 
 **Prerequisite**: `session-manager-plugin` must be installed on the SRE's laptop for `session start` (default connect) and `session join`. Install: `brew install --cask session-manager-plugin` (macOS) or RPM (Linux). The CLI detects absence and prints install instructions.
 
@@ -623,7 +630,7 @@ The SigV4 ARN looks like: `arn:aws:sts::123:assumed-role/sre-role/slopezma`
 - `sre-role` — the shared IAM role name (stable, same for all SREs)
 - `slopezma` — the session name from SAML (stable per SRE, derived from Kerberos principal)
 
-**Critical design rule**: the `operator` field in `boundary-sessions` DynamoDB must store the **username extracted from the SigV4 session name** (e.g., `slopezma`), NOT the full temporary credential ARN. Ownership checks compare `operator == caller_session_name`. This way, an SRE who re-authenticates (gets new temporary credentials) can still join/stop their own sessions.
+**Critical design rule**: the `operator` field in `boundary-sessions` DynamoDB must store the **username extracted from the SigV4 session name** (e.g., `slopezma`), NOT the full temporary credential ARN. Ownership checks compare `operator == caller_session_name`. This way, an SRE who re-authenticates (gets new temporary credentials) can still join/terminate their own sessions.
 
 **Validated (2026-09):** `rh-aws-saml-login` uses the Kerberos-backed STS session name as the IAM role session suffix (e.g. `811685182089-rrp-admin/slopezma` → session name `slopezma`). ZOA Access stores **operator** from that session name for ownership checks across re-authentication. Hub roles are environment-specific app-interface roles (see Story 7), not only `OrganizationAccountAccessRole`.
 
@@ -643,7 +650,7 @@ Inside a ZOA Boundary container, SigV4 requests are signed with the ECS task rol
 
 **Identity stability across re-authentication**: The `operator` field must store the **username** (extracted from the SigV4 session name, e.g., `slopezma`), not the full temporary ARN. This ensures that an SRE who re-authenticates to the Central Account (gets new temporary credentials) can still be matched to their existing sessions and TA executions. The full ARN is stored separately as `operatorARN` for audit/forensic purposes.
 
-**Ownership enforcement**: The per-VPC Lambda and ZOA Access Lambda both compare `operator == caller_session_name` for ownership checks (stop, join). Fleet-wide visibility uses **`zoa session history`**, not `list`.
+**Ownership enforcement**: The per-VPC Lambda and ZOA Access Lambda both compare `operator == caller_session_name` for ownership checks (terminate, join). Fleet-wide visibility uses **`zoa session history`**, not `list`.
 
 #### Boundary Session Reaper
 
@@ -697,7 +704,7 @@ Go interfaces: `Session` struct, `SessionStore` interface with `Put`, `Get`, `Li
 **Scope**:
 
 - Terraform module `zoa-access`: Access Lambda + Function URL (IAM auth) + central-trusted invoker role + KMS-encrypted CloudWatch Logs
-- Terraform module `zoa-boundary`: ECS task definition (Fargate) + IAM roles + security group + CloudWatch Logs (KMS) + KMS key
+- Boundary ECS in **`terraform/modules/zoa-lambda/`** (`boundary-*.tf`): ECS task definition (Fargate) + IAM roles + security group + CloudWatch Logs (KMS) + KMS key (no separate `zoa-boundary` module)
 - DynamoDB table: `boundary-sessions` in `zoa/` module (GSIs: `operator-index`, `status-deadline-index`, `date-bucket-index`, `task-id-index`; TTL: 30d). Target registration via SSM Parameter Store (Terraform-managed lifecycle).
 - ECS task tags: Access Lambda sets tamper-proof tags (`sre`, `sessionId`, `deployment`, `target`) on every ECS task at creation — no `ecs:TagResource` on task role
 - SSM Parameter Store `/zoa/deployments` in Central Account (or RC account for dev/ephemeral)
@@ -715,7 +722,7 @@ Go interfaces: `Session` struct, `SessionStore` interface with `Put`, `Get`, `Li
 | #   | Criterion                                                                                                                                                                                                                                        |
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | 1   | `terraform/modules/zoa-access/` deploys: Lambda (`HANDLER_MODE=access`) + Function URL (IAM auth) + central-trusted invoker role + KMS-encrypted CloudWatch Logs                                                                                 |
-| 2   | `terraform/modules/zoa-boundary/` deploys: ECS task definition, IAM task role (Function URL + Bedrock + SSM + CW Logs), security group, CW Logs log group (KMS), KMS key                                                                         |
+| 2   | `terraform/modules/zoa-lambda/` boundary resources deploy: ECS task definition, IAM task role (Function URL + Bedrock + SSM + CW Logs), security group, CW Logs log group (KMS), KMS key                                                        |
 | 3   | `boundary-sessions` DynamoDB table created in `zoa/` module with GSIs (`operator-index`, `status-deadline-index`, `date-bucket-index`, `task-id-index`) and TTL; targets use SSM Parameter Store                                                 |
 | 4   | SSM `/zoa/deployments` parameter written to Central Account (or RC account for dev/ephemeral) with Function URL + invoker role ARN                                                                                                               |
 | 5   | Cross-account IAM: Access Lambda can `ecs:RunTask` in MC accounts; MC boundary task role is permitted caller on MC Lambda Function URL; invoker role trusts Central Account hub roles only (`central_account_id` + `trusted_assumer_role_names`) |
@@ -739,7 +746,7 @@ Go interfaces: `Session` struct, `SessionStore` interface with `Put`, `Get`, `Li
 - IAM execution role: `ecs:RunTask` (RC + cross-account MC), DynamoDB read/write (`boundary-sessions`), SSM `GetParametersByPath` (`/zoa/targets/`), `sts:AssumeRole`, CloudWatch Logs
 - Lambda resource-based policy: allows invoker role to call Function URL
 
-**New module: `terraform/modules/zoa-boundary/`**
+**Boundary ECS in `terraform/modules/zoa-lambda/`** (`boundary-ecs.tf`, `boundary-task.tf`, …)
 
 - ECS task definition (Fargate, ZOA Boundary image from ECR)
 - ECS cluster (or reuse existing)
@@ -1005,24 +1012,24 @@ For ephemeral (dev Central Account), multiple entries coexist:
 
 **Scope**:
 
-- Session lifecycle specs: start → join → execute TA → stop → verify terminated
+- Session lifecycle specs: start → join → execute TA → terminate → verify terminated
 - Identity bridge specs: TA execution attributed to originating SRE, not shared task role
 - Reaper specs: session past 4h deadline auto-terminated
 - Autodiscovery specs: CLI reads SSM → Access Lambda → targets
 - Cross-account specs: MC session via AssumeRole
-- Negative specs: unauthorized caller rejected, non-creator cannot join/stop
+- Negative specs: unauthorized caller rejected, non-creator cannot join/terminate
 - `openshift/release` Prow job configuration
 
 **Acceptance Criteria**:
 
 | #   | Criterion                                                                                                                     |
 | --- | ----------------------------------------------------------------------------------------------------------------------------- |
-| 1   | Session lifecycle e2e: start → stop → list → verify terminated                                                                |
+| 1   | Session lifecycle e2e: start → terminate → list → verify terminated                                                           |
 | 2   | Identity bridge e2e: TA execution from boundary container is attributed to correct SRE (username matches)                     |
 | 3   | Reaper e2e: session past deadline is auto-terminated                                                                          |
 | 4   | Autodiscovery e2e: `zoa deployments` discovers deployments from SSM, `zoa targets <dep>` discovers targets from Access Lambda |
 | 5   | Cross-account e2e: MC session works (Access Lambda creates ECS task in MC VPC)                                                |
-| 6   | Negative tests: unauthorized caller rejected, non-creator cannot join/stop                                                    |
+| 6   | Negative tests: unauthorized caller rejected, non-creator cannot join/terminate                                             |
 | 7   | Wired into CI via `openshift/release` Prow job configuration                                                                  |
 | 8   | All boundary e2e specs pass on ephemeral environment                                                                          |
 
@@ -1054,7 +1061,7 @@ Wire into CI: `openshift/release` Prow job configuration for boundary e2e (may n
 | --- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | 1   | `docs/design/zoa-architecture.md` (rosa-hyperfleet) updated: boundary sections in main body; `PLANNED` labels removed                  |
 | 2   | `README.md` (rosa-hyperfleet-zoa) updated: architecture diagram shows boundary as deployed; `TEMPORARY` path removed                   |
-| 3   | New `docs/boundary.md` (rosa-hyperfleet-zoa): user guide for session start/stop/join, autodiscovery, container tooling                 |
+| 3   | `docs/boundary/` hub + operator workflow (rosa-hyperfleet-zoa): session start/terminate/join, autodiscovery, container tooling         |
 | 4   | `docs/cli-reference.md` (rosa-hyperfleet-zoa) updated: `zoa deployments`, `zoa targets`, and `zoa session` command families documented |
 | 5   | New `docs/sop/boundary-troubleshooting.md` (rosa-hyperfleet): SOP for stuck sessions, reaper failures, Central Account access          |
 | 6   | All markdown passes `prettier` formatting                                                                                              |

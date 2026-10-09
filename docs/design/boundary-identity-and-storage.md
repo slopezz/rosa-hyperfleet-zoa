@@ -218,9 +218,8 @@ Single config source; no duplicate literals in `main.tf`.
 | Task                                                  | Files                                          |
 | ----------------------------------------------------- | ---------------------------------------------- |
 | This design doc (maintain)                            | `docs/design/boundary-identity-and-storage.md` |
-| SRE guide: identity triple, bridge vs laptop          | `docs/boundary/sre-access-guide.md`            |
+| Operator workflow: identity triple, bridge vs laptop  | `docs/guides/operator-workflow.md`             |
 | API reference: `signer_arn`, `account_id` on sessions | `docs/api-reference.md`                        |
-| Epic plan cross-link                                  | `docs/design/zoa-boundary-epic-plan.md`        |
 
 Run `npx prettier --write` on edited markdown before merge.
 
