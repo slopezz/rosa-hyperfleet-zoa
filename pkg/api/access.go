@@ -162,8 +162,8 @@ func (h *AccessHandler) sessionDurationFromRequest(timeoutHours int) (time.Durat
 	return time.Duration(timeoutHours) * time.Hour, nil
 }
 
-// handleSessionStart records operator, signer_arn, and account_id on a new session row (PK sessionId UUID).
-// ECS task_id is written later on activate for the API identity bridge (task-id-index GSI).
+// handleSessionStart creates a session row and provisions the boundary ECS task (RunTask).
+// Join only attaches via ECS Exec to an already-active session with a task.
 func (h *AccessHandler) handleSessionStart(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	operatorARN := r.Header.Get("X-Operator")
@@ -219,7 +219,6 @@ func (h *AccessHandler) handleSessionStart(w http.ResponseWriter, r *http.Reques
 	deadline := now.Add(sessionDuration)
 	sessionID := uuid.New().String()
 
-	// Stores human operator + invoker signer_arn + account; task_id is set when ECS task becomes active.
 	accountID := r.Header.Get("X-Account-ID")
 	session := &store.Session{
 		SessionID:      sessionID,
@@ -242,12 +241,27 @@ func (h *AccessHandler) handleSessionStart(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	if err := h.ensureBoundaryTask(ctx, session); err != nil {
+		h.logger.Error("failed to provision boundary on session start", "session_id", sessionID, "error", err)
+		code := "ecs_error"
+		msg := "failed to start boundary container"
+		status := http.StatusBadGateway
+		if strings.Contains(err.Error(), "updating session") {
+			code = "session_update_error"
+			msg = "boundary task started but session state update failed"
+			status = http.StatusInternalServerError
+		}
+		writeError(w, status, code, msg)
+		return
+	}
+
 	h.recordAccessAudit(r, http.StatusOK, "session_start", sessionID, reasonValue, req.Target)
 
 	writeJSON(w, http.StatusOK, sessionStartResponse{
 		SessionID: sessionID,
 		Status:    session.Status,
 		Target:    req.Target,
+		TaskArn:   session.TaskArn,
 		Deadline:  session.Deadline,
 		Region:    session.Region,
 	})
@@ -509,29 +523,12 @@ func (h *AccessHandler) handleSessionJoin(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	switch session.Status {
-	case store.SessionStatusActive, store.SessionStatusCreating:
-	default:
-		writeError(w, http.StatusConflict, "invalid_status", fmt.Sprintf("session is %s, not joinable", session.Status))
-		return
-	}
-
-	if err := h.ensureBoundaryTask(ctx, session); err != nil {
-		h.logger.Error("failed to ensure boundary task", "session_id", sessionID, "error", err)
-		code := "ecs_error"
-		msg := "failed to start boundary container"
-		status := http.StatusBadGateway
-		if strings.Contains(err.Error(), "updating session") {
-			code = "session_update_error"
-			msg = "boundary task started but session state update failed"
-			status = http.StatusInternalServerError
-		}
-		writeError(w, status, code, msg)
-		return
-	}
-
 	if session.Status != store.SessionStatusActive {
 		writeError(w, http.StatusConflict, "invalid_status", fmt.Sprintf("session is %s, not active", session.Status))
+		return
+	}
+	if session.TaskArn == "" {
+		writeError(w, http.StatusConflict, "session_not_ready", "boundary task is not provisioned; session start must succeed before join")
 		return
 	}
 

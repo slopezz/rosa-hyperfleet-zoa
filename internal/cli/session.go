@@ -68,9 +68,10 @@ Positional args: <deployment> <target> (from zoa deployments / zoa targets).
 Resolves Access URL and invoker role from Central SSM unless --access-url and
 --invoker-role-arn are set. Global --deployments-region pins the SSM region.
 
-By default, after the task is active the CLI connects via ECS Exec (same as
-'zoa session join'). Use --no-connect to only print session metadata and exit
-(same idea as 'zoa run --no-wait': create, show id, do not attach).
+By default, Access provisions the boundary task on start, then the CLI connects
+via ECS Exec (same as 'zoa session join'). Use --no-connect to provision the
+task and print session metadata without opening Exec (same idea as
+'zoa run --no-wait': dispatch, show id, do not attach).
 
 ECS Exec uses scoped credentials returned by the Access API on join (not
 deployment-account admin roles).
@@ -129,7 +130,7 @@ on the session, Access audit, and the boundary task (ZOA_REASON) for zoa run.`,
 
 			if connect {
 				var joinResp *client.SessionJoinResponse
-				err := runWithSpinner(cmd.Context(), "provisioning boundary", func(ctx context.Context) error {
+				err := runWithSpinner(cmd.Context(), "connecting to boundary", func(ctx context.Context) error {
 					var joinErr error
 					joinResp, joinErr = accessClientForJoin(c).SessionJoin(ctx, resp.SessionID)
 					return joinErr
@@ -172,7 +173,7 @@ on the session, Access audit, and the boundary task (ZOA_REASON) for zoa run.`,
 	cmd.Flags().StringVarP(&flagDeployment, "deployment", "d", "", "Deployment name (e.g. us-east-1)")
 	cmd.Flags().StringVarP(&flagTarget, "target", "t", "", "Target ID (e.g. mc01)")
 	cmd.Flags().StringVar(&flagReason, "reason", "", "Reason for this session (required: Jira issue or PagerDuty incident, e.g. ROSAENG-1234 or #123456)")
-	cmd.Flags().BoolVar(&flagNoConnect, "no-connect", false, "Print session metadata only; do not open ECS Exec (same idea as zoa run --no-wait)")
+	cmd.Flags().BoolVar(&flagNoConnect, "no-connect", false, "Provision boundary task and print session metadata; do not open ECS Exec")
 
 	return cmd
 }

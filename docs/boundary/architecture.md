@@ -34,8 +34,8 @@ Human attribution for TAs uses the **[identity bridge](identity-bridge.md)** (ta
 
 ## Session lifecycle
 
-1. **Start** — Access creates a DynamoDB session (`creating` → `active`), returns `deployment/target/session-uuid`.
-2. **Join** — Access `RunTask` if needed, vends Exec credentials, returns `exec_command`. CLI registers SSM exec id via `exec-attached` (best-effort).
+1. **Start** — Access creates a DynamoDB session, `RunTask` for the boundary container, marks the row **`active`**, returns `deployment/target/session-uuid` (and `task_arn`).
+2. **Join** — Ownership check, vends Exec credentials for the existing task, returns `exec_command`. CLI registers SSM exec id via `exec-attached` (best-effort).
 3. **Work** — ECS Exec shell; MOTD, prompt, `ZOA_SESSION.md`, offline `ZOA_ACTIONS.md`.
 4. **Terminate** — From the laptop: `zoa session terminate <deployment>/<session-id>`. **Exit from Exec does not terminate.**
 5. **Reaper** — Worker stops tasks when **deadline** or **idle** policy fires. See [session reaper](session-reaper.md).

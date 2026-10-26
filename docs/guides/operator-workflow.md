@@ -51,7 +51,7 @@ Each parameter is one boundary-capable cluster: **RC** (`regional`) and **MC** (
 zoa session start <deployment> <target> --reason ROSAENG-1234
 ```
 
-**Default:** after Access accepts the request, the CLI **waits for the boundary task**, performs a **hidden `session join`**, and opens **ECS Exec** — you land in the shell without a separate join command. Use **`--no-connect`** (or `-o json`) to only create the session and print metadata.
+**Default:** Access **provisions the boundary task** on start; the CLI then performs a **hidden `session join`** and opens **ECS Exec** — you land in the shell without a separate join command. Use **`--no-connect`** (or `-o json`) to provision the task and print metadata without opening Exec.
 
 **On `session start`, Access:**
 
@@ -67,6 +67,8 @@ zoa session start <deployment> <target> --reason ROSAENG-1234
 - CLI runs **session-manager-plugin** → interactive shell as user **`sre`** (`runuser -u sre -- /bin/bash -l`).
 
 Only **you** (the session owner) can **join** or **terminate** that session. `zoa session list <deployment>` shows **your** sessions; `zoa session history <deployment>` is the **audit view across all operators**.
+
+**Each `session start` creates a new session** (new UUID, new boundary task). That is intentional for parallel work and separate audit episodes. To reconnect to an existing shell, use **`zoa session join <deployment>/<session-id>`** — do not run **`start` again** unless you want another boundary. If **`start` fails** or times out, check **`session list`** before starting again so you do not leave duplicate tasks running.
 
 ```mermaid
 sequenceDiagram

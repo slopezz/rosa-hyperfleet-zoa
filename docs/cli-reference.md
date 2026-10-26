@@ -161,7 +161,7 @@ These apply to **every** subcommand (`session`, `run`, `runs`, `audit`, …). Wh
 | `session list <deployment>`                 | List your sessions (last 24h by default)                                             |
 | `session history <deployment>`              | Session history across all operators (audit view)                                    |
 
-**Session start:** default opens ECS Exec after the task is active. **`--no-connect`** prints session id / task info and exits (same pattern as **`zoa run --no-wait`**: dispatch, show id, do not stay for the interactive part). Use **`zoa session join`** to attach later.
+**Session start:** Access runs the boundary task on start; default CLI flow then joins and opens ECS Exec. **`--no-connect`** provisions the task and prints session id / task info without Exec (same pattern as **`zoa run --no-wait`**). Use **`zoa session join`** to attach later.
 
 **Access control (server-side):** the Access Lambda binds each session to the **operator** from your SigV4 identity (IAM role session name). **`session join`** and **`session terminate`** return **403** if you are not the owner. **`session list`** always uses **`scope=mine`** — you only see your own sessions, not another operator's. **`session history`** is the deliberate exception: it lists **all operators** for audit/situational awareness (and those queries are audited). You cannot join someone else's boundary shell even if you know their session id; Exec credentials are vended only after an ownership check. See [Operator workflow — ownership](guides/operator-workflow.md#4-start-session-join-exec-and-ownership) and [Access API — sessions](api-reference.md#get-apiv0sessions).
 
@@ -367,7 +367,7 @@ Per-command flags and filters (global flags are under [Configuration](#global-fl
 | `--reason`     |       | Reason for this session (required unless `ZOA_REASON` is set on laptop; normally required on laptop; **flag wins over env**) |
 | `--deployment` | `-d`  | Deployment name (alternative to positional arg)                                                                              |
 | `--target`     | `-t`  | Target ID (alternative to positional arg)                                                                                    |
-| `--no-connect` |       | Print session metadata only; do not open ECS Exec                                                                            |
+| `--no-connect` |       | Provision boundary task and print session metadata; do not open ECS Exec                                                     |
 
 ### `session list`
 

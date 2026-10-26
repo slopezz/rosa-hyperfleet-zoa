@@ -95,6 +95,9 @@ func (m *mockSessionStoreAccess) ListAll(_ context.Context, filter *store.Sessio
 func (m *mockSessionStoreAccess) ListExpired(_ context.Context, _ string) ([]*store.Session, error) {
 	return nil, nil
 }
+func (m *mockSessionStoreAccess) ListOpenByTargetStatus(_ context.Context, _ string, _ store.SessionStatus) ([]*store.Session, error) {
+	return nil, nil
+}
 func (m *mockSessionStoreAccess) ListActiveBeforeDeadline(_ context.Context, _ string) ([]*store.Session, error) {
 	return nil, nil
 }
@@ -281,7 +284,7 @@ func TestAccessHandler_WhenListTargets_ItShouldReturnAllTargets(t *testing.T) {
 	}
 }
 
-func TestAccessHandler_WhenSessionStart_ItShouldCreateSession(t *testing.T) {
+func TestAccessHandler_WhenSessionStart_ItShouldProvisionBoundaryTask(t *testing.T) {
 	targets := &mockTargetStoreAccess{
 		targets: []*store.Target{
 			{
@@ -298,7 +301,8 @@ func TestAccessHandler_WhenSessionStart_ItShouldCreateSession(t *testing.T) {
 		},
 	}
 	sessions := &mockSessionStoreAccess{}
-	h := testAccessHandler(sessions, targets)
+	h := testAccessHandlerWithECS(sessions, targets)
+	ecs := h.ecsClient.(*mockECSAccess)
 
 	body := sessionStartRequest{
 		DeploymentName: "us-east-1",
@@ -310,6 +314,15 @@ func TestAccessHandler_WhenSessionStart_ItShouldCreateSession(t *testing.T) {
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	var startResp sessionStartResponse
+	json.NewDecoder(rr.Body).Decode(&startResp)
+	if startResp.Status != store.SessionStatusActive {
+		t.Errorf("expected status active in response, got %q", startResp.Status)
+	}
+	if startResp.TaskArn == "" {
+		t.Error("expected task_arn in start response")
 	}
 
 	if len(sessions.sessions) != 1 {
@@ -327,27 +340,24 @@ func TestAccessHandler_WhenSessionStart_ItShouldCreateSession(t *testing.T) {
 	if sessions.sessions[0].Reason != "ROSAENG-1234" {
 		t.Errorf("expected reason ROSAENG-1234, got %q", sessions.sessions[0].Reason)
 	}
-	if sessions.sessions[0].Status != store.SessionStatusCreating {
-		t.Errorf("expected status creating, got %q", sessions.sessions[0].Status)
+	if sessions.sessions[0].Status != store.SessionStatusActive {
+		t.Errorf("expected status active, got %q", sessions.sessions[0].Status)
 	}
-	if sessions.sessions[0].TaskArn != "" {
-		t.Errorf("expected no task on start, got %q", sessions.sessions[0].TaskArn)
+	if sessions.sessions[0].TaskArn == "" {
+		t.Error("expected task ARN on session after start")
+	}
+	if ecs.lastRun == nil {
+		t.Fatal("expected RunTask to be called on start")
+	}
+	if ecs.lastRun.Tags["Component"] != "zoa" || ecs.lastRun.Tags["function"] != "zoa" {
+		t.Errorf("expected Component and function zoa tags on task, got %v", ecs.lastRun.Tags)
+	}
+	if ecs.lastRun.Environment["ZOA_REASON"] != "ROSAENG-1234" {
+		t.Errorf("expected ZOA_REASON on task, got %v", ecs.lastRun.Environment)
 	}
 }
 
-func TestAccessHandler_WhenSessionJoinFromCreating_ItShouldRunTask(t *testing.T) {
-	targets := &mockTargetStoreAccess{
-		targets: []*store.Target{
-			{
-				TargetID:          "mc01",
-				SubnetIds:         "subnet-a",
-				SecurityGroupId:   "sg-1",
-				EcsClusterArn:     "arn:aws:ecs:us-east-1:123456789012:cluster/test",
-				TaskDefinitionArn: "arn:aws:ecs:us-east-1:123456789012:task-definition/td:1",
-				FunctionUrl:       "https://test.lambda-url.us-east-1.on.aws",
-			},
-		},
-	}
+func TestAccessHandler_WhenSessionJoinFromCreatingWithoutTask_ItShouldReturn409(t *testing.T) {
 	sessions := &mockSessionStoreAccess{
 		sessions: []*store.Session{
 			{
@@ -361,7 +371,38 @@ func TestAccessHandler_WhenSessionJoinFromCreating_ItShouldRunTask(t *testing.T)
 			},
 		},
 	}
-	h := testAccessHandlerWithECS(sessions, targets)
+	h := testAccessHandlerWithECS(sessions, &mockTargetStoreAccess{})
+	ecs := h.ecsClient.(*mockECSAccess)
+
+	rr := doAccessRequest(h, "POST", "/api/v0/sessions/join/session-123", nil, accessHeaders())
+
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if ecs.lastRun != nil {
+		t.Error("expected RunTask not to be called on join")
+	}
+}
+
+func TestAccessHandler_WhenSessionJoinOnActiveSession_ItShouldNotRunTask(t *testing.T) {
+	sessions := &mockSessionStoreAccess{
+		sessions: []*store.Session{
+			{
+				SessionID:     "session-123",
+				Operator:      "slopezma",
+				Status:        store.SessionStatusActive,
+				EcsCluster:    "arn:aws:ecs:us-east-1:123:cluster/test",
+				TaskArn:       "arn:aws:ecs:us-east-1:123:task/test/abc",
+				Region:        "us-east-1",
+				TargetCluster: "rc-target",
+			},
+		},
+	}
+	h := testAccessHandlerWithECS(sessions, &mockTargetStoreAccess{
+		targets: []*store.Target{
+			{TargetID: "rc-target", AccountId: "123", Region: "us-east-1"},
+		},
+	})
 	ecs := h.ecsClient.(*mockECSAccess)
 
 	rr := doAccessRequest(h, "POST", "/api/v0/sessions/join/session-123", nil, accessHeaders())
@@ -369,26 +410,8 @@ func TestAccessHandler_WhenSessionJoinFromCreating_ItShouldRunTask(t *testing.T)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
 	}
-	if sessions.sessions[0].Status != store.SessionStatusActive {
-		t.Errorf("expected active, got %q", sessions.sessions[0].Status)
-	}
-	if sessions.sessions[0].TaskArn == "" {
-		t.Error("expected task ARN after join")
-	}
-	if ecs.lastRun == nil {
-		t.Fatal("expected RunTask to be called")
-	}
-	if ecs.lastRun.Tags["Component"] != "zoa" || ecs.lastRun.Tags["function"] != "zoa" {
-		t.Errorf("expected Component and function zoa tags on task, got %v", ecs.lastRun.Tags)
-	}
-	if ecs.lastRun.Environment["ZOA_SESSION_DEADLINE"] != "2030-01-01T00:00:00Z" {
-		t.Errorf("expected ZOA_SESSION_DEADLINE on task, got %v", ecs.lastRun.Environment)
-	}
-	if ecs.lastRun.Environment["ZOA_SESSION_IDLE_TIMEOUT_SECONDS"] != "3600" {
-		t.Errorf("expected idle timeout env on task, got %v", ecs.lastRun.Environment)
-	}
-	if ecs.lastRun.Environment["ZOA_REASON"] != "ROSAENG-5678" {
-		t.Errorf("expected ZOA_REASON on task, got %v", ecs.lastRun.Environment)
+	if ecs.lastRun != nil {
+		t.Error("expected RunTask not to be called when session already has a task")
 	}
 }
 
@@ -944,23 +967,16 @@ func TestAccessHandler_WhenSessionStartWithRunTask_ItShouldHandleRunTaskFailure(
 			},
 		},
 	}
-	sessions := &mockSessionStoreAccess{
-		sessions: []*store.Session{
-			{
-				SessionID:      "session-123",
-				Operator:       "slopezma",
-				TargetCluster:  "mc01",
-				DeploymentName: "us-east-1",
-				Reason:         "ROSAENG-5678",
-				Status:         store.SessionStatusCreating,
-				Deadline:       "2030-01-01T00:00:00Z",
-			},
-		},
-	}
+	sessions := &mockSessionStoreAccess{}
 	h := testAccessHandlerWithECS(sessions, targets)
 	h.ecsClient = &mockECSAccessError{runErr: fmt.Errorf("ResourceNotFoundException")}
 
-	rr := doAccessRequest(h, "POST", "/api/v0/sessions/join/session-123", nil, accessHeaders())
+	body := sessionStartRequest{
+		DeploymentName: "us-east-1",
+		Target:         "mc01",
+		Reason:         "ROSAENG-5678",
+	}
+	rr := doAccessRequest(h, "POST", "/api/v0/sessions/start", body, accessHeaders())
 
 	if rr.Code == http.StatusOK {
 		t.Fatalf("expected failure when RunTask errors, got 200")

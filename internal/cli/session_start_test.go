@@ -55,7 +55,7 @@ func TestSessionStart_WhenReasonOnlyInEnv_ItShouldPassToAPI(t *testing.T) {
 	mock := &mockClient{
 		sessionStartFn: func(_ context.Context, req *client.SessionStartRequest) (*client.SessionStartResponse, error) {
 			gotReason = req.Reason
-			return &client.SessionStartResponse{SessionID: "sess-env", Status: "creating"}, nil
+			return &client.SessionStartResponse{SessionID: "sess-env", Status: "active"}, nil
 		},
 	}
 	root := sessionTestRoot(newMockGlobalOpts(mock))

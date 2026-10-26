@@ -116,24 +116,29 @@ Start a new boundary session.
 ```json
 {
   "session_id": "1989937d-0889-485d-b64e-facee9e0150d",
-  "status": "creating",
+  "status": "active",
   "target": "regional",
+  "task_arn": "arn:aws:ecs:us-east-1:123456789012:task/cluster/task-abc",
   "deadline": "2026-10-13T19:27:40.603274166Z",
   "region": "us-east-1"
 }
 ```
 
+On success, Access has already called `ecs:RunTask` for the boundary container in the target VPC. The session row is **`active`** with `task_arn` set before the response is returned.
+
 ### Error Responses
 
-| Code | Reason             | Description                                    |
-| ---- | ------------------ | ---------------------------------------------- |
-| 400  | `invalid_identity` | Cannot extract SRE identity from `X-Operator`  |
-| 400  | `invalid_request`  | Invalid JSON body                              |
-| 400  | `missing_target`   | Target field is required                       |
-| 400  | `missing_reason`   | Reason is required                             |
-| 400  | `invalid_reason`   | Reason format invalid (must be Jira/PD format) |
-| 400  | `invalid_timeout`  | Timeout exceeds configured maximum             |
-| 404  | `target_not_found` | Target not registered                          |
+| Code | Reason                 | Description                                    |
+| ---- | ---------------------- | ---------------------------------------------- |
+| 400  | `invalid_identity`     | Cannot extract SRE identity from `X-Operator`  |
+| 400  | `invalid_request`      | Invalid JSON body                              |
+| 400  | `missing_target`       | Target field is required                       |
+| 400  | `missing_reason`       | Reason is required                             |
+| 400  | `invalid_reason`       | Reason format invalid (must be Jira/PD format) |
+| 400  | `invalid_timeout`      | Timeout exceeds configured maximum             |
+| 404  | `target_not_found`     | Target not registered                          |
+| 502  | `ecs_error`            | Boundary `RunTask` failed                      |
+| 500  | `session_update_error` | Task started but session state update failed   |
 
 ---
 
@@ -194,7 +199,7 @@ Terminate a session. Stops the ECS task if running and marks the session as term
 
 ## POST /api/v0/sessions/join/{id}
 
-Join a session. Provisions the boundary ECS task if not already running (status=creating), then returns connection info and ECS Exec credentials.
+Join an **active** session that already has a boundary task (`task_arn` set on `session start`). Returns connection info and ECS Exec credentials scoped to that task only.
 
 ### Response
 
@@ -222,9 +227,8 @@ Join a session. Provisions the boundary ECS task if not already running (status=
 | ---- | ---------------------- | -------------------------------------------- |
 | 403  | `forbidden`            | Only the session owner can join              |
 | 404  | `not_found`            | Session not found                            |
-| 409  | `invalid_status`       | Session is terminated or failed              |
-| 502  | `ecs_error`            | RunTask failed                               |
-| 500  | `session_update_error` | Task started but session state update failed |
+| 409  | `invalid_status`       | Session is not `active`                      |
+| 409  | `session_not_ready`    | Boundary task not provisioned (retry start)  |
 
 ---
 
