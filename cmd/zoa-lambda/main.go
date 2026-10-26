@@ -201,6 +201,7 @@ func main() {
 			sessionStore := store.NewSessionStore(dynamoClient, cfg.SessionsTable, cfg.DynamoDBTTLDays)
 			ecsClient := awsecs.New(awsCfg)
 			idleTimeout := time.Duration(cfg.SessionIdleTimeoutSeconds) * time.Second
+			staleCreating := time.Duration(cfg.SessionStaleCreatingSeconds) * time.Second
 			activity := boundaryexec.NewActivityChecker(awsCfg)
 			reaper = scheduler.NewReaper(
 				sessionStore,
@@ -208,8 +209,10 @@ func main() {
 				logger,
 				cfg.TargetCluster,
 				scheduler.WithExecActivity(activity, idleTimeout),
+				scheduler.WithStaleCreatingTimeout(staleCreating),
 			)
-			logger.Info("reaper enabled", "sessionsTable", cfg.SessionsTable, "sessionIdleTimeout", idleTimeout)
+			logger.Info("reaper enabled", "sessionsTable", cfg.SessionsTable,
+				"sessionIdleTimeout", idleTimeout, "sessionStaleCreating", staleCreating)
 		}
 
 		h := handler.New(handler.Deps{

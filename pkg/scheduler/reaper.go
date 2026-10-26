@@ -12,6 +12,8 @@ import (
 const (
 	// DefaultSessionIdleTimeout is the default idle period after the last exec terminal activity.
 	DefaultSessionIdleTimeout = time.Hour
+	// DefaultStaleCreatingTimeout is how long a row may stay in creating before the reaper cleans it up.
+	DefaultStaleCreatingTimeout = 15 * time.Minute
 )
 
 // ECSAPI abstracts ECS operations for the reaper.
@@ -29,9 +31,10 @@ type Reaper struct {
 	sessionStore  store.SessionStore
 	ecs           ECSAPI
 	activity      ExecActivityChecker
-	idleTimeout   time.Duration
-	logger        *slog.Logger
-	targetCluster string // per-VPC: only sessions for this cluster (TARGET_CLUSTER)
+	idleTimeout          time.Duration
+	staleCreatingTimeout time.Duration
+	logger               *slog.Logger
+	targetCluster        string // per-VPC: only sessions for this cluster (TARGET_CLUSTER)
 }
 
 // ReaperOption configures optional reaper behaviour.
@@ -47,6 +50,15 @@ func WithExecActivity(checker ExecActivityChecker, idleTimeout time.Duration) Re
 	}
 }
 
+// WithStaleCreatingTimeout sets how long creating rows may linger before reaper cleanup.
+func WithStaleCreatingTimeout(d time.Duration) ReaperOption {
+	return func(r *Reaper) {
+		if d > 0 {
+			r.staleCreatingTimeout = d
+		}
+	}
+}
+
 // NewReaper creates a new session reaper. targetCluster is passed to session store
 // queries (target-status-index). Production Worker sets TARGET_CLUSTER; tests may use
 // mocks with an empty target when the store is not exercised.
@@ -56,7 +68,8 @@ func NewReaper(sessionStore store.SessionStore, ecs ECSAPI, logger *slog.Logger,
 		ecs:           ecs,
 		logger:        logger,
 		targetCluster: targetCluster,
-		idleTimeout:   DefaultSessionIdleTimeout,
+		idleTimeout:          DefaultSessionIdleTimeout,
+		staleCreatingTimeout: DefaultStaleCreatingTimeout,
 	}
 	for _, opt := range opts {
 		opt(r)
@@ -64,9 +77,12 @@ func NewReaper(sessionStore store.SessionStore, ecs ECSAPI, logger *slog.Logger,
 	return r
 }
 
-// Run enforces deadline and idle policies on active boundary sessions.
+// Run enforces deadline, stale creating, and idle policies on open boundary sessions.
 func (r *Reaper) Run(ctx context.Context) error {
 	if err := r.runDeadline(ctx); err != nil {
+		return err
+	}
+	if err := r.runStaleCreating(ctx); err != nil {
 		return err
 	}
 	if r.activity != nil && r.idleTimeout > 0 {
@@ -101,6 +117,47 @@ func (r *Reaper) runDeadline(ctx context.Context) error {
 
 	if len(errs) > 0 {
 		return fmt.Errorf("reaper: %d of %d deadline terminations failed: %v", len(errs), len(expired), errs[0])
+	}
+	return nil
+}
+
+func (r *Reaper) runStaleCreating(ctx context.Context) error {
+	if r.staleCreatingTimeout <= 0 {
+		return nil
+	}
+	r.logger.Info("reaper: starting stale creating session scan", "stale_timeout", r.staleCreatingTimeout)
+
+	creating, err := r.sessionStore.ListOpenByTargetStatus(ctx, r.targetCluster, store.SessionStatusCreating)
+	if err != nil {
+		return fmt.Errorf("reaper: failed to list creating sessions: %w", err)
+	}
+
+	cutoff := time.Now().Add(-r.staleCreatingTimeout)
+	var errs []error
+	staleCount := 0
+	for _, session := range creating {
+		created, err := parseSessionTimestamp(session.CreatedAt)
+		if err != nil {
+			r.logger.Warn("reaper: skip stale creating check, invalid createdAt",
+				"session_id", session.SessionID, "created_at", session.CreatedAt, "error", err)
+			continue
+		}
+		if created.After(cutoff) {
+			continue
+		}
+		staleCount++
+		if err := r.terminateSession(ctx, session, store.StopReasonStaleCreatingReaper); err != nil {
+			errs = append(errs, err)
+		}
+	}
+
+	if staleCount == 0 {
+		r.logger.Info("reaper: no stale creating sessions found")
+	} else {
+		r.logger.Info("reaper: terminated stale creating sessions", "count", staleCount)
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("reaper: %d stale creating termination errors: %v", len(errs), errs[0])
 	}
 	return nil
 }
@@ -187,8 +244,13 @@ func (r *Reaper) terminateSession(ctx context.Context, session *store.Session, r
 		}
 	}
 
+	from := session.Status
+	if from != store.SessionStatusActive && from != store.SessionStatusCreating {
+		log.Warn("reaper: skip terminate, unexpected session status", "status", from)
+		return fmt.Errorf("unexpected status %s for session %s", from, session.SessionID)
+	}
 	if err := r.sessionStore.UpdateStatus(ctx, session.SessionID,
-		store.SessionStatusActive, store.SessionStatusTerminated,
+		from, store.SessionStatusTerminated,
 		map[string]interface{}{
 			"stopReason": reason,
 		},

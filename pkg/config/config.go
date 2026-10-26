@@ -118,6 +118,9 @@ type Config struct {
 	// SessionIdleTimeoutSeconds is terminal inactivity before the reaper stops an active session (default 3600).
 	SessionIdleTimeoutSeconds int
 
+	// SessionStaleCreatingSeconds is how long a creating row may linger before the reaper terminates it (default 900).
+	SessionStaleCreatingSeconds int
+
 	// SessionMaxDurationHours is the default session length and the max timeout_hours clients may request (default 4).
 	SessionMaxDurationHours int
 }
@@ -159,6 +162,7 @@ func Load() (*Config, error) {
 		ExecScopedRoleARN:              getEnv("EXEC_SCOPED_ROLE_ARN", ""),
 		ExecCredentialDurationSeconds:  getEnvInt("EXEC_CREDENTIAL_DURATION_SECONDS", 3600),
 		SessionIdleTimeoutSeconds:      getEnvInt("SESSION_IDLE_TIMEOUT_SECONDS", 3600),
+		SessionStaleCreatingSeconds:    getEnvInt("SESSION_STALE_CREATING_SECONDS", 900),
 		SessionMaxDurationHours:        getEnvInt("SESSION_MAX_DURATION_HOURS", 4),
 	}
 

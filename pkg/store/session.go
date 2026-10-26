@@ -30,8 +30,9 @@ type StopReason string
 const (
 	StopReasonOperatorStop       StopReason = "operatorStop"
 	StopReasonDeadlineReaperStop StopReason = "deadlineReaperStop"
-	StopReasonIdleReaperStop     StopReason = "idleReaperStop"
-	StopReasonProvisionFailed    StopReason = "provisionFailed"
+	StopReasonIdleReaperStop       StopReason = "idleReaperStop"
+	StopReasonProvisionFailed      StopReason = "provisionFailed"
+	StopReasonStaleCreatingReaper  StopReason = "staleCreatingReaperStop"
 )
 
 // Session represents a ZOA Boundary session in DynamoDB.
@@ -92,8 +93,11 @@ type SessionStore interface {
 
 	UpdateStatus(ctx context.Context, sessionID string, from, to SessionStatus, updates map[string]interface{}) error
 
-	// ListExpired returns active sessions past deadline for targetCluster (target-status-index).
+	// ListExpired returns creating and active sessions past deadline for targetCluster (target-status-index).
 	ListExpired(ctx context.Context, targetCluster string) ([]*Session, error)
+
+	// ListOpenByTargetStatus returns all sessions in the given status for targetCluster (target-status-index).
+	ListOpenByTargetStatus(ctx context.Context, targetCluster string, status SessionStatus) ([]*Session, error)
 
 	// ListActiveBeforeDeadline returns active sessions whose deadline is still in the future for targetCluster.
 	ListActiveBeforeDeadline(ctx context.Context, targetCluster string) ([]*Session, error)
@@ -113,6 +117,8 @@ type DynamoDBSessionStore struct {
 // belong to an active session. The active prefix is "active#", and '$' is the
 // next code point after '#'.
 const activeStatusKeyCeiling = "active$"
+
+const creatingStatusKeyCeiling = "creating$"
 
 // SessionTargetStatusKey builds the target-status-index sort key for a session row.
 func SessionTargetStatusKey(status SessionStatus, suffix string) string {
@@ -383,40 +389,90 @@ func (s *DynamoDBSessionStore) UpdateStatus(ctx context.Context, sessionID strin
 	return err
 }
 
-// ListExpired queries target-status-index for active sessions past their deadline in one target partition.
+// ListExpired queries target-status-index for creating and active sessions past their deadline.
 func (s *DynamoDBSessionStore) ListExpired(ctx context.Context, targetCluster string) ([]*Session, error) {
 	if targetCluster == "" {
 		return nil, fmt.Errorf("targetCluster is required for ListExpired")
 	}
+	var out []*Session
+	for _, status := range []SessionStatus{SessionStatusCreating, SessionStatusActive} {
+		part, err := s.listPastDeadlineByStatus(ctx, targetCluster, status)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, part...)
+	}
+	return out, nil
+}
+
+func (s *DynamoDBSessionStore) listPastDeadlineByStatus(ctx context.Context, targetCluster string, status SessionStatus) ([]*Session, error) {
 	now := time.Now().Format(time.RFC3339Nano)
-	activePrefix := SessionTargetStatusKey(SessionStatusActive, "")
-	upper := SessionTargetStatusKey(SessionStatusActive, now)
+	prefix := SessionTargetStatusKey(status, "")
+	upper := SessionTargetStatusKey(status, now)
 
 	keyCond := expression.KeyAnd(
 		expression.Key("targetCluster").Equal(expression.Value(targetCluster)),
-		expression.Key("targetStatusKey").Between(expression.Value(activePrefix), expression.Value(upper)),
+		expression.Key("targetStatusKey").Between(expression.Value(prefix), expression.Value(upper)),
 	)
 
-	expr, err := expression.NewBuilder().WithKeyCondition(keyCond).Build()
+	built, err := expression.NewBuilder().WithKeyCondition(keyCond).Build()
 	if err != nil {
-		return nil, fmt.Errorf("building expired sessions expression: %w", err)
+		return nil, fmt.Errorf("building expired %s sessions expression: %w", status, err)
 	}
 
+	return s.queryTargetStatusIndex(ctx, built)
+}
+
+// ListOpenByTargetStatus returns every session row in status for the target partition.
+func (s *DynamoDBSessionStore) ListOpenByTargetStatus(ctx context.Context, targetCluster string, status SessionStatus) ([]*Session, error) {
+	if targetCluster == "" {
+		return nil, fmt.Errorf("targetCluster is required for ListOpenByTargetStatus")
+	}
+	prefix := SessionTargetStatusKey(status, "")
+	ceiling, ok := statusKeyCeiling(status)
+	if !ok {
+		return nil, fmt.Errorf("unsupported status for ListOpenByTargetStatus: %s", status)
+	}
+
+	keyCond := expression.KeyAnd(
+		expression.Key("targetCluster").Equal(expression.Value(targetCluster)),
+		expression.Key("targetStatusKey").Between(expression.Value(prefix), expression.Value(ceiling)),
+	)
+
+	built, err := expression.NewBuilder().WithKeyCondition(keyCond).Build()
+	if err != nil {
+		return nil, fmt.Errorf("building open %s sessions expression: %w", status, err)
+	}
+	return s.queryTargetStatusIndex(ctx, built)
+}
+
+func statusKeyCeiling(status SessionStatus) (string, bool) {
+	switch status {
+	case SessionStatusActive:
+		return activeStatusKeyCeiling, true
+	case SessionStatusCreating:
+		return creatingStatusKeyCeiling, true
+	default:
+		return "", false
+	}
+}
+
+func (s *DynamoDBSessionStore) queryTargetStatusIndex(ctx context.Context, built expression.Expression) ([]*Session, error) {
 	var sessions []*Session
 	var lastKey map[string]types.AttributeValue
 	for {
 		input := &dynamodb.QueryInput{
 			TableName:                 &s.tableName,
 			IndexName:                 aws.String("target-status-index"),
-			KeyConditionExpression:    expr.KeyCondition(),
-			ExpressionAttributeNames:  expr.Names(),
-			ExpressionAttributeValues: expr.Values(),
+			KeyConditionExpression:    built.KeyCondition(),
+			ExpressionAttributeNames:  built.Names(),
+			ExpressionAttributeValues: built.Values(),
 			ExclusiveStartKey:         lastKey,
 		}
 
 		out, err := s.client.Query(ctx, input)
 		if err != nil {
-			return nil, fmt.Errorf("querying expired sessions: %w", err)
+			return nil, fmt.Errorf("querying target-status-index: %w", err)
 		}
 
 		for _, item := range out.Items {

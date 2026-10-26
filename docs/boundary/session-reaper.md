@@ -4,26 +4,28 @@ The **Worker Lambda** in each target VPC runs a **boundary session reaper** on t
 
 Implementation: `pkg/scheduler/reaper.go`, `pkg/boundaryexec/activity.go`, `pkg/store/session.go`, wired from `cmd/zoa-lambda/main.go` when `SESSIONS_TABLE` is set.
 
-## Three ways a session ends
+## Ways a session ends
 
 | Path                        | Who stops the task?                                                           | `stop_reason` in DynamoDB |
 | --------------------------- | ----------------------------------------------------------------------------- | ------------------------- |
 | **Operator terminate**      | SRE on laptop: `zoa session terminate <deployment>/<session-id>` (Access API) | `operatorStop`            |
-| **Max duration (deadline)** | Worker reaper                                                                 | `deadlineReaperStop`      |
-| **Idle (no Exec activity)** | Worker reaper                                                                 | `idleReaperStop`          |
+| **Max duration (deadline)** | Worker reaper (`creating` or `active` past `deadline`)                      | `deadlineReaperStop`      |
+| **Stale `creating`**        | Worker reaper (row stuck in `creating` longer than timeout)                   | `staleCreatingReaperStop` |
+| **Idle (no Exec activity)** | Worker reaper (`active` only, requires `taskId`)                              | `idleReaperStop`          |
 
-Provisioning failures may set **`provisionFailed`** when the session never becomes active (`pkg/store/session.go`).
+Access may set **`failed`** / **`provisionFailed`** when `RunTask` fails on `session start` (`pkg/api/access.go`).
 
 **Leaving the Exec shell** (`exit`, Ctrl+D) does **not** stop the task. Only **terminate**, **deadline reaper**, or **idle reaper** ends the ECS task.
 
 ## Two reaper policies (Worker only)
 
-Both run in one `Reaper.Run()` pass: **deadline first**, then **idle**. Each Worker scopes to **`TARGET_CLUSTER`** for its VPC.
+Both run in one `Reaper.Run()` pass: **deadline**, then **stale creating**, then **idle**. Each Worker scopes to **`TARGET_CLUSTER`** for its VPC.
 
-| Policy       | Question                                             | Data source                                     | `stop_reason`        |
-| ------------ | ---------------------------------------------------- | ----------------------------------------------- | -------------------- |
-| **Deadline** | Has `now` passed session **`deadline`**?             | GSI **`target-status-index`** (`ListExpired` for `TARGET_CLUSTER`) | `deadlineReaperStop` |
-| **Idle**     | Has ECS Exec terminal activity been absent too long? | **`target-status-index`** (`ListActiveBeforeDeadline`) + SSM + CloudWatch Logs | `idleReaperStop`     |
+| Policy            | Question                                             | Data source                                     | `stop_reason`               |
+| ----------------- | ---------------------------------------------------- | ----------------------------------------------- | --------------------------- |
+| **Deadline**      | Has `now` passed session **`deadline`**?             | GSI **`target-status-index`** (`ListExpired`: `creating` + `active`) | `deadlineReaperStop`        |
+| **Stale creating**| Row still **`creating`** after provision timeout?    | `ListOpenByTargetStatus(creating)` + `createdAt` | `staleCreatingReaperStop` |
+| **Idle**          | Has ECS Exec terminal activity been absent too long? | `ListActiveBeforeDeadline` + SSM + CloudWatch Logs | `idleReaperStop`            |
 
 ### Deadline
 
@@ -35,6 +37,12 @@ Both run in one `Reaper.Run()` pass: **deadline first**, then **idle**. Each Wor
 ### Idle
 
 - Configured on the **Worker** via **`SESSION_IDLE_TIMEOUT_SECONDS`** (default **3600**), rendered from rosa-seaplane `zoa_boundary_session_idle_timeout_seconds`.
+
+### Stale `creating`
+
+- **`SESSION_STALE_CREATING_SECONDS`** on the Worker (default **900**): if a session row is still **`creating`** and **`createdAt`** is older than this window, the reaper marks it **`terminated`** (`staleCreatingReaperStop`).
+- If **`taskArn`** is set (partial provision), the reaper calls **`ecs:StopTask`** before updating DynamoDB.
+- Rows with **no** task: DynamoDB cleanup only (no ECS stop).
 - **Activity source of truth is AWS**, not DynamoDB:
   1. **SSM** `DescribeSessions` for `AmazonECS-ExecuteInteractiveCommand` targeting the ECS **task id** and `zoa-boundary`.
   2. **CloudWatch Logs** `DescribeLogStreams` on `/ecs/<target_cluster>/zoa-boundary/ssm-sessions` for streams `ecs-execute-command-<id>`.

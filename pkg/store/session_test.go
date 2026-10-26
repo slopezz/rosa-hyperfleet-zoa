@@ -222,13 +222,19 @@ func TestDynamoDBSessionStore_ListExpired_WhenExpiredSessionsExist_ItShouldUseTa
 	}
 	item, _ := attributevalue.MarshalMap(expired)
 
+	queryCalls := 0
 	mock := &mockDynamoDBAPI{
 		queryFn: func(_ context.Context, params *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
+			queryCalls++
 			if params.IndexName == nil || *params.IndexName != "target-status-index" {
 				t.Errorf("expected target-status-index GSI, got %v", params.IndexName)
 			}
 			if params.KeyConditionExpression == nil {
 				t.Error("expected key condition expression for GSI query")
+			}
+			// ListExpired queries creating then active; only active partition has a hit in this test.
+			if queryCalls == 1 {
+				return &dynamodb.QueryOutput{}, nil
 			}
 			return &dynamodb.QueryOutput{Items: []map[string]types.AttributeValue{item}}, nil
 		},
@@ -238,6 +244,9 @@ func TestDynamoDBSessionStore_ListExpired_WhenExpiredSessionsExist_ItShouldUseTa
 	sessions, err := s.ListExpired(context.Background(), "mc01")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if queryCalls != 2 {
+		t.Fatalf("expected 2 GSI queries (creating+active), got %d", queryCalls)
 	}
 	if len(sessions) != 1 {
 		t.Fatalf("expected 1 expired session, got %d", len(sessions))

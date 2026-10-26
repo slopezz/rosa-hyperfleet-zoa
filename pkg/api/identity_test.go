@@ -120,6 +120,9 @@ func (m *mockSessionStore) ListExpired(ctx context.Context, _ string) ([]*store.
 	return nil, nil
 }
 
+func (m *mockSessionStore) ListOpenByTargetStatus(_ context.Context, _ string, _ store.SessionStatus) ([]*store.Session, error) {
+	return nil, nil
+}
 func (m *mockSessionStore) ListActiveBeforeDeadline(_ context.Context, _ string) ([]*store.Session, error) {
 	return nil, nil
 }
