@@ -4,15 +4,6 @@ Practical guide for ZOA's e2e coverage: what runs where, how to run it yourself 
 environment (dev-account ephemeral, standing integration, or CI), and how container images flow
 from a PR into that environment.
 
-## Break-glass (ROSAENG-75954)
-
-Break-glass e2e will follow the session + TA patterns in `test/e2e/`:
-
-1. Boundary: `breakglass request` → peer approve from laptop → `breakglass use` → read-only `kubectl get ns`.
-2. Expiry: worker marks grant expired and GC removes `zoa-bg-<requestId>` RBAC.
-
-Gate on ephemeral when `BREAKGLASS_TABLE` is wired (same RC outputs as executions/sessions).
-
 ## Test Suites
 
 ZOA has two independent test suites that compose via Makefile targets:
