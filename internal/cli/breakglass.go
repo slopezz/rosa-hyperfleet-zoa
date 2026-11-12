@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/openshift-online/rosa-seaplane-zoa/internal/cli/reason"
+	"github.com/openshift-online/rosa-seaplane-zoa/internal/cli/scopecatalog"
 	"github.com/openshift-online/rosa-seaplane-zoa/internal/client"
 	"github.com/openshift-online/rosa-seaplane-zoa/internal/output"
 	"github.com/openshift-online/rosa-seaplane-zoa/pkg/breakglass"
@@ -38,14 +39,15 @@ Laptop approvers use: zoa approve <deployment>/<request-id> [--comment ...]`,
 }
 
 func newBreakglassScopesCommand(global *GlobalOptions) *cobra.Command {
-	var offline bool
+	catalogOpts := &catalogOptions{}
 	cmd := &cobra.Command{
 		Use:   "scopes",
 		Short: "List break-glass scope catalog",
+		Long: `List break-glass scopes. With --offline (or without ZOA_API_URL in the boundary), uses the
+catalog embedded in this CLI build, filtered by --target-type or ZOA_TARGET_TYPE.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if offline || global.APIURL == "" {
-				items := breakglass.List()
-				return renderBreakglassScopes(global.OutputFormat, toClientScopes(items))
+			if useScopeCatalogOffline(global, catalogOpts) {
+				return listBreakglassScopesOffline(global, catalogOpts)
 			}
 			c, err := getClient(global)
 			if err != nil {
@@ -58,34 +60,56 @@ func newBreakglassScopesCommand(global *GlobalOptions) *cobra.Command {
 			return renderBreakglassScopes(global.OutputFormat, list.Items)
 		},
 	}
-	cmd.Flags().BoolVar(&offline, "offline", false, "Use embedded scope catalog (no API)")
+	registerCatalogFlags(cmd, catalogOpts)
 	return cmd
 }
 
 func newBreakglassDescribeScopeCommand(global *GlobalOptions) *cobra.Command {
-	var offline bool
+	catalogOpts := &catalogOptions{}
 	cmd := &cobra.Command{
 		Use:   "describe <scope>",
 		Short: "Describe a break-glass scope",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return describeBreakglassScope(cmd.Context(), global, offline, args[0])
+			return describeBreakglassScope(cmd.Context(), global, catalogOpts, args[0])
 		},
 	}
-	cmd.Flags().BoolVar(&offline, "offline", false, "Use embedded scope catalog (no API)")
+	registerCatalogFlags(cmd, catalogOpts)
 	return cmd
 }
 
-func describeBreakglassScope(ctx context.Context, global *GlobalOptions, offline bool, scopeID string) error {
-	if offline || global.APIURL == "" {
-		def, ok := breakglass.Get(scopeID)
-		if !ok {
-			return fmt.Errorf("unknown scope %q", scopeID)
+func useScopeCatalogOffline(global *GlobalOptions, catalogOpts *catalogOptions) bool {
+	return catalogOpts.offline || global.APIURL == ""
+}
+
+func listBreakglassScopesOffline(global *GlobalOptions, catalogOpts *catalogOptions) error {
+	printOfflineScopeCatalogNotice()
+	targetType, err := resolveCatalogTargetType(catalogOpts)
+	if err != nil {
+		return err
+	}
+	items, err := scopecatalog.List(targetType)
+	if err != nil {
+		return err
+	}
+	return renderBreakglassScopes(global.OutputFormat, items)
+}
+
+func describeBreakglassScope(ctx context.Context, global *GlobalOptions, catalogOpts *catalogOptions, scopeID string) error {
+	if useScopeCatalogOffline(global, catalogOpts) {
+		printOfflineScopeCatalogNotice()
+		targetType, err := resolveCatalogTargetType(catalogOpts)
+		if err != nil {
+			return err
+		}
+		scope, err := scopecatalog.Get(targetType, scopeID)
+		if err != nil {
+			return err
 		}
 		if global.OutputFormat == output.FormatJSON {
-			return output.JSON(os.Stdout, def.Metadata)
+			return output.JSON(os.Stdout, scope)
 		}
-		printScopeMetadata(def.Metadata)
+		printScopeMetadata(clientScopeToLocal(scope))
 		return nil
 	}
 	c, err := getClient(global)
@@ -133,14 +157,6 @@ func printScopeMetadata(meta breakglass.ScopeMetadata) {
 		fmt.Printf("  ✗ %s\n", r)
 	}
 	fmt.Printf("\nExample: zoa breakglass request --scope %s --reason %s\n", meta.ID, reason.FormatHint)
-}
-
-func toClientScopes(in []breakglass.ScopeMetadata) []client.ScopeMetadata {
-	out := make([]client.ScopeMetadata, len(in))
-	for i, s := range in {
-		out[i] = client.ScopeMetadata{ID: s.ID, Plane: s.Plane, Type: s.Type, Description: s.Description}
-	}
-	return out
 }
 
 func renderBreakglassScopes(format output.Format, items []client.ScopeMetadata) error {
