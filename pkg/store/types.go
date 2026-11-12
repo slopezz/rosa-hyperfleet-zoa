@@ -12,10 +12,11 @@ const (
 	StatusSucceeded       Status = "succeeded"
 	StatusFailed          Status = "failed"
 	StatusTimedOut        Status = "timed_out"
+	StatusExpired         Status = "expired"
 )
 
 func (s Status) IsTerminal() bool {
-	return s == StatusSucceeded || s == StatusFailed || s == StatusTimedOut || s == StatusRejected
+	return s == StatusSucceeded || s == StatusFailed || s == StatusTimedOut || s == StatusRejected || s == StatusExpired
 }
 
 type Execution struct {

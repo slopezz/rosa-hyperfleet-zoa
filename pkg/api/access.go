@@ -63,41 +63,44 @@ type ExecCredentialVendor interface {
 
 // AccessHandler handles HTTP requests for the access Lambda mode.
 type AccessHandler struct {
-	cfg          *config.Config
-	sessionStore store.SessionStore
-	targetStore  store.TargetStore
-	auditStore   store.AuditStore
-	ecsClient    ECSAPI
-	ecsFactory   ECSClientFactory
-	execVendor   ExecCredentialVendor
-	logger       *slog.Logger
-	mux          *http.ServeMux
+	cfg             *config.Config
+	sessionStore    store.SessionStore
+	targetStore     store.TargetStore
+	breakglassStore store.BreakglassStore
+	auditStore      store.AuditStore
+	ecsClient       ECSAPI
+	ecsFactory      ECSClientFactory
+	execVendor      ExecCredentialVendor
+	logger          *slog.Logger
+	mux             *http.ServeMux
 }
 
 // AccessDeps holds the dependencies for creating an AccessHandler.
 type AccessDeps struct {
-	Cfg          *config.Config
-	SessionStore store.SessionStore
-	TargetStore  store.TargetStore
-	AuditStore   store.AuditStore
-	ECSClient    ECSAPI
-	ECSFactory   ECSClientFactory
-	ExecVendor   ExecCredentialVendor
-	Logger       *slog.Logger
+	Cfg             *config.Config
+	SessionStore    store.SessionStore
+	TargetStore     store.TargetStore
+	BreakglassStore store.BreakglassStore
+	AuditStore      store.AuditStore
+	ECSClient       ECSAPI
+	ECSFactory      ECSClientFactory
+	ExecVendor      ExecCredentialVendor
+	Logger          *slog.Logger
 }
 
 // NewAccessHandler creates a new AccessHandler and registers its routes.
 func NewAccessHandler(deps AccessDeps) *AccessHandler {
 	h := &AccessHandler{
-		cfg:          deps.Cfg,
-		sessionStore: deps.SessionStore,
-		targetStore:  deps.TargetStore,
-		auditStore:   deps.AuditStore,
-		ecsClient:    deps.ECSClient,
-		ecsFactory:   deps.ECSFactory,
-		execVendor:   deps.ExecVendor,
-		logger:       deps.Logger,
-		mux:          http.NewServeMux(),
+		cfg:             deps.Cfg,
+		sessionStore:    deps.SessionStore,
+		targetStore:     deps.TargetStore,
+		breakglassStore: deps.BreakglassStore,
+		auditStore:      deps.AuditStore,
+		ecsClient:       deps.ECSClient,
+		ecsFactory:      deps.ECSFactory,
+		execVendor:      deps.ExecVendor,
+		logger:          deps.Logger,
+		mux:             http.NewServeMux(),
 	}
 	h.registerRoutes()
 	return h
@@ -127,8 +130,8 @@ func (h *AccessHandler) registerRoutes() {
 
 	h.mux.HandleFunc("GET "+PathTargets, h.handleTargetList)
 
-	h.mux.HandleFunc("POST "+PathApprove+"{id}", h.handleApproveStub)
-	h.mux.HandleFunc("POST "+PathReject+"{id}", h.handleRejectStub)
+	h.mux.HandleFunc("POST "+PathApprove+"{id}", h.handleApprove)
+	h.mux.HandleFunc("POST "+PathReject+"{id}", h.handleReject)
 }
 
 func (h *AccessHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -687,18 +690,6 @@ func (h *AccessHandler) handleTargetList(w http.ResponseWriter, r *http.Request)
 	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{"items": targets, "count": len(targets)})
-}
-
-func (h *AccessHandler) handleApproveStub(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	h.recordAccessAudit(r, http.StatusNotImplemented, "approve", id, "", "")
-	writeError(w, http.StatusNotImplemented, "not_implemented", "approval workflow not yet enabled")
-}
-
-func (h *AccessHandler) handleRejectStub(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	h.recordAccessAudit(r, http.StatusNotImplemented, "reject", id, "", "")
-	writeError(w, http.StatusNotImplemented, "not_implemented", "approval workflow not yet enabled")
 }
 
 func (h *AccessHandler) recordAccessAudit(r *http.Request, statusCode int, action, sessionID, reasonValue, targetCluster string) {

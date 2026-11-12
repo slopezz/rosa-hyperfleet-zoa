@@ -45,33 +45,39 @@ type SyncResult struct {
 }
 
 type Executor struct {
-	kubeClient      kubernetes.Interface
-	restConfig      *rest.Config
-	s3Client        S3API
-	stsClient       STSAssumeRoler
-	awsCfg          *aws.Config
-	artifactBucket  string
-	uploaderRoleARN string
-	awsReadRoleARN  string
-	awsWriteRoleARN string
-	kmsKeyARN       string
-	region          string
-	jobImage        string
-	targetType      string
-	logger          *slog.Logger
-	eksCircuit      *circuitBreaker
+	kubeClient               kubernetes.Interface
+	restConfig               *rest.Config
+	s3Client                 S3API
+	stsClient                STSAssumeRoler
+	awsCfg                   *aws.Config
+	artifactBucket           string
+	uploaderRoleARN          string
+	awsReadRoleARN           string
+	awsWriteRoleARN          string
+	breakglassAWSReadARN     string
+	breakglassAWSWriteARN    string
+	breakglassAWSElevatedARN string
+	kmsKeyARN                string
+	region                   string
+	jobImage                 string
+	targetType               string
+	logger                   *slog.Logger
+	eksCircuit               *circuitBreaker
 }
 
 type ExecutorConfig struct {
-	ArtifactBucket  string
-	UploaderRoleARN string
-	AWSReadRoleARN  string
-	AWSWriteRoleARN string
-	KMSKeyARN       string
-	Region          string
-	JobImage        string
-	TargetType      string
-	TargetCluster   string
+	ArtifactBucket           string
+	UploaderRoleARN          string
+	AWSReadRoleARN           string
+	AWSWriteRoleARN          string
+	BreakglassAWSReadARN     string
+	BreakglassAWSWriteARN    string
+	BreakglassAWSElevatedARN string
+	KMSKeyARN                string
+	Region                   string
+	JobImage                 string
+	TargetType               string
+	TargetCluster            string
 }
 
 func New(kubeClient kubernetes.Interface, restConfig *rest.Config, s3Client S3API, awsCfg *aws.Config, cfg ExecutorConfig, logger *slog.Logger) *Executor {
@@ -80,21 +86,24 @@ func New(kubeClient kubernetes.Interface, restConfig *rest.Config, s3Client S3AP
 		stsClient = sts.NewFromConfig(*awsCfg)
 	}
 	return &Executor{
-		kubeClient:      kubeClient,
-		restConfig:      restConfig,
-		s3Client:        s3Client,
-		stsClient:       stsClient,
-		awsCfg:          awsCfg,
-		artifactBucket:  cfg.ArtifactBucket,
-		uploaderRoleARN: cfg.UploaderRoleARN,
-		awsReadRoleARN:  cfg.AWSReadRoleARN,
-		awsWriteRoleARN: cfg.AWSWriteRoleARN,
-		kmsKeyARN:       cfg.KMSKeyARN,
-		region:          cfg.Region,
-		jobImage:        cfg.JobImage,
-		targetType:      cfg.TargetType,
-		logger:          logger,
-		eksCircuit:      newCircuitBreaker(cfg.TargetCluster),
+		kubeClient:               kubeClient,
+		restConfig:               restConfig,
+		s3Client:                 s3Client,
+		stsClient:                stsClient,
+		awsCfg:                   awsCfg,
+		artifactBucket:           cfg.ArtifactBucket,
+		uploaderRoleARN:          cfg.UploaderRoleARN,
+		awsReadRoleARN:           cfg.AWSReadRoleARN,
+		awsWriteRoleARN:          cfg.AWSWriteRoleARN,
+		breakglassAWSReadARN:     cfg.BreakglassAWSReadARN,
+		breakglassAWSWriteARN:    cfg.BreakglassAWSWriteARN,
+		breakglassAWSElevatedARN: cfg.BreakglassAWSElevatedARN,
+		kmsKeyARN:                cfg.KMSKeyARN,
+		region:                   cfg.Region,
+		jobImage:                 cfg.JobImage,
+		targetType:               cfg.TargetType,
+		logger:                   logger,
+		eksCircuit:               newCircuitBreaker(cfg.TargetCluster),
 	}
 }
 

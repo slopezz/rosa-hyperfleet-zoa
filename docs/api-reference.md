@@ -73,14 +73,27 @@ Served by the Access Lambda (`HANDLER_MODE=access`) in the RC account (no VPC at
 | `POST` | `/api/v0/sessions/join/{id}`          | Join a session (provisions boundary task if needed, returns ECS Exec credentials)           |
 | `POST` | `/api/v0/sessions/exec-attached/{id}` | Record ECS Exec session attachment (called by CLI after `session-manager-plugin` connects)  |
 
-### Approval (future)
+### Break-glass (API Lambda — boundary)
 
-Approval stubs are registered on the Access Lambda today. The approval workflow will expand to cover TAs and break-glass when those features ship.
+Requires `BREAKGLASS_TABLE` on the target API Lambda. Identity and task-binding match TA dispatch.
 
-| Method | Path                   | Description                          |
-| ------ | ---------------------- | ------------------------------------ |
-| `POST` | `/api/v0/approve/{id}` | Approve request (stub — returns 501) |
-| `POST` | `/api/v0/reject/{id}`  | Reject request (stub — returns 501)  |
+| Method | Path                                       | Description                                      |
+| ------ | ------------------------------------------ | ------------------------------------------------ |
+| `GET`  | `/api/v0/breakglass/scopes`                | List scopes for this target type                 |
+| `GET`  | `/api/v0/breakglass/scopes/{scope}`        | Describe one scope                               |
+| `POST` | `/api/v0/breakglass/requests`              | Create request (`scope`, `reason`)               |
+| `GET`  | `/api/v0/breakglass/requests`              | List requests for the authenticated operator     |
+| `GET`  | `/api/v0/breakglass/requests/{id}`         | Get request                                      |
+| `POST` | `/api/v0/breakglass/requests/{id}/connect` | Provision access (`?credentials=true` for tokens)  |
+
+### Approval
+
+| Method | Path                   | Description                                                           |
+| ------ | ---------------------- | --------------------------------------------------------------------- |
+| `POST` | `/api/v0/approve/{id}` | Approve break-glass (`{id}` or `{deployment}/{request-id}` on Access)   |
+| `POST` | `/api/v0/reject/{id}`  | Reject break-glass request (JSON body optional `comment` / `note`)    |
+
+TA manual approval remains future work; API routes try break-glass first, then executions.
 
 ---
 

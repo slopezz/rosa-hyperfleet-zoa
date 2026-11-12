@@ -28,6 +28,14 @@ type APIClient interface {
 	SessionJoin(ctx context.Context, sessionID string) (*client.SessionJoinResponse, error)
 	SessionExecAttached(ctx context.Context, sessionID, execSessionID string) error
 	ListSessions(ctx context.Context, query url.Values) (*client.SessionList, error)
+
+	ListBreakglassScopes(ctx context.Context) (*client.BreakglassScopeList, error)
+	CreateBreakglassRequest(ctx context.Context, scope, reason string) (*client.BreakglassRequest, error)
+	GetBreakglassRequest(ctx context.Context, id string) (*client.BreakglassRequest, error)
+	ListBreakglassRequests(ctx context.Context) (*client.BreakglassRequestList, error)
+	ConnectBreakglass(ctx context.Context, id string, withCredentials bool) (*client.BreakglassConnectResponse, error)
+	Approve(ctx context.Context, compoundOrID, comment string) error
+	Reject(ctx context.Context, compoundOrID, comment string) error
 }
 
 // Verify *client.Client satisfies APIClient at compile time.

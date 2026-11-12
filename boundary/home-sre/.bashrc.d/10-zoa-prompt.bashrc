@@ -9,7 +9,12 @@ zoa_prompt_secondary() {
   local op="${ZOA_OPERATOR:-sre}"
   local dep="${ZOA_DEPLOYMENT:-unknown}"
   local tgt="${ZOA_TARGET:-unknown}"
-  printf '%s@zoa:%s/%s' "${op}" "${dep}" "${tgt}"
+  local line
+  line="$(printf '%s@zoa:%s/%s' "${op}" "${dep}" "${tgt}")"
+  if declare -F zoa_breakglass_ps1_suffix &>/dev/null; then
+    line="${line}$(zoa_breakglass_ps1_suffix)"
+  fi
+  printf '%s' "${line}"
 }
 
 if [[ -n "${ZOA_SESSION_ID:-}" || -n "${ZOA_DEPLOYMENT:-}" ]]; then

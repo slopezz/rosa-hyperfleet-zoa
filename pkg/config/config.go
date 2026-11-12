@@ -126,6 +126,19 @@ type Config struct {
 
 	// DeploymentName labels deployment-scoped Access EMF (health, targets, session list/history).
 	DeploymentName string
+
+	// BreakglassTable stores grant requests when break-glass is enabled for this target.
+	BreakglassTable string
+
+	// Breakglass AWS role ARNs (API Lambda AssumeRole only).
+	BreakglassAWSReadRoleARN     string
+	BreakglassAWSWriteRoleARN    string
+	BreakglassAWSElevatedRoleARN string
+}
+
+// BreakglassEnabled is true when the DynamoDB table is configured.
+func (c *Config) BreakglassEnabled() bool {
+	return c != nil && c.BreakglassTable != ""
 }
 
 func Load() (*Config, error) {
@@ -168,6 +181,10 @@ func Load() (*Config, error) {
 		SessionStaleCreatingSeconds:    getEnvInt("SESSION_STALE_CREATING_SECONDS", 900),
 		SessionMaxDurationHours:        getEnvInt("SESSION_MAX_DURATION_HOURS", 4),
 		DeploymentName:                 getEnv("DEPLOYMENT_NAME", ""),
+		BreakglassTable:                getEnv("BREAKGLASS_TABLE", ""),
+		BreakglassAWSReadRoleARN:       getEnv("BREAKGLASS_AWS_READ_ROLE_ARN", ""),
+		BreakglassAWSWriteRoleARN:      getEnv("BREAKGLASS_AWS_WRITE_ROLE_ARN", ""),
+		BreakglassAWSElevatedRoleARN:   getEnv("BREAKGLASS_AWS_ELEVATED_ROLE_ARN", ""),
 	}
 
 	validModes := map[string]bool{"api": true, "worker": true, "access": true}

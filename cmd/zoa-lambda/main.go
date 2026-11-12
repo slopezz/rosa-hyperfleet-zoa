@@ -32,6 +32,7 @@ import (
 	"github.com/openshift-online/rosa-seaplane-zoa/pkg/handler"
 	"github.com/openshift-online/rosa-seaplane-zoa/pkg/lambdahttp"
 	"github.com/openshift-online/rosa-seaplane-zoa/pkg/scheduler"
+	"github.com/openshift-online/rosa-seaplane-zoa/pkg/scopes"
 	"github.com/openshift-online/rosa-seaplane-zoa/pkg/store"
 )
 
@@ -49,6 +50,7 @@ func main() {
 	}
 
 	actions.SetTargetType(cfg.TargetType)
+	scopes.SetTargetType(cfg.TargetType)
 
 	logger = logger.With("target", cfg.TargetCluster, "target_type", cfg.TargetType, "region", cfg.Region)
 	logger.Info("starting zoa-lambda",
@@ -75,6 +77,10 @@ func main() {
 		sessionStore := store.NewSessionStore(dynamoClient, cfg.SessionsTable, cfg.DynamoDBTTLDays)
 		targetStore := store.NewTargetStore(ssmClient, cfg.TargetsSSMPrefix)
 		auditStore := store.NewAuditStore(dynamoClient, cfg.AuditTable, cfg.DynamoDBTTLDays)
+		var bgStore store.BreakglassStore
+		if cfg.BreakglassEnabled() {
+			bgStore = store.NewBreakglassStore(dynamoClient, cfg.BreakglassTable, cfg.DynamoDBTTLDays)
+		}
 
 		caller, err := sts.NewFromConfig(awsCfg).GetCallerIdentity(initCtx, &sts.GetCallerIdentityInput{})
 		if err != nil {
@@ -88,14 +94,15 @@ func main() {
 		ecsFactory := accesscross.NewECSFactory(awsCfg, homeAccountID, ecsClient)
 
 		accessHandler := api.NewAccessHandler(api.AccessDeps{
-			Cfg:          cfg,
-			SessionStore: sessionStore,
-			TargetStore:  targetStore,
-			AuditStore:   auditStore,
-			ECSClient:    ecsClient,
-			ECSFactory:   ecsFactory,
-			ExecVendor:   execVendor,
-			Logger:       logger,
+			Cfg:             cfg,
+			SessionStore:    sessionStore,
+			TargetStore:     targetStore,
+			BreakglassStore: bgStore,
+			AuditStore:      auditStore,
+			ECSClient:       ecsClient,
+			ECSFactory:      ecsFactory,
+			ExecVendor:      execVendor,
+			Logger:          logger,
 		})
 
 		streamingHandler := lambdahttp.NewStreamingHandler(accessHandler)
@@ -158,15 +165,18 @@ func main() {
 	}
 
 	exec := executor.New(kubeClient, restCfg, s3Client, &awsCfg, executor.ExecutorConfig{
-		ArtifactBucket:  cfg.ArtifactBucket,
-		UploaderRoleARN: cfg.UploaderRoleARN,
-		AWSReadRoleARN:  cfg.AWSReadRoleARN,
-		AWSWriteRoleARN: cfg.AWSWriteRoleARN,
-		KMSKeyARN:       cfg.KMSKeyARN,
-		Region:          cfg.Region,
-		JobImage:        cfg.JobImage,
-		TargetType:      cfg.TargetType,
-		TargetCluster:   cfg.TargetCluster,
+		ArtifactBucket:           cfg.ArtifactBucket,
+		UploaderRoleARN:          cfg.UploaderRoleARN,
+		AWSReadRoleARN:           cfg.AWSReadRoleARN,
+		AWSWriteRoleARN:          cfg.AWSWriteRoleARN,
+		BreakglassAWSReadARN:     cfg.BreakglassAWSReadRoleARN,
+		BreakglassAWSWriteARN:    cfg.BreakglassAWSWriteRoleARN,
+		BreakglassAWSElevatedARN: cfg.BreakglassAWSElevatedRoleARN,
+		KMSKeyARN:                cfg.KMSKeyARN,
+		Region:                   cfg.Region,
+		JobImage:                 cfg.JobImage,
+		TargetType:               cfg.TargetType,
+		TargetCluster:            cfg.TargetCluster,
 	}, logger)
 
 	switch cfg.HandlerMode {
@@ -182,6 +192,11 @@ func main() {
 			apiOpts = append(apiOpts, api.WithSessionStore(sessionStore))
 			logger.Info("identity bridge enabled", "sessionsTable", cfg.SessionsTable)
 		}
+		if cfg.BreakglassEnabled() {
+			bgStore := store.NewBreakglassStore(dynamoClient, cfg.BreakglassTable, cfg.DynamoDBTTLDays)
+			apiOpts = append(apiOpts, api.WithBreakglassStore(bgStore))
+			logger.Info("break-glass enabled", "breakglassTable", cfg.BreakglassTable)
+		}
 		apiHandler := api.New(cfg, execStore, auditStore, exec, s3Client, logger, apiOpts...)
 		streamingHandler := lambdahttp.NewStreamingHandler(apiHandler)
 
@@ -193,6 +208,11 @@ func main() {
 		// and self-invocation events (no HTTP involved).
 		lambdaClient := awslambda.NewFromConfig(awsCfg)
 		reconciler := scheduler.NewReconciler(execStore, kubeClient, lambdaClient, exec, cfg, logger)
+		if cfg.BreakglassEnabled() {
+			bgStore := store.NewBreakglassStore(dynamoClient, cfg.BreakglassTable, cfg.DynamoDBTTLDays)
+			reconciler.SetBreakglassReconciler(scheduler.NewBreakglassReconciler(bgStore, exec, cfg.TargetCluster, logger))
+			logger.Info("break-glass worker expiry enabled", "breakglassTable", cfg.BreakglassTable)
+		}
 
 		// Reaper: terminates expired boundary sessions. Only initialized when
 		// SESSIONS_TABLE is set (boundary is enabled for this deployment).

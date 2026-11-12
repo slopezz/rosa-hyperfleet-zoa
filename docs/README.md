@@ -45,7 +45,7 @@ TAs run from inside the boundary via `zoa run`. They are the steady-state operat
 
 ## Break-glass
 
-Not implemented. See [break-glass/README.md](break-glass/README.md) for the planned stub.
+Emergency scoped access from the boundary (see [break-glass/README.md](break-glass/README.md)).
 
 **Policy:** break-glass is a one-time escape hatch. Every break-glass use must produce a follow-up TA that automates the same operation — the TA catalog grows monotonically so the same emergency never requires raw access twice.
 

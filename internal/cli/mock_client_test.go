@@ -128,6 +128,34 @@ func (m *mockClient) ListSessions(ctx context.Context, query url.Values) (*clien
 	return nil, fmt.Errorf("ListSessions not mocked")
 }
 
+func (m *mockClient) ListBreakglassScopes(context.Context) (*client.BreakglassScopeList, error) {
+	return nil, fmt.Errorf("ListBreakglassScopes not mocked")
+}
+
+func (m *mockClient) CreateBreakglassRequest(context.Context, string, string) (*client.BreakglassRequest, error) {
+	return nil, fmt.Errorf("CreateBreakglassRequest not mocked")
+}
+
+func (m *mockClient) GetBreakglassRequest(context.Context, string) (*client.BreakglassRequest, error) {
+	return nil, fmt.Errorf("GetBreakglassRequest not mocked")
+}
+
+func (m *mockClient) ListBreakglassRequests(context.Context) (*client.BreakglassRequestList, error) {
+	return nil, fmt.Errorf("ListBreakglassRequests not mocked")
+}
+
+func (m *mockClient) ConnectBreakglass(context.Context, string, bool) (*client.BreakglassConnectResponse, error) {
+	return nil, fmt.Errorf("ConnectBreakglass not mocked")
+}
+
+func (m *mockClient) Approve(context.Context, string, string) error {
+	return fmt.Errorf("Approve not mocked")
+}
+
+func (m *mockClient) Reject(context.Context, string, string) error {
+	return fmt.Errorf("Reject not mocked")
+}
+
 func newMockGlobalOpts(mock *mockClient) *GlobalOptions {
 	return &GlobalOptions{
 		APIURL: "https://test.lambda-url.us-east-1.on.aws",

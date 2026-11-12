@@ -38,6 +38,7 @@ type Reconciler struct {
 	kubeClient     kubernetes.Interface
 	lambdaClient   LambdaInvoker
 	executor       *executor.Executor
+	breakglass     *BreakglassReconciler
 	cfg            *config.Config
 	logger         *slog.Logger
 }
@@ -51,6 +52,11 @@ func NewReconciler(executionStore store.ExecutionStore, kubeClient kubernetes.In
 		cfg:            cfg,
 		logger:         logger,
 	}
+}
+
+// SetBreakglassReconciler runs break-glass expiry on each reconciler tick when set.
+func (r *Reconciler) SetBreakglassReconciler(bg *BreakglassReconciler) {
+	r.breakglass = bg
 }
 
 // Run performs the reconciliation loop:
@@ -94,6 +100,13 @@ func (r *Reconciler) Run(ctx context.Context) error {
 	if err := r.cleanupStaleMustGatherPods(ctx); err != nil {
 		r.logger.Error("stale must-gather pod cleanup failed", "error", err)
 		phaseErrors++
+	}
+
+	if r.breakglass != nil {
+		if err := r.breakglass.Run(ctx); err != nil {
+			r.logger.Error("break-glass expiry failed", "error", err)
+			phaseErrors++
+		}
 	}
 
 	elapsed := time.Since(start)

@@ -6,6 +6,7 @@ import "os"
 
 const (
 	KeyExecutionID = "zoa.openshift.io/execution-id"
+	KeyRequestID   = "zoa.openshift.io/request-id"
 	KeyAction      = "zoa.openshift.io/action"
 	KeyTarget      = "zoa.openshift.io/target"
 	KeyComponent   = "zoa.openshift.io/component"

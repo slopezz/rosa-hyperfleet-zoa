@@ -14,6 +14,13 @@ const (
 	PathAudit = V0Prefix + "/audit"
 )
 
+// Break-glass routes (HANDLER_MODE=api).
+const (
+	PathBreakglass         = V0Prefix + "/breakglass"
+	PathBreakglassScopes   = PathBreakglass + "/scopes"
+	PathBreakglassRequests = PathBreakglass + "/requests"
+)
+
 // Access / boundary routes (HANDLER_MODE=access). Same v0 prefix and error envelope as TA routes.
 const (
 	PathTargets            = V0Prefix + "/targets"

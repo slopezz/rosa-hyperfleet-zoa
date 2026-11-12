@@ -11,6 +11,7 @@ Terraform source: `rosa-seaplane/terraform/modules/zoa/` (`dynamodb.tf`, `s3.tf`
 | **Executions**        | PK `executionId`               | TA run lifecycle, cooldown/concurrency queries                       |
 | **Audit**             | PK `accountId`, SK `timestamp` | API call audit trail                                                 |
 | **Boundary sessions** | PK `sessionId` (UUID)          | Session lifecycle, [identity bridge](../boundary/identity-bridge.md) |
+| **Break-glass**       | PK `requestId` (UUID)          | Break-glass request/grant lifecycle ([break-glass](../break-glass/README.md)) |
 
 TTL attribute: **`ttl`** (Unix epoch), set on write from **`DYNAMODB_TTL_DAYS`** (default **365** days) for executions, audit, and sessions.
 
