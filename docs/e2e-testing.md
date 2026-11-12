@@ -6,12 +6,9 @@ from a PR into that environment.
 
 ## Break-glass (ROSAENG-75954)
 
-Break-glass e2e will follow the session + TA patterns in `test/e2e/`:
+**Smoke (in CI today):** `test/e2e/cmd_breakglass_test.go` — embedded scope catalog (`breakglass scopes --offline`) and live `GET /breakglass/scopes` per RC/MC.
 
-1. Boundary: `breakglass request` → peer approve from laptop → `breakglass use` → read-only `kubectl get ns`.
-2. Expiry: worker marks grant expired and GC removes `zoa-bg-<requestId>` RBAC.
-
-Gate on ephemeral when `BREAKGLASS_TABLE` is wired (same RC outputs as executions/sessions).
+**Full flow (manual / future CI):** boundary `breakglass request` → laptop `approve <deployment>/<id>` → `breakglass use` → `kubectl get ns`; worker expiry removes `zoa-bg-<requestId>` RBAC. Requires `BREAKGLASS_TABLE` on the deployment and a second operator for peer approval.
 
 ## Test Suites
 
