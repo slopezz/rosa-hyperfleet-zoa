@@ -33,8 +33,8 @@ type APIClient interface {
 	GetBreakglassScope(ctx context.Context, scopeID string) (*client.ScopeMetadata, error)
 	CreateBreakglassRequest(ctx context.Context, scope, reason string) (*client.BreakglassRequest, error)
 	GetBreakglassRequest(ctx context.Context, id string) (*client.BreakglassRequest, error)
-	ListBreakglassRequests(ctx context.Context) (*client.BreakglassRequestList, error)
-	ConnectBreakglass(ctx context.Context, id string, withCredentials bool) (*client.BreakglassConnectResponse, error)
+	ListBreakglassRequests(ctx context.Context, params *client.BreakglassListParams) (*client.BreakglassRequestList, error)
+	ActivateBreakglass(ctx context.Context, id string) (*client.BreakglassConnectResponse, error)
 	Approve(ctx context.Context, compoundOrID, comment string) error
 	Reject(ctx context.Context, compoundOrID, comment string) error
 }

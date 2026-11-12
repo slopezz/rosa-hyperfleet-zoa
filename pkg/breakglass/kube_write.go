@@ -1,4 +1,4 @@
-package scopes
+package breakglass
 
 import "github.com/openshift-online/rosa-seaplane-zoa/pkg/actions"
 
@@ -10,7 +10,7 @@ func init() {
 			Type:        TypeWrite,
 			Description: "Surgical workload changes (patch/update; delete pods and jobs only)",
 			Authorization: Authorization{
-				Approval:            "manual",
+				Approval:            "none",
 				DefaultGrantHours:   4,
 				DefaultPendingHours: 24,
 			},

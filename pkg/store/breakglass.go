@@ -59,6 +59,7 @@ type BreakglassStore interface {
 	Create(ctx context.Context, req *BreakglassRequest) error
 	Get(ctx context.Context, requestID string) (*BreakglassRequest, error)
 	ListByOperator(ctx context.Context, operator string, filter *BreakglassFilter) ([]*BreakglassRequest, error)
+	ListAll(ctx context.Context, filter *BreakglassFilter) ([]*BreakglassRequest, error)
 	Transition(ctx context.Context, requestID string, from, to Status, updates map[string]interface{}) error
 	QueryByTargetAndStatus(ctx context.Context, target string, status Status) ([]*BreakglassRequest, error)
 	MarkCleaned(ctx context.Context, requestID string) error
@@ -233,6 +234,15 @@ func (s *DynamoDBBreakglassStore) MarkCleaned(ctx context.Context, requestID str
 		return fmt.Errorf("marking breakglass cleaned: %w", err)
 	}
 	return nil
+}
+
+// ListAll queries date-bucket-index with optional filters (operator omitted = all operators on target).
+func (s *DynamoDBBreakglassStore) ListAll(ctx context.Context, filter *BreakglassFilter) ([]*BreakglassRequest, error) {
+	operator := ""
+	if filter != nil && filter.Operator != nil {
+		operator = *filter.Operator
+	}
+	return s.ListByOperator(ctx, operator, filter)
 }
 
 // ListByOperator queries date-bucket-index with operator filter (newest days first).

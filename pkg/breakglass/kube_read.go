@@ -1,4 +1,4 @@
-package scopes
+package breakglass
 
 import (
 	"github.com/openshift-online/rosa-seaplane-zoa/pkg/actions"
@@ -12,7 +12,7 @@ func init() {
 			Type:        TypeRead,
 			Description: "Read-only kubectl (get/list/watch); no secrets or exec",
 			Authorization: Authorization{
-				Approval:            "manual",
+				Approval:            "none",
 				DefaultGrantHours:   4,
 				DefaultPendingHours: 24,
 			},

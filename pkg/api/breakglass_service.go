@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/openshift-online/rosa-seaplane-zoa/pkg/scopes"
+	"github.com/openshift-online/rosa-seaplane-zoa/pkg/breakglass"
 	"github.com/openshift-online/rosa-seaplane-zoa/pkg/store"
 )
 
@@ -35,8 +35,8 @@ func ApproveBreakglassRequest(ctx context.Context, bgStore store.BreakglassStore
 	if req.Operator != "" && req.Operator == approver {
 		return errBreakglassSelfApprove
 	}
-	def, _ := scopes.Get(req.Scope)
-	if def != nil && def.Metadata.Authorization.RequireDecisionNote && note == "" {
+	def, _ := breakglass.Get(req.Scope)
+	if def != nil && def.Metadata.Authorization.RequireDecisionNote && note == "" && approver != BreakglassAutoApprover {
 		return errBreakglassNoteRequired
 	}
 	grantHours := 4
@@ -62,7 +62,7 @@ func RejectBreakglassRequest(ctx context.Context, bgStore store.BreakglassStore,
 	if approver == "" {
 		return errBreakglassNoApprover
 	}
-	def, _ := scopes.Get(req.Scope)
+	def, _ := breakglass.Get(req.Scope)
 	if def != nil && def.Metadata.Authorization.RequireDecisionNote && note == "" {
 		return errBreakglassNoteRequired
 	}

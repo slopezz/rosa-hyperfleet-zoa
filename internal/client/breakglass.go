@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/url"
 )
@@ -81,19 +82,51 @@ func (c *Client) GetBreakglassRequest(ctx context.Context, id string) (*Breakgla
 	return &resp, nil
 }
 
-func (c *Client) ListBreakglassRequests(ctx context.Context) (*BreakglassRequestList, error) {
+type BreakglassListParams struct {
+	Scope    string // "mine" (default) or "fleet" for cross-operator history
+	Operator string
+	Status   string
+	Since    string
+	Until    string
+	Limit    int
+}
+
+func (c *Client) ListBreakglassRequests(ctx context.Context, params *BreakglassListParams) (*BreakglassRequestList, error) {
+	q := url.Values{}
+	if params != nil {
+		if params.Scope != "" {
+			q.Set("scope", params.Scope)
+		}
+		if params.Operator != "" {
+			q.Set("operator", params.Operator)
+		}
+		if params.Status != "" {
+			q.Set("status", params.Status)
+		}
+		if params.Since != "" {
+			q.Set("since", params.Since)
+		}
+		if params.Until != "" {
+			q.Set("until", params.Until)
+		}
+		if params.Limit > 0 {
+			q.Set("limit", fmt.Sprintf("%d", params.Limit))
+		}
+	}
+	path := "/breakglass/requests"
+	if enc := q.Encode(); enc != "" {
+		path += "?" + enc
+	}
 	var resp BreakglassRequestList
-	if err := c.doV0(ctx, http.MethodGet, "/breakglass/requests", nil, &resp); err != nil {
+	if err := c.doV0(ctx, http.MethodGet, path, nil, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
 }
 
-func (c *Client) ConnectBreakglass(ctx context.Context, id string, withCredentials bool) (*BreakglassConnectResponse, error) {
+// ActivateBreakglass provisions access and returns credentials (POST …/connect).
+func (c *Client) ActivateBreakglass(ctx context.Context, id string) (*BreakglassConnectResponse, error) {
 	path := "/breakglass/requests/" + url.PathEscape(id) + "/connect"
-	if withCredentials {
-		path += "?credentials=true"
-	}
 	var resp BreakglassConnectResponse
 	if err := c.doV0(ctx, http.MethodPost, path, nil, &resp); err != nil {
 		return nil, err

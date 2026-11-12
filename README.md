@@ -33,6 +33,7 @@ ZOA is built on three operational pillars. The boundary is always the entry poin
 | **Worker Lambda**   | `zoa-lambda` image (`HANDLER_MODE=worker`)                         | Lambda (per target VPC)            | Boundary + TAs — reconciler, GC, async TA dispatch, session **reaper**                                       |
 | **Async runner**    | `zoa-runner` image                                                 | K8s Job (target EKS)               | TAs — long-running async TAs; uploads to S3                                                                  |
 | **Trusted Actions** | Go packages (`pkg/actions/`, compiled into Lambda/runner/boundary) | Lambda + runner + boundary catalog | TAs — RBAC-scoped operations invoked via `zoa run` from the boundary                                         |
+| **Break-glass scopes** | Go packages (`pkg/breakglass/`, compiled into Lambda/boundary) | Lambda + boundary catalog | Emergency scope catalog (`kube-read`, …); shell active state in `pkg/breakglass/active` — see [docs/break-glass-scopes.md](docs/break-glass-scopes.md) |
 
 **Three images** from this repo: **`zoa-lambda`** (one binary, three `HANDLER_MODE`s), **`zoa-runner`** (async TAs in EKS Jobs), **`zoa-boundary`** (audited operator shell).
 

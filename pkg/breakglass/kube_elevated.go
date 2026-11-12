@@ -1,4 +1,4 @@
-package scopes
+package breakglass
 
 import "github.com/openshift-online/rosa-seaplane-zoa/pkg/actions"
 
@@ -10,11 +10,9 @@ func init() {
 			Type:        TypeElevated,
 			Description: "Near-admin operational access without secrets or RBAC escalation",
 			Authorization: Authorization{
-				Approval:            "strict",
+				Approval:            "none",
 				DefaultGrantHours:   1,
 				DefaultPendingHours: 8,
-				MinApprovers:        1,
-				RequireDecisionNote: true,
 			},
 			Restrictions: []string{
 				"No secrets, serviceaccounts, or RBAC bind mutations",

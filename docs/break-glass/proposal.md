@@ -1,5 +1,7 @@
 # ZOA Break-Glass — Feature Proposal
 
+> **Scratch only.** Working notes while the feature is in flight — not linked from the doc index, not a merge target, and not an approval source of truth. Use [approval-workflow.md](../approval-workflow.md), [README.md](README.md), and the implementation (`pkg/breakglass`, `pkg/api/breakglass_*`) for what actually ships.
+
 **Status:** Draft for review (HyperFleet / ZOA)  
 **Audience:** Engineering, security, SRE  
 **Repos:** `rosa-hyperfleet-zoa` (API, CLI, worker), `rosa-hyperfleet` (Terraform, observability)
@@ -239,7 +241,7 @@ No parallel “BG approval domain” beyond the second Dynamo table.
 ### 5.4 AWS
 
 - API Lambda `AssumeRole` into Terraform role for scope (from env/config per scope).
-- `RoleSessionName`: `bg-<requestId>` (UUID fits STS 64-char limit; operator in session tags / `SourceIdentity`).
+- `RoleSessionName`: `zoa-bg-<requestId>` (UUID fits STS 64-char limit; operator in session tags / `SourceIdentity`).
 - `SourceIdentity`: operator username when bridge hit; omit if degraded (BG admin scopes should **fail closed** on degraded identity — policy).
 - Session tags (when supported on role trust): `ZOARequestId`, `ZOAOperator`, `ZOABoundaryTask`, `ZOAScope`, `ZOAEnvironment`.
 - CLI writes a **fragment** under `~/.config/zoa/breakglass/<requestId>/` with profile `zoa-bg-<requestId>` and **`credential_process`** aimed at the same class of **hidden helper** (no static keys on disk).
@@ -650,7 +652,7 @@ Same as RC **kube-write**, namespaces = MC platform list **excluding** `cluster-
 
 `iam:*`, `organizations:*`, `account:CloseAccount`, `account:Delete*`, `secretsmanager:*`, `ssm:GetParameter*`, `kms:Decrypt`, `kms:ImportKeyMaterial`, `s3:GetObject`, `s3:PutObject` on `arn:aws:s3:::*customer*` patterns (use env-specific prefix list), `sts:AssumeRole` to other roles, `ec2:ModifyInstanceAttribute` on `userData`, `rds:Delete*`, `dynamodb:Delete*`
 
-Session: `RoleSessionName` `bg-<requestId>`, tags `ZOAScope=aws-elevated`, mandatory `SourceIdentity` when bridge hits.
+Session: `RoleSessionName` `zoa-bg-<requestId>`, tags `ZOAScope=aws-elevated`, mandatory `SourceIdentity` when bridge hits.
 
 ---
 
@@ -844,7 +846,7 @@ Break-glass should **plug into the same Worker**, not a parallel design:
 
 | Phase                 | Where                                                  | Behavior                                                                                                                                                                                                                                                                                                                                              |
 | --------------------- | ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Expiry**            | `pkg/scheduler/breakglass.go` (same 5m tick as reaper) | Query `target-status-index` for pending/grant deadlines → `status=expired` → call **`CleanupBreakglass(requestId)`** (mirror `CleanupExecution`: delete `zoa-bg-<requestId>` + bindings by derived name / shared label). Optional short **gcDelay** (e.g. 5m) after `grantExpiresAt` like TA terminal GC — tokens already dead, this is RBAC hygiene. |
+| **Expiry**            | `pkg/scheduler/breakglass.go` (worker **reconciler** tick, 1m — not gc/reaper) | Query `target-status-index` for pending/grant deadlines → `status=expired` → call **`CleanupBreakglass(requestId)`** (mirror `CleanupExecution`: delete `zoa-bg-<requestId>` + bindings by derived name / shared label). Optional short **gcDelay** (e.g. 5m) after `grantExpiresAt` like TA terminal GC — tokens already dead, this is RBAC hygiene. |
 | **Orphan safety net** | Extend **`RunGC`** (dedicated GC EventBridge schedule) | List cluster-scoped (and namespaced) objects with **`zoa.openshift.io/request-id`**; if **no row** or row already `expired`/`rejected`/`failed` → delete. Same “stupid but safe” philosophy as `orphanGC`, not a second source of truth.                                                                                                              |
 | **AWS**               | —                                                      | **Nothing to delete** in AWS API; STS expires. Do not “revoke” sessions in v1 beyond TTL.                                                                                                                                                                                                                                                             |
 
@@ -944,4 +946,4 @@ Detail for debugging: **`audit`** + Dynamo + HTTP logs — not extra labels.
 
 ---
 
-_This proposal supersedes informal ChatGPT architecture notes. Implementation should follow `rosa-hyperfleet-zoa` conventions (`When … it should …` tests, `make all`, no secrets in logs)._
+_Implementation conventions: `rosa-hyperfleet-zoa` (`When … it should …` tests, `make all`, no secrets in logs)._

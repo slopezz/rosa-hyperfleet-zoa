@@ -1,4 +1,4 @@
-package scopes
+package breakglass
 
 const (
 	AwsRoleKeyRead     = "aws-read"
@@ -14,7 +14,7 @@ func init() {
 			Type:        TypeRead,
 			Description: "Regional AWS read (Describe/List/Get) via scoped STS role",
 			Authorization: Authorization{
-				Approval:            "manual",
+				Approval:            "none",
 				DefaultGrantHours:   4,
 				DefaultPendingHours: 24,
 			},
@@ -29,7 +29,7 @@ func init() {
 			Type:        TypeWrite,
 			Description: "Constrained regional AWS mutations via scoped STS role",
 			Authorization: Authorization{
-				Approval:            "manual",
+				Approval:            "none",
 				DefaultGrantHours:   4,
 				DefaultPendingHours: 24,
 			},
@@ -41,12 +41,11 @@ func init() {
 			ID:          "aws-elevated",
 			Plane:       PlaneAWS,
 			Type:        TypeElevated,
-			Description: "Near-admin AWS access with short deny sidebar (strict approval)",
+			Description: "Near-admin AWS access with short deny sidebar",
 			Authorization: Authorization{
-				Approval:            "strict",
+				Approval:            "none",
 				DefaultGrantHours:   1,
 				DefaultPendingHours: 8,
-				RequireDecisionNote: true,
 			},
 			AwsRoleKey: AwsRoleKeyElevated,
 		},

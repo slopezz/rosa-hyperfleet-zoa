@@ -75,7 +75,7 @@ Served by the Access Lambda (`HANDLER_MODE=access`) in the RC account (no VPC at
 
 ### Break-glass (API Lambda — boundary)
 
-Requires `BREAKGLASS_TABLE` on the target API Lambda. Identity and task-binding match TA dispatch.
+Requires `BREAKGLASS_TABLE` on the target API Lambda. Identity and task-binding match TA dispatch. Scopes declare **`authorization.approval`**; v1 is **`none`** for all scopes → create runs `ApproveBreakglassRequest` with approver `auto` (see [approval-workflow.md](approval-workflow.md)). Scope catalog `GET` routes are not audited; fleet `scope=fleet` list is (`breakglass_history`).
 
 | Method | Path                                       | Description                                      |
 | ------ | ------------------------------------------ | ------------------------------------------------ |
@@ -84,7 +84,9 @@ Requires `BREAKGLASS_TABLE` on the target API Lambda. Identity and task-binding 
 | `POST` | `/api/v0/breakglass/requests`              | Create request (`scope`, `reason`)               |
 | `GET`  | `/api/v0/breakglass/requests`              | List requests for the authenticated operator     |
 | `GET`  | `/api/v0/breakglass/requests/{id}`         | Get request                                      |
-| `POST` | `/api/v0/breakglass/requests/{id}/connect` | Provision access (`?credentials=true` for tokens)  |
+| `POST` | `/api/v0/breakglass/requests/{id}/connect` | Provision access and return credentials (task-bound) |
+| `GET`  | `/api/v0/breakglass/requests?scope=mine`   | Your requests only (not audited)                   |
+| `GET`  | `/api/v0/breakglass/requests` (no scope=mine) | Cross-operator history (audited `breakglass_history`) |
 
 ### Approval
 

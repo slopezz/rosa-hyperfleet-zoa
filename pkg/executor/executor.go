@@ -320,7 +320,7 @@ func (e *Executor) DispatchAsync(ctx context.Context, exec *store.Execution, act
 		// session policies act as an intersection with the role policy.
 		stsOut, err = e.stsClient.AssumeRole(ctx, &sts.AssumeRoleInput{
 			RoleArn:         aws.String(roleARN),
-			RoleSessionName: aws.String(fmt.Sprintf("zoa-%s", exec.ID[:8])),
+			RoleSessionName: aws.String(fmt.Sprintf("zoa-%s", exec.ID)),
 			DurationSeconds: aws.Int32(3600),
 		})
 	} else {
@@ -343,7 +343,7 @@ func (e *Executor) DispatchAsync(ctx context.Context, exec *store.Execution, act
 
 		stsOut, err = e.stsClient.AssumeRole(ctx, &sts.AssumeRoleInput{
 			RoleArn:         aws.String(e.uploaderRoleARN),
-			RoleSessionName: aws.String(fmt.Sprintf("zoa-%s", exec.ID[:8])),
+			RoleSessionName: aws.String(fmt.Sprintf("zoa-%s", exec.ID)),
 			DurationSeconds: aws.Int32(3600),
 			Policy:          aws.String(sessionPolicy),
 		})

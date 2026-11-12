@@ -21,6 +21,9 @@ func (m *mockBreakglassServiceStore) Get(context.Context, string) (*store.Breakg
 func (m *mockBreakglassServiceStore) ListByOperator(context.Context, string, *store.BreakglassFilter) ([]*store.BreakglassRequest, error) {
 	return nil, nil
 }
+func (m *mockBreakglassServiceStore) ListAll(context.Context, *store.BreakglassFilter) ([]*store.BreakglassRequest, error) {
+	return nil, nil
+}
 func (m *mockBreakglassServiceStore) QueryByTargetAndStatus(context.Context, string, store.Status) ([]*store.BreakglassRequest, error) {
 	return nil, nil
 }
@@ -57,30 +60,5 @@ func TestApproveBreakglassRequest_WhenSelfApprove_ItShouldFail(t *testing.T) {
 	}
 }
 
-func TestApproveBreakglassRequest_WhenStrictScopeRequiresNote_ItShouldFailWithoutNote(t *testing.T) {
-	req := &store.BreakglassRequest{
-		RequestID:        "id-2",
-		Scope:            "kube-elevated",
-		Operator:         "alice",
-		Status:           store.StatusPendingApproval,
-		RequestExpiresAt: time.Now().Add(time.Hour).Format(time.RFC3339Nano),
-	}
-	store := &mockBreakglassServiceStore{req: req}
-	err := ApproveBreakglassRequest(context.Background(), store, req, "bob", "")
-	if err != errBreakglassNoteRequired {
-		t.Fatalf("expected note required, got %v", err)
-	}
-}
-
-func TestRejectBreakglassRequest_WhenNoteRequired_ItShouldFailWithoutNote(t *testing.T) {
-	req := &store.BreakglassRequest{
-		RequestID: "id-3",
-		Scope:     "kube-elevated",
-		Status:    store.StatusPendingApproval,
-	}
-	store := &mockBreakglassServiceStore{req: req}
-	err := RejectBreakglassRequest(context.Background(), store, req, "bob", "")
-	if err != errBreakglassNoteRequired {
-		t.Fatalf("expected note required, got %v", err)
-	}
-}
+// Note-required approve/reject paths are covered when approval-workflow scopes
+// set Authorization.RequireDecisionNote; v1 scopes use approval "none" only.

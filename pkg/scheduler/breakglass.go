@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/openshift-online/rosa-seaplane-zoa/pkg/breakglass"
 	"github.com/openshift-online/rosa-seaplane-zoa/pkg/executor"
-	"github.com/openshift-online/rosa-seaplane-zoa/pkg/scopes"
 	"github.com/openshift-online/rosa-seaplane-zoa/pkg/store"
 )
 
@@ -50,7 +50,7 @@ func (r *BreakglassReconciler) garbageCollect(ctx context.Context) error {
 		if item.Cleaned {
 			continue
 		}
-		if def, ok := scopes.Get(item.Scope); ok && def.Metadata.Plane == scopes.PlaneKube {
+		if def, ok := breakglass.Get(item.Scope); ok && def.Metadata.Plane == breakglass.PlaneKube {
 			r.exec.CleanupBreakglass(ctx, item.RequestID)
 		}
 		if err := r.store.MarkCleaned(ctx, item.RequestID); err != nil {

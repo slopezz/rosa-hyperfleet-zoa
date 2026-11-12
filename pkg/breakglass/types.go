@@ -1,4 +1,4 @@
-package scopes
+package breakglass
 
 import "github.com/openshift-online/rosa-seaplane-zoa/pkg/actions"
 

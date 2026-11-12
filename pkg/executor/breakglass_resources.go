@@ -10,8 +10,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/openshift-online/rosa-seaplane-zoa/pkg/actions"
+	"github.com/openshift-online/rosa-seaplane-zoa/pkg/breakglass"
 	"github.com/openshift-online/rosa-seaplane-zoa/pkg/labels"
-	"github.com/openshift-online/rosa-seaplane-zoa/pkg/scopes"
 )
 
 func breakglassResourceName(requestID string) string {
@@ -27,11 +27,11 @@ func breakglassManagedLabels(requestID string) map[string]string {
 
 // EnsureBreakglassKube creates cluster-scoped RBAC for an approved break-glass kube scope.
 func (e *Executor) EnsureBreakglassKube(ctx context.Context, requestID, scopeID string) (string, error) {
-	def, ok := scopes.Get(scopeID)
+	def, ok := breakglass.Get(scopeID)
 	if !ok || def.RBAC == nil {
 		return "", fmt.Errorf("unknown kube scope %q", scopeID)
 	}
-	if def.Metadata.Plane != scopes.PlaneKube {
+	if def.Metadata.Plane != breakglass.PlaneKube {
 		return "", fmt.Errorf("scope %q is not a kube plane scope", scopeID)
 	}
 	if err := e.ensureNamespace(ctx); err != nil {
