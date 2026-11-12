@@ -79,7 +79,7 @@ Extend conformance when the approval epic adds stricter rules.
 
 ## Discovering scopes
 
-From the boundary: `zoa breakglass scopes`, `zoa breakglass describe <id>`. Implementation reference: existing files in `pkg/breakglass/`.
+From the boundary: `zoa breakglass scopes`, `zoa breakglass describe <id>`. Offline (embedded catalog, filtered by `ZOA_TARGET_TYPE`): `zoa breakglass scopes --offline --target-type rc` — same pattern as `internal/cli/actioncatalog` and `internal/cli/scopecatalog`.
 
 ## Related code
 
