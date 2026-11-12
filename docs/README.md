@@ -40,12 +40,17 @@ TAs run from inside the boundary via `zoa run`. They are the steady-state operat
 | Document                                 | Description                                        |
 | ---------------------------------------- | -------------------------------------------------- |
 | [TA authoring guide](trusted-actions.md) | Writing a new TA, conformance gates, RBAC patterns |
+| [Approval workflow](approval-workflow.md) | Shared TA + break-glass approval (`none` today, gist/OPA planned) |
 | [API reference](api-reference.md)        | TA dispatch + Access session APIs                  |
 | [CLI reference](cli-reference.md)        | Commands, sessions, discovery, offline catalog     |
 
 ## Break-glass
 
-Emergency scoped access from the boundary (see [break-glass/README.md](break-glass/README.md)).
+Emergency scoped access from the boundary (see [break-glass/README.md](break-glass/README.md)). Approval policy: [approval-workflow.md](approval-workflow.md).
+
+| Document | Description |
+| -------- | ----------- |
+| [Break-glass scopes authoring](break-glass-scopes.md) | Adding scopes in `pkg/breakglass/`, conformance, RBAC |
 
 **Policy:** break-glass is a one-time escape hatch. Every break-glass use must produce a follow-up TA that automates the same operation — the TA catalog grows monotonically so the same emergency never requires raw access twice.
 

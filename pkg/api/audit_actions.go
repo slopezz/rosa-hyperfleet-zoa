@@ -20,4 +20,5 @@ const (
 	AuditActionBreakglassConnect = "breakglass_connect"
 	AuditActionBreakglassApprove = "breakglass_approve"
 	AuditActionBreakglassReject  = "breakglass_reject"
+	AuditActionBreakglassHistory = "breakglass_history"
 )

@@ -52,6 +52,7 @@ Start at **`docs/README.md`**. Do not duplicate long architecture in agent promp
 | Lambda model                | `docs/architecture/lambda-model.md`, `docs/architecture/implementation.md`                                                                         |
 | API / CLI                   | `docs/api-reference.md`, `docs/cli-reference.md`                                                                                                   |
 | TAs                         | `docs/trusted-actions.md`                                                                                                                          |
+| Break-glass scopes          | `docs/break-glass-scopes.md`                                                                                                                       |
 | E2E / dev                   | `docs/e2e-testing.md`, `docs/development.md`                                                                                                       |
 | Platform ADR                | [rosa-seaplane `docs/design/zoa-architecture.md`](https://github.com/openshift-online/rosa-seaplane/blob/main/docs/design/zoa-architecture.md) |
 
@@ -70,6 +71,8 @@ Start at **`docs/README.md`**. Do not duplicate long architecture in agent promp
 | `pkg/store/`                                                             | DynamoDB: executions, audit, **sessions**, targets            |
 | `pkg/scheduler/`                                                         | Reconciler, GC, **reaper** (`reaper.go`)                      |
 | `pkg/actions/`                                                           | TA framework + implementations; `conformance_test.go` gate    |
+| `pkg/breakglass/`                                                        | Break-glass scope catalog; `conformance_test.go` gate — [docs/break-glass-scopes.md](docs/break-glass-scopes.md) |
+| `pkg/breakglass/active/`                                                 | Boundary `~/.config/zoa/breakglass/active` kube/aws stanzas   |
 | `pkg/boundaryexec/`, `pkg/accesscross/`, `pkg/awsecs/`, `pkg/execcreds/` | Boundary / ECS Exec / cross-account session helpers           |
 | `pkg/config/`                                                            | Env config; validates mode-specific required vars             |
 | `Containerfile`                                                          | `zoa-lambda` image                                            |

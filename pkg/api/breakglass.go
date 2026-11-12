@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -9,7 +10,8 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/openshift-online/rosa-seaplane-zoa/internal/version"
-	"github.com/openshift-online/rosa-seaplane-zoa/pkg/scopes"
+	"github.com/openshift-online/rosa-seaplane-zoa/pkg/breakglass"
+	"github.com/openshift-online/rosa-seaplane-zoa/pkg/reason"
 	"github.com/openshift-online/rosa-seaplane-zoa/pkg/store"
 )
 
@@ -25,12 +27,11 @@ func (h *Handler) handleListBreakglassScopes(w http.ResponseWriter, r *http.Requ
 	if !h.breakglassEnabled(w) {
 		return
 	}
-	items := scopes.List()
+	items := breakglass.List()
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"items": items,
 		"count": len(items),
 	})
-	h.recordAudit(r, http.StatusOK, AuditActionBreakglassScopes, "")
 }
 
 func (h *Handler) handleDescribeBreakglassScope(w http.ResponseWriter, r *http.Request) {
@@ -38,7 +39,7 @@ func (h *Handler) handleDescribeBreakglassScope(w http.ResponseWriter, r *http.R
 		return
 	}
 	scopeID := r.PathValue("scope")
-	def, ok := scopes.Get(scopeID)
+	def, ok := breakglass.Get(scopeID)
 	if !ok {
 		writeError(w, http.StatusNotFound, "not_found", "unknown break-glass scope")
 		return
@@ -61,12 +62,20 @@ func (h *Handler) handleCreateBreakglassRequest(w http.ResponseWriter, r *http.R
 		return
 	}
 	body.Scope = strings.TrimSpace(body.Scope)
-	body.Reason = strings.TrimSpace(body.Reason)
-	if body.Scope == "" || body.Reason == "" {
-		writeError(w, http.StatusBadRequest, "invalid_request", "scope and reason are required")
+	if body.Scope == "" {
+		writeError(w, http.StatusBadRequest, "invalid_request", "scope is required")
 		return
 	}
-	def, ok := scopes.Get(body.Scope)
+	reasonValue, err := reason.Require(body.Reason)
+	if err != nil {
+		code := "missing_reason"
+		if strings.TrimSpace(body.Reason) != "" {
+			code = "invalid_reason"
+		}
+		writeError(w, http.StatusBadRequest, code, err.Error())
+		return
+	}
+	def, ok := breakglass.Get(body.Scope)
 	if !ok {
 		writeError(w, http.StatusNotFound, "not_found", "unknown break-glass scope")
 		return
@@ -78,24 +87,12 @@ func (h *Handler) handleCreateBreakglassRequest(w http.ResponseWriter, r *http.R
 	}
 	now := time.Now()
 	requestExpires := now.Add(time.Duration(def.Metadata.Authorization.DefaultPendingHours) * time.Hour)
-	grantExpires := now.Add(time.Duration(def.Metadata.Authorization.DefaultGrantHours) * time.Hour)
-
-	status := store.StatusPendingApproval
-	approvedBy := ""
-	approvedAt := ""
-	grantAt := ""
-	if !scopes.NeedsApproval(def.Metadata.Authorization) {
-		status = store.StatusApproved
-		approvedBy = "auto"
-		approvedAt = now.Format(time.RFC3339Nano)
-		grantAt = grantExpires.Format(time.RFC3339Nano)
-	}
 
 	taskID, _ := extractTaskIDFromSigner(signerARN)
 	req := &store.BreakglassRequest{
 		RequestID:        uuid.NewString(),
 		Scope:            body.Scope,
-		Reason:           body.Reason,
+		Reason:           reasonValue,
 		Operator:         operator,
 		SignerARN:        signerARN,
 		SessionID:        sessionID,
@@ -103,17 +100,11 @@ func (h *Handler) handleCreateBreakglassRequest(w http.ResponseWriter, r *http.R
 		TargetCluster:    h.cfg.TargetCluster,
 		TargetType:       h.cfg.TargetType,
 		AccountID:        authenticatedAccountID(r),
-		Status:           status,
+		Status:           store.StatusPendingApproval,
 		Approval:         def.Metadata.Authorization.Approval,
 		Revision:         version.Get().GitCommit,
 		CreatedAt:        now.Format(time.RFC3339Nano),
 		RequestExpiresAt: requestExpires.Format(time.RFC3339Nano),
-		GrantExpiresAt:   grantAt,
-		ApprovedBy:       approvedBy,
-		ApprovedAt:       approvedAt,
-	}
-	if status == store.StatusApproved {
-		req.TargetStatusKey = store.BreakglassTargetStatusKey(status, req.GrantExpiresAt)
 	}
 
 	if err := h.breakglassStore.Create(r.Context(), req); err != nil {
@@ -121,8 +112,20 @@ func (h *Handler) handleCreateBreakglassRequest(w http.ResponseWriter, r *http.R
 		writeError(w, http.StatusInternalServerError, "internal_error", "failed to create break-glass request")
 		return
 	}
+	h.recordAudit(r, http.StatusCreated, AuditActionBreakglassRequest, req.RequestID, withReason(reasonValue))
+
+	resp, err := MaybeAutoApproveBreakglassAfterCreate(r.Context(), h.breakglassStore, req, def)
+	if err != nil {
+		h.logger.Error("auto-approve breakglass request", "error", err, "request_id", req.RequestID)
+		writeError(w, http.StatusInternalServerError, "internal_error", "failed to approve break-glass request")
+		return
+	}
+	if resp != nil && resp.Status == store.StatusApproved {
+		h.recordAudit(r, http.StatusOK, AuditActionBreakglassApprove, resp.RequestID, withReason(breakglassAutoApproveNote))
+		req = resp
+	}
+
 	writeJSON(w, http.StatusCreated, req)
-	h.recordAudit(r, http.StatusCreated, AuditActionBreakglassRequest, req.RequestID, withReason(body.Reason))
 }
 
 func (h *Handler) handleGetBreakglassRequest(w http.ResponseWriter, r *http.Request) {
@@ -147,16 +150,58 @@ func (h *Handler) handleListBreakglassRequests(w http.ResponseWriter, r *http.Re
 	if !h.breakglassEnabled(w) {
 		return
 	}
-	operator, _, _ := h.resolveIdentity(r)
-	if operator == "" {
-		writeError(w, http.StatusUnauthorized, "unauthorized", "could not resolve operator identity")
-		return
+	q := r.URL.Query()
+	filter := &store.BreakglassFilter{
+		Target: &h.cfg.TargetCluster,
+		Limit:  50,
 	}
-	items, err := h.breakglassStore.ListByOperator(r.Context(), operator, &store.BreakglassFilter{Limit: 50})
+	if v := q.Get("status"); v != "" && v != "all" {
+		s := store.Status(v)
+		filter.Status = &s
+	}
+	if v := q.Get("since"); v != "" {
+		if t, err := parseTimeValue(v); err == nil {
+			filter.Since = &t
+		}
+	}
+	if v := q.Get("until"); v != "" {
+		if t, err := parseUntilTimeValue(v); err == nil {
+			filter.Before = &t
+		}
+	}
+	if v := q.Get("limit"); v != "" {
+		if n, err := fmt.Sscanf(v, "%d", &filter.Limit); n == 1 && err == nil && filter.Limit > 200 {
+			filter.Limit = 200
+		}
+	}
+
+	// scope=mine: self-service list (no audit). Any other scope (including omitted) = fleet history (audited), same as GET /sessions.
+	fleetView := q.Get("scope") != "mine"
+	if fleetView {
+		if v := q.Get("operator"); v != "" {
+			filter.Operator = &v
+		}
+	} else {
+		operator, _, _ := h.resolveIdentity(r)
+		if operator == "" {
+			writeError(w, http.StatusUnauthorized, "unauthorized", "could not resolve operator identity")
+			return
+		}
+		if q.Get("operator") != "" {
+			writeError(w, http.StatusBadRequest, "invalid_query", "operator filter is not allowed with scope=mine")
+			return
+		}
+		filter.Operator = &operator
+	}
+
+	items, err := h.breakglassStore.ListAll(r.Context(), filter)
 	if err != nil {
 		h.logger.Error("list breakglass requests", "error", err)
 		writeError(w, http.StatusInternalServerError, "internal_error", "failed to list requests")
 		return
+	}
+	if fleetView {
+		h.recordAudit(r, http.StatusOK, AuditActionBreakglassHistory, "", withReason(q.Get("operator")))
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"items": items, "count": len(items)})
 }
@@ -199,11 +244,11 @@ func (h *Handler) handleConnectBreakglassRequest(w http.ResponseWriter, r *http.
 		"status":           "ready",
 		"kind":             "breakglass",
 	}
-	def, scopeOK := scopes.Get(req.Scope)
+	def, scopeOK := breakglass.Get(req.Scope)
 	if scopeOK && h.executor != nil {
 		remaining := time.Until(mustParseRFC3339(req.GrantExpiresAt))
 		switch def.Metadata.Plane {
-		case scopes.PlaneKube:
+		case breakglass.PlaneKube:
 			cluster, err := h.executor.BreakglassKubeConnect(r.Context(), req.RequestID, req.Scope)
 			if err != nil {
 				h.logger.Error("breakglass connect kube", "error", err)
@@ -211,30 +256,27 @@ func (h *Handler) handleConnectBreakglassRequest(w http.ResponseWriter, r *http.
 				return
 			}
 			resp["kube"] = cluster
-			if r.URL.Query().Get("credentials") == "true" {
-				if token, exp, err := h.executor.IssueBreakglassKubeToken(r.Context(), req.RequestID, req.Scope, remaining); err == nil {
-					resp["kube_token_expires_at"] = exp.Format(time.RFC3339Nano)
-					resp["kube_token"] = token
-				}
+			if token, exp, err := h.executor.IssueBreakglassKubeToken(r.Context(), req.RequestID, req.Scope, remaining); err == nil {
+				resp["kube_token_expires_at"] = exp.Format(time.RFC3339Nano)
+				resp["kube_token"] = token
+			} else {
+				h.logger.Error("breakglass issue kube token", "error", err, "request_id", req.RequestID)
 			}
-		case scopes.PlaneAWS:
+		case breakglass.PlaneAWS:
 			creds, err := h.executor.AssumeBreakglassRole(r.Context(), req.RequestID, req.Scope, remaining)
 			if err != nil {
 				h.logger.Error("breakglass connect aws", "error", err)
 				writeError(w, http.StatusInternalServerError, "provision_failed", "failed to provision break-glass AWS access")
 				return
 			}
-			awsResp := map[string]interface{}{
-				"region":     creds.Region,
-				"role_arn":   creds.RoleARN,
-				"expiration": creds.Expiration.Format(time.RFC3339Nano),
+			resp["aws"] = map[string]interface{}{
+				"region":            creds.Region,
+				"role_arn":          creds.RoleARN,
+				"expiration":        creds.Expiration.Format(time.RFC3339Nano),
+				"access_key_id":     creds.AccessKeyID,
+				"secret_access_key": creds.SecretAccessKey,
+				"session_token":     creds.SessionToken,
 			}
-			if r.URL.Query().Get("credentials") == "true" {
-				awsResp["access_key_id"] = creds.AccessKeyID
-				awsResp["secret_access_key"] = creds.SecretAccessKey
-				awsResp["session_token"] = creds.SessionToken
-			}
-			resp["aws"] = awsResp
 		}
 	}
 	writeJSON(w, http.StatusOK, resp)

@@ -174,8 +174,9 @@ These apply to **every** subcommand (`session`, `run`, `runs`, `audit`, …). Wh
 | `breakglass scopes [--offline]` | List or describe scopes (`--offline` uses embedded catalog) |
 | `breakglass request --scope <id> --reason <ticket>` | Create a pending request |
 | `breakglass requests` | List your requests |
-| `breakglass get <request-id>` | Get one request |
-| `breakglass connect <request-id>` | Provision RBAC / STS (metadata only) |
+| `breakglass get <request-id>` | Get request; `--wait` polls then `use` when approved (like `run --wait`) |
+| `breakglass describe <scope>`     | Scope details (like `zoa describe`)  |
+| `breakglass history`              | All operators on this target (audit) |
 | `breakglass use <request-id>` | Activate credentials under `~/.config/zoa/breakglass/` |
 
 ### Laptop approval (Access Lambda)

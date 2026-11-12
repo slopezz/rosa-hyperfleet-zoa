@@ -1,4 +1,4 @@
-package scopes
+package breakglass
 
 import (
 	"testing"
@@ -13,11 +13,11 @@ func TestConformance_WhenAllScopesRegistered_ItShouldHaveValidAuthorization(t *t
 		t.Fatalf("expected at least 6 scopes, got %d", len(all))
 	}
 	for _, meta := range all {
+		if meta.Authorization.Approval != "none" {
+			t.Errorf("scope %s must use approval none until approval-workflow epic (got %q)", meta.ID, meta.Authorization.Approval)
+		}
 		switch meta.Type {
 		case TypeElevated:
-			if meta.Authorization.Approval != "strict" {
-				t.Errorf("scope %s elevated must use strict approval", meta.ID)
-			}
 			if meta.Authorization.DefaultGrantHours > 2 {
 				t.Errorf("scope %s elevated grant hours must be <= 2", meta.ID)
 			}

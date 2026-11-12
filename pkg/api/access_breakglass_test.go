@@ -25,6 +25,9 @@ func (m *mockBreakglassAccessStore) Get(_ context.Context, id string) (*store.Br
 func (m *mockBreakglassAccessStore) ListByOperator(context.Context, string, *store.BreakglassFilter) ([]*store.BreakglassRequest, error) {
 	return nil, nil
 }
+func (m *mockBreakglassAccessStore) ListAll(context.Context, *store.BreakglassFilter) ([]*store.BreakglassRequest, error) {
+	return nil, nil
+}
 func (m *mockBreakglassAccessStore) Transition(_ context.Context, _ string, from, to store.Status, updates map[string]interface{}) error {
 	if m.req == nil || m.req.Status != from {
 		return context.Canceled

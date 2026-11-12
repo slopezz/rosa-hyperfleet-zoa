@@ -26,13 +26,13 @@ import (
 	"github.com/openshift-online/rosa-seaplane-zoa/pkg/api"
 	"github.com/openshift-online/rosa-seaplane-zoa/pkg/awsecs"
 	"github.com/openshift-online/rosa-seaplane-zoa/pkg/boundaryexec"
+	"github.com/openshift-online/rosa-seaplane-zoa/pkg/breakglass"
 	"github.com/openshift-online/rosa-seaplane-zoa/pkg/config"
 	"github.com/openshift-online/rosa-seaplane-zoa/pkg/execcreds"
 	"github.com/openshift-online/rosa-seaplane-zoa/pkg/executor"
 	"github.com/openshift-online/rosa-seaplane-zoa/pkg/handler"
 	"github.com/openshift-online/rosa-seaplane-zoa/pkg/lambdahttp"
 	"github.com/openshift-online/rosa-seaplane-zoa/pkg/scheduler"
-	"github.com/openshift-online/rosa-seaplane-zoa/pkg/scopes"
 	"github.com/openshift-online/rosa-seaplane-zoa/pkg/store"
 )
 
@@ -50,7 +50,7 @@ func main() {
 	}
 
 	actions.SetTargetType(cfg.TargetType)
-	scopes.SetTargetType(cfg.TargetType)
+	breakglass.SetTargetType(cfg.TargetType)
 
 	logger = logger.With("target", cfg.TargetCluster, "target_type", cfg.TargetType, "region", cfg.Region)
 	logger.Info("starting zoa-lambda",

@@ -4,14 +4,15 @@ Emergency scoped `kubectl` / `aws` from the **boundary** only. Same patterns as 
 
 | Document | Purpose |
 | -------- | ------- |
-| [Feature proposal](./proposal.md) | Design source of truth (scopes, API, security) |
+| [Scope authoring guide](../break-glass-scopes.md) | `pkg/breakglass/` catalog (like [trusted-actions.md](../trusted-actions.md)) |
+| [Approval workflow (TA + BG)](../approval-workflow.md) | Approval policy (`none` today; gist/OPA planned) |
 | [API reference — break-glass](../api-reference.md#break-glass) | HTTP routes |
 | [CLI reference — break-glass](../cli-reference.md#break-glass) | Operator commands |
 
 ## Quick flow
 
-1. **Boundary:** `zoa breakglass request --scope kube-read --reason ROSAENG-…`
-2. **Laptop:** `zoa approve <deployment>/<request-id> [--comment …]`
+1. **Boundary:** `zoa breakglass request --scope kube-read --reason ROSAENG-…` (all v1 scopes use **`approval: none`** → immediate approve via same workflow as future peer approve)
+2. **Laptop:** `zoa approve <deployment>/<request-id>` — for future workflows; not required while scopes stay `none` ([approval workflow](../approval-workflow.md))
 3. **Boundary:** `zoa breakglass use <request-id>` then stock `kubectl` / `aws`
 4. **Expiry:** worker reconciler marks expired grants and GCs `zoa-bg-<id>` RBAC
 

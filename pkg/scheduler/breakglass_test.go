@@ -20,6 +20,9 @@ func (m *mockBreakglassStore) Get(_ context.Context, _ string) (*store.Breakglas
 func (m *mockBreakglassStore) ListByOperator(_ context.Context, _ string, _ *store.BreakglassFilter) ([]*store.BreakglassRequest, error) {
 	return nil, nil
 }
+func (m *mockBreakglassStore) ListAll(_ context.Context, _ *store.BreakglassFilter) ([]*store.BreakglassRequest, error) {
+	return nil, nil
+}
 func (m *mockBreakglassStore) MarkCleaned(_ context.Context, _ string) error { return nil }
 
 func (m *mockBreakglassStore) QueryByTargetAndStatus(_ context.Context, target string, status store.Status) ([]*store.BreakglassRequest, error) {

@@ -24,6 +24,7 @@ type mockClient struct {
 	sessionStopFn      func(ctx context.Context, sessionID string) error
 	sessionJoinFn      func(ctx context.Context, sessionID string) (*client.SessionJoinResponse, error)
 	listSessionsFn     func(ctx context.Context, query url.Values) (*client.SessionList, error)
+	createBreakglassFn func(ctx context.Context, scope, reason string) (*client.BreakglassRequest, error)
 }
 
 func (m *mockClient) Dispatch(ctx context.Context, action string, req *client.DispatchRequest) (*client.DispatchResponse, error) {
@@ -136,7 +137,10 @@ func (m *mockClient) GetBreakglassScope(context.Context, string) (*client.ScopeM
 	return nil, fmt.Errorf("GetBreakglassScope not mocked")
 }
 
-func (m *mockClient) CreateBreakglassRequest(context.Context, string, string) (*client.BreakglassRequest, error) {
+func (m *mockClient) CreateBreakglassRequest(ctx context.Context, scope, reason string) (*client.BreakglassRequest, error) {
+	if m.createBreakglassFn != nil {
+		return m.createBreakglassFn(ctx, scope, reason)
+	}
 	return nil, fmt.Errorf("CreateBreakglassRequest not mocked")
 }
 
@@ -144,12 +148,12 @@ func (m *mockClient) GetBreakglassRequest(context.Context, string) (*client.Brea
 	return nil, fmt.Errorf("GetBreakglassRequest not mocked")
 }
 
-func (m *mockClient) ListBreakglassRequests(context.Context) (*client.BreakglassRequestList, error) {
+func (m *mockClient) ListBreakglassRequests(context.Context, *client.BreakglassListParams) (*client.BreakglassRequestList, error) {
 	return nil, fmt.Errorf("ListBreakglassRequests not mocked")
 }
 
-func (m *mockClient) ConnectBreakglass(context.Context, string, bool) (*client.BreakglassConnectResponse, error) {
-	return nil, fmt.Errorf("ConnectBreakglass not mocked")
+func (m *mockClient) ActivateBreakglass(context.Context, string) (*client.BreakglassConnectResponse, error) {
+	return nil, fmt.Errorf("ActivateBreakglass not mocked")
 }
 
 func (m *mockClient) Approve(context.Context, string, string) error {

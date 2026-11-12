@@ -8,7 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 
-	"github.com/openshift-online/rosa-seaplane-zoa/pkg/scopes"
+	"github.com/openshift-online/rosa-seaplane-zoa/pkg/breakglass"
 )
 
 // BreakglassAWSCreds holds short-lived STS credentials for a break-glass AWS scope.
@@ -22,22 +22,22 @@ type BreakglassAWSCreds struct {
 }
 
 func (e *Executor) breakglassAWSRoleARN(scopeID string) (string, error) {
-	def, ok := scopes.Get(scopeID)
+	def, ok := breakglass.Get(scopeID)
 	if !ok {
 		return "", fmt.Errorf("unknown scope %q", scopeID)
 	}
 	switch def.Metadata.AwsRoleKey {
-	case scopes.AwsRoleKeyRead:
+	case breakglass.AwsRoleKeyRead:
 		if e.breakglassAWSReadARN == "" {
 			return "", fmt.Errorf("BREAKGLASS_AWS_READ_ROLE_ARN not configured")
 		}
 		return e.breakglassAWSReadARN, nil
-	case scopes.AwsRoleKeyWrite:
+	case breakglass.AwsRoleKeyWrite:
 		if e.breakglassAWSWriteARN == "" {
 			return "", fmt.Errorf("BREAKGLASS_AWS_WRITE_ROLE_ARN not configured")
 		}
 		return e.breakglassAWSWriteARN, nil
-	case scopes.AwsRoleKeyElevated:
+	case breakglass.AwsRoleKeyElevated:
 		if e.breakglassAWSElevatedARN == "" {
 			return "", fmt.Errorf("BREAKGLASS_AWS_ELEVATED_ROLE_ARN not configured")
 		}
@@ -65,7 +65,7 @@ func (e *Executor) AssumeBreakglassRole(ctx context.Context, requestID, scopeID 
 	}
 	out, err := e.stsClient.AssumeRole(ctx, &sts.AssumeRoleInput{
 		RoleArn:         aws.String(roleARN),
-		RoleSessionName: aws.String(fmt.Sprintf("bg-%s", requestID)),
+		RoleSessionName: aws.String(fmt.Sprintf("zoa-bg-%s", requestID)),
 		DurationSeconds: aws.Int32(secs),
 	})
 	if err != nil {
