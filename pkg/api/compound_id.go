@@ -1,22 +1,33 @@
 package api
 
 import (
-	"fmt"
 	"strings"
-)
 
-const compoundIDSeparator = "/"
+	"github.com/openshift-online/rosa-seaplane-zoa/pkg/compoundid"
+)
 
 // ParseCompoundResourceID splits deployment/<uuid> (approve, reject, session patterns).
 func ParseCompoundResourceID(compound string) (deployment, rawID string, err error) {
-	parts := strings.SplitN(compound, compoundIDSeparator, 2)
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return "", "", fmt.Errorf("invalid compound id %q: expected <deployment>/<id>", compound)
-	}
-	return parts[0], parts[1], nil
+	return compoundid.Parse(compound)
 }
 
 // FormatCompoundResourceID builds deployment/<uuid>.
 func FormatCompoundResourceID(deployment, rawID string) string {
-	return deployment + compoundIDSeparator + rawID
+	return compoundid.Format(deployment, rawID)
+}
+
+// resolveResourceID returns the DynamoDB key from a path id (raw UUID or compound).
+func resolveResourceID(pathID string) string {
+	_, rawID := resolveCompoundResource(pathID)
+	return rawID
+}
+
+// resolveCompoundResource splits an optional deployment prefix from the resource id.
+func resolveCompoundResource(pathID string) (deployment, rawID string) {
+	pathID = strings.TrimSpace(pathID)
+	dep, id, err := compoundid.Parse(pathID)
+	if err != nil {
+		return "", pathID
+	}
+	return dep, id
 }

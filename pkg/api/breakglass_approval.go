@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/openshift-online/rosa-seaplane-zoa/pkg/store"
 )
@@ -13,7 +14,11 @@ type approvalBody struct {
 }
 
 func (h *Handler) handleApproveBreakglassOrExecution(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
+	id := resolveResourceID(strings.TrimSpace(r.PathValue("id")))
+	if id == "" {
+		writeError(w, http.StatusBadRequest, "invalid_request", "id is required")
+		return
+	}
 	if h.breakglassStore != nil {
 		if bg, err := h.breakglassStore.Get(r.Context(), id); err == nil && bg != nil {
 			h.handleApproveBreakglass(w, r, bg)
@@ -30,7 +35,11 @@ func (h *Handler) handleApproveBreakglassOrExecution(w http.ResponseWriter, r *h
 }
 
 func (h *Handler) handleRejectBreakglassOrExecution(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
+	id := resolveResourceID(strings.TrimSpace(r.PathValue("id")))
+	if id == "" {
+		writeError(w, http.StatusBadRequest, "invalid_request", "id is required")
+		return
+	}
 	if h.breakglassStore != nil {
 		if bg, err := h.breakglassStore.Get(r.Context(), id); err == nil && bg != nil {
 			h.handleRejectBreakglass(w, r, bg)

@@ -48,7 +48,11 @@ func newBreakglassScopesCommand(global *GlobalOptions) *cobra.Command {
 				return err
 			}
 			if len(args) == 1 {
-				return fmt.Errorf("describe scope %q via API: use offline catalog or GET /breakglass/scopes/%s", args[0], args[0])
+				scope, err := c.GetBreakglassScope(cmd.Context(), args[0])
+				if err != nil {
+					return err
+				}
+				return output.JSON(os.Stdout, scope)
 			}
 			list, err := c.ListBreakglassScopes(cmd.Context())
 			if err != nil {

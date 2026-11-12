@@ -30,6 +30,7 @@ type APIClient interface {
 	ListSessions(ctx context.Context, query url.Values) (*client.SessionList, error)
 
 	ListBreakglassScopes(ctx context.Context) (*client.BreakglassScopeList, error)
+	GetBreakglassScope(ctx context.Context, scopeID string) (*client.ScopeMetadata, error)
 	CreateBreakglassRequest(ctx context.Context, scope, reason string) (*client.BreakglassRequest, error)
 	GetBreakglassRequest(ctx context.Context, id string) (*client.BreakglassRequest, error)
 	ListBreakglassRequests(ctx context.Context) (*client.BreakglassRequestList, error)
