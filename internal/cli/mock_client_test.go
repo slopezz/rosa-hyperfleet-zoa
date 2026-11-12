@@ -132,6 +132,10 @@ func (m *mockClient) ListBreakglassScopes(context.Context) (*client.BreakglassSc
 	return nil, fmt.Errorf("ListBreakglassScopes not mocked")
 }
 
+func (m *mockClient) GetBreakglassScope(context.Context, string) (*client.ScopeMetadata, error) {
+	return nil, fmt.Errorf("GetBreakglassScope not mocked")
+}
+
 func (m *mockClient) CreateBreakglassRequest(context.Context, string, string) (*client.BreakglassRequest, error) {
 	return nil, fmt.Errorf("CreateBreakglassRequest not mocked")
 }

@@ -84,7 +84,7 @@ func (h *Handler) handleCreateBreakglassRequest(w http.ResponseWriter, r *http.R
 	approvedBy := ""
 	approvedAt := ""
 	grantAt := ""
-	if def.Metadata.Authorization.Approval == "auto" {
+	if !scopes.NeedsApproval(def.Metadata.Authorization) {
 		status = store.StatusApproved
 		approvedBy = "auto"
 		approvedAt = now.Format(time.RFC3339Nano)

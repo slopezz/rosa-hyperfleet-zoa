@@ -59,6 +59,13 @@ func RejectBreakglassRequest(ctx context.Context, bgStore store.BreakglassStore,
 	if req.Status != store.StatusPendingApproval {
 		return errBreakglassNotPending
 	}
+	if approver == "" {
+		return errBreakglassNoApprover
+	}
+	def, _ := scopes.Get(req.Scope)
+	if def != nil && def.Metadata.Authorization.RequireDecisionNote && note == "" {
+		return errBreakglassNoteRequired
+	}
 	now := time.Now()
 	updates := map[string]interface{}{
 		"rejectedBy":   approver,

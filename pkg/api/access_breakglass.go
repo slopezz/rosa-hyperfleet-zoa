@@ -2,22 +2,15 @@ package api
 
 import (
 	"net/http"
-	"strings"
 
 	"github.com/openshift-online/rosa-seaplane-zoa/pkg/store"
 )
 
 func (h *AccessHandler) handleApprove(w http.ResponseWriter, r *http.Request) {
-	id := strings.TrimSpace(r.PathValue("id"))
-	if id == "" {
+	deployment, rawID := resolveCompoundResource(r.PathValue("id"))
+	if rawID == "" {
 		writeError(w, http.StatusBadRequest, "invalid_request", "id is required")
 		return
-	}
-	rawID := id
-	deployment := ""
-	if dep, rid, err := ParseCompoundResourceID(id); err == nil {
-		deployment = dep
-		rawID = rid
 	}
 	if h.breakglassStore == nil {
 		writeError(w, http.StatusServiceUnavailable, "breakglass_disabled", "break-glass is not enabled")
@@ -30,7 +23,7 @@ func (h *AccessHandler) handleApprove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req == nil {
-		if h.tryApproveExecutionStub(w, rawID) {
+		if h.tryApproveExecution(w, rawID) {
 			return
 		}
 		writeError(w, http.StatusNotFound, "not_found", "request not found")
@@ -54,12 +47,10 @@ func (h *AccessHandler) handleApprove(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AccessHandler) handleReject(w http.ResponseWriter, r *http.Request) {
-	id := strings.TrimSpace(r.PathValue("id"))
-	rawID := id
-	deployment := ""
-	if dep, rid, err := ParseCompoundResourceID(id); err == nil {
-		deployment = dep
-		rawID = rid
+	deployment, rawID := resolveCompoundResource(r.PathValue("id"))
+	if rawID == "" {
+		writeError(w, http.StatusBadRequest, "invalid_request", "id is required")
+		return
 	}
 	if h.breakglassStore == nil {
 		writeError(w, http.StatusServiceUnavailable, "breakglass_disabled", "break-glass is not enabled")
@@ -89,8 +80,8 @@ func (h *AccessHandler) handleReject(w http.ResponseWriter, r *http.Request) {
 	h.recordAccessAudit(r, http.StatusOK, AuditActionBreakglassReject, req.RequestID, note, req.TargetCluster)
 }
 
-func (h *AccessHandler) tryApproveExecutionStub(w http.ResponseWriter, id string) bool {
-	_ = id
+// tryApproveExecution attempts TA manual approval when enabled (ROSAENG epic); not wired on Access yet.
+func (h *AccessHandler) tryApproveExecution(_ http.ResponseWriter, _ string) bool {
 	return false
 }
 

@@ -24,10 +24,13 @@ type BreakglassScopeList struct {
 }
 
 type ScopeMetadata struct {
-	ID          string `json:"id"`
-	Plane       string `json:"plane"`
-	Type        string `json:"type"`
-	Description string `json:"description"`
+	ID            string                 `json:"id"`
+	Plane         string                 `json:"plane"`
+	Type          string                 `json:"type"`
+	Description   string                 `json:"description"`
+	Authorization map[string]interface{} `json:"authorization,omitempty"`
+	Capabilities  []string               `json:"capabilities,omitempty"`
+	Restrictions  []string               `json:"restrictions,omitempty"`
 }
 
 type BreakglassRequestList struct {
@@ -43,6 +46,14 @@ type BreakglassConnectResponse struct {
 	Kube           map[string]interface{} `json:"kube,omitempty"`
 	AWS            map[string]interface{} `json:"aws,omitempty"`
 	KubeToken      string                 `json:"kube_token,omitempty"`
+}
+
+func (c *Client) GetBreakglassScope(ctx context.Context, scopeID string) (*ScopeMetadata, error) {
+	var resp ScopeMetadata
+	if err := c.doV0(ctx, http.MethodGet, "/breakglass/scopes/"+url.PathEscape(scopeID), nil, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
 }
 
 func (c *Client) ListBreakglassScopes(ctx context.Context) (*BreakglassScopeList, error) {
