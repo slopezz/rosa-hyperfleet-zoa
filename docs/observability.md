@@ -88,6 +88,12 @@ Access HTTP fleet-wide (not filtered by the Cluster dropdown).
 - **`skipped`**: caller did not use the bridge path (e.g. direct API URL from laptop/e2e) — excluded from the hit-rate SLO.
 - **`hit` / `miss` / `error`**: SLO is `hit / (hit + miss + error)`.
 
+**Break-glass HTTP**
+
+- Uses the same **`EmitHTTPRequest`** metrics as Trusted Actions (`dimension_RouteTemplate` includes `/api/v0/breakglass/...` templates from `pkg/metrics/routes.go`).
+- Recording rules: `zoa:breakglass_api_availability`, `zoa:breakglass_request_volume` in `rosa-seaplane` `alerting-rules` chart.
+- Alert: **`ZOABreakglassApiAvailabilityBelowSLO`** (warning, traffic guard >5 requests). Worker expiry/GC for break-glass grants runs on the existing reconciler tick (no separate metric).
+
 ### Time series shape
 
 YACE exposes EMF dimensions as Prometheus labels (`dimension_Cluster`, `dimension_HandlerMode`,
