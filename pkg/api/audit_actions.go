@@ -14,4 +14,10 @@ const (
 	AuditActionRunGet    = "run_get"
 	AuditActionRunOutput = "run_output"
 	AuditActionRunLogs   = "run_logs"
+
+	AuditActionBreakglassScopes  = "breakglass_scopes"
+	AuditActionBreakglassRequest = "breakglass_request"
+	AuditActionBreakglassConnect = "breakglass_connect"
+	AuditActionBreakglassApprove = "breakglass_approve"
+	AuditActionBreakglassReject  = "breakglass_reject"
 )

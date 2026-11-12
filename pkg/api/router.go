@@ -27,14 +27,15 @@ type S3Getter interface {
 }
 
 type Handler struct {
-	cfg            *config.Config
-	executionStore store.ExecutionStore
-	auditStore     store.AuditStore
-	sessionStore   store.SessionStore
-	executor       *executor.Executor
-	s3Client       S3Getter
-	logger         *slog.Logger
-	mux            *http.ServeMux
+	cfg             *config.Config
+	executionStore  store.ExecutionStore
+	breakglassStore store.BreakglassStore
+	auditStore      store.AuditStore
+	sessionStore    store.SessionStore
+	executor        *executor.Executor
+	s3Client        S3Getter
+	logger          *slog.Logger
+	mux             *http.ServeMux
 }
 
 func New(cfg *config.Config, execStore store.ExecutionStore, auditStore store.AuditStore, exec *executor.Executor, s3Client S3Getter, logger *slog.Logger, opts ...HandlerOption) *Handler {
@@ -62,6 +63,11 @@ type HandlerOption func(*Handler)
 // the per-VPC Lambda.
 func WithSessionStore(s store.SessionStore) HandlerOption {
 	return func(h *Handler) { h.sessionStore = s }
+}
+
+// WithBreakglassStore enables break-glass HTTP routes when BREAKGLASS_TABLE is set.
+func WithBreakglassStore(s store.BreakglassStore) HandlerOption {
+	return func(h *Handler) { h.breakglassStore = s }
 }
 
 // resolveIdentityResult resolves attribution from the IAM authorizer caller ARN and emits bridge metrics once.
@@ -153,6 +159,16 @@ func (h *Handler) registerRoutes() {
 	// TA metadata
 	h.mux.HandleFunc("GET "+PathTrustedActions+"/{action}", h.handleDescribeActionRoute)
 	h.mux.HandleFunc("GET "+PathTrustedActions, h.handleListActions)
+
+	// Break-glass (register scopes before /{scope} patterns if extended)
+	h.mux.HandleFunc("GET "+PathBreakglassScopes, h.handleListBreakglassScopes)
+	h.mux.HandleFunc("GET "+PathBreakglassScopes+"/{scope}", h.handleDescribeBreakglassScope)
+	h.mux.HandleFunc("POST "+PathBreakglassRequests, h.handleCreateBreakglassRequest)
+	h.mux.HandleFunc("GET "+PathBreakglassRequests+"/{id}", h.handleGetBreakglassRequest)
+	h.mux.HandleFunc("GET "+PathBreakglassRequests, h.handleListBreakglassRequests)
+	h.mux.HandleFunc("POST "+PathBreakglassRequests+"/{id}/connect", h.handleConnectBreakglassRequest)
+	h.mux.HandleFunc("POST "+PathApprove+"{id}", h.handleApproveBreakglassOrExecution)
+	h.mux.HandleFunc("POST "+PathReject+"{id}", h.handleRejectBreakglassOrExecution)
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {

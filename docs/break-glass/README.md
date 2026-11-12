@@ -1,7 +1,26 @@
-# Break-glass (not implemented)
+# ZOA Break-Glass
 
-Scoped emergency **kubectl** / **AWS** access from the boundary task is **not** available yet. All production work uses **Trusted Actions** from [ZOA Boundary](../boundary/architecture.md).
+Emergency scoped `kubectl` / `aws` from the **boundary** only. Same patterns as Trusted Actions and boundary sessions.
 
-**Design (draft):** [proposal.md](./proposal.md) — scopes (`kube-read` / `kube-write` / `kube-elevated`, `aws-*`), approval tiers, RBAC/IAM (§5.8), RC/MC differences. English; for review, not shipped product behavior.
+| Document | Purpose |
+| -------- | ------- |
+| [Feature proposal](./proposal.md) | Design source of truth (scopes, API, security) |
+| [API reference — break-glass](../api-reference.md#break-glass) | HTTP routes |
+| [CLI reference — break-glass](../cli-reference.md#break-glass) | Operator commands |
 
-Platform context: [ZOA architecture (rosa-seaplane)](https://github.com/openshift-online/rosa-hyperfleet/blob/main/docs/design/zoa-architecture.md).
+## Quick flow
+
+1. **Boundary:** `zoa breakglass request --scope kube-read --reason ROSAENG-…`
+2. **Laptop:** `zoa approve <deployment>/<request-id> [--comment …]`
+3. **Boundary:** `zoa breakglass use <request-id>` then stock `kubectl` / `aws`
+4. **Expiry:** worker reconciler marks expired grants and GCs `zoa-bg-<id>` RBAC
+
+## Jira (ROSAENG-69)
+
+| Story | Repo | Scope |
+| ----- | ---- | ----- |
+| [ROSAENG-75951](https://redhat.atlassian.net/browse/ROSAENG-75951) | rosa-seaplane-zoa | Core |
+| [ROSAENG-75952](https://redhat.atlassian.net/browse/ROSAENG-75952) | rosa-seaplane | Infra |
+| [ROSAENG-75953](https://redhat.atlassian.net/browse/ROSAENG-75953) | Both | Docs |
+| [ROSAENG-75954](https://redhat.atlassian.net/browse/ROSAENG-75954) | rosa-seaplane-zoa | E2E |
+| [ROSAENG-75955](https://redhat.atlassian.net/browse/ROSAENG-75955) | rosa-seaplane | Observability |

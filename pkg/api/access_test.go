@@ -708,23 +708,23 @@ func TestAccessHandler_WhenSessionListMineWithOperatorParam_ItShouldReturn400(t 
 	}
 }
 
-func TestAccessHandler_WhenApproveStub_ItShouldReturn501(t *testing.T) {
+func TestAccessHandler_WhenApproveWithoutBreakglass_ItShouldReturn503(t *testing.T) {
 	h := testAccessHandler(&mockSessionStoreAccess{}, &mockTargetStoreAccess{})
 
 	rr := doAccessRequest(h, "POST", "/api/v0/approve/req-123", nil, accessHeaders())
 
-	if rr.Code != http.StatusNotImplemented {
-		t.Errorf("expected 501, got %d: %s", rr.Code, rr.Body.String())
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected 503, got %d: %s", rr.Code, rr.Body.String())
 	}
 }
 
-func TestAccessHandler_WhenRejectStub_ItShouldReturn501(t *testing.T) {
+func TestAccessHandler_WhenRejectWithoutBreakglass_ItShouldReturn503(t *testing.T) {
 	h := testAccessHandler(&mockSessionStoreAccess{}, &mockTargetStoreAccess{})
 
 	rr := doAccessRequest(h, "POST", "/api/v0/reject/req-123", nil, accessHeaders())
 
-	if rr.Code != http.StatusNotImplemented {
-		t.Errorf("expected 501, got %d: %s", rr.Code, rr.Body.String())
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected 503, got %d: %s", rr.Code, rr.Body.String())
 	}
 }
 

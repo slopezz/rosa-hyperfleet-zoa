@@ -167,6 +167,24 @@ These apply to **every** subcommand (`session`, `run`, `runs`, `audit`, …). Wh
 
 **Access control (server-side):** the Access Lambda binds each session to the **operator** from your SigV4 identity (IAM role session name). **`session join`** and **`session terminate`** return **403** if you are not the owner. **`session list`** always uses **`scope=mine`** — you only see your own sessions, not another operator's. **`session history`** is the deliberate exception: it lists **all operators** for audit/situational awareness (and those queries are audited). You cannot join someone else's boundary shell even if you know their session id; Exec credentials are vended only after an ownership check. See [Operator workflow — ownership](guides/operator-workflow.md#4-start-session-join-exec-and-ownership) and [Access API — sessions](api-reference.md#get-apiv0sessions).
 
+### Break-glass (boundary — API Lambda)
+
+| Command | Description |
+| ------- | ----------- |
+| `breakglass scopes [--offline]` | List or describe scopes (`--offline` uses embedded catalog) |
+| `breakglass request --scope <id> --reason <ticket>` | Create a pending request |
+| `breakglass requests` | List your requests |
+| `breakglass get <request-id>` | Get one request |
+| `breakglass connect <request-id>` | Provision RBAC / STS (metadata only) |
+| `breakglass use <request-id>` | Activate credentials under `~/.config/zoa/breakglass/` |
+
+### Laptop approval (Access Lambda)
+
+| Command | Description |
+| ------- | ----------- |
+| `approve <deployment>/<request-id> [--comment …]` | Approve pending break-glass |
+| `reject <deployment>/<request-id> [--comment …]` | Reject pending break-glass |
+
 ### Trusted Actions (boundary — API Lambda via `ZOA_API_URL`)
 
 | Command             | Description                                                |

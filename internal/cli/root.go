@@ -39,11 +39,12 @@ type GlobalOptions struct {
 }
 
 const (
-	cmdGroupDiscovery = "discovery"
-	cmdGroupBoundary  = "boundary"
-	cmdGroupTA        = "trusted-actions"
-	cmdGroupAudit     = "audit"
-	cmdGroupOther     = "other"
+	cmdGroupDiscovery  = "discovery"
+	cmdGroupBoundary   = "boundary"
+	cmdGroupTA         = "trusted-actions"
+	cmdGroupBreakglass = "break-glass"
+	cmdGroupAudit      = "audit"
+	cmdGroupOther      = "other"
 )
 
 func NewRootCommand() *cobra.Command {
@@ -94,6 +95,9 @@ All requests use your default AWS credential chain (SigV4).`,
 			if name == "targets" {
 				return nil
 			}
+			if name == "approve" || name == "reject" {
+				return nil
+			}
 			// Session subcommands resolve deployment from positional args or
 			// compound session IDs. Let getClient decide at call time.
 			if cmd.Parent() != nil && cmd.Parent().Name() == "session" {
@@ -120,6 +124,7 @@ All requests use your default AWS credential chain (SigV4).`,
 	cmd.AddGroup(
 		&cobra.Group{ID: cmdGroupDiscovery, Title: "Discovery:"},
 		&cobra.Group{ID: cmdGroupBoundary, Title: "Boundary access:"},
+		&cobra.Group{ID: cmdGroupBreakglass, Title: "Break-glass:"},
 		&cobra.Group{ID: cmdGroupTA, Title: "Trusted Actions:"},
 		&cobra.Group{ID: cmdGroupAudit, Title: "Audit:"},
 		&cobra.Group{ID: cmdGroupOther, Title: "Other:"},
@@ -133,6 +138,15 @@ All requests use your default AWS credential chain (SigV4).`,
 
 	sessionCmd := newSessionCommand(opts)
 	sessionCmd.GroupID = cmdGroupBoundary
+
+	breakglassCmd := newBreakglassCommand(opts)
+	breakglassCmd.GroupID = cmdGroupBreakglass
+
+	approveCmd := newApproveCommand(opts)
+	approveCmd.GroupID = cmdGroupBoundary
+
+	rejectCmd := newRejectCommand(opts)
+	rejectCmd.GroupID = cmdGroupBoundary
 
 	runCmd := newRunCommand(opts)
 	runCmd.GroupID = cmdGroupTA
@@ -171,6 +185,9 @@ All requests use your default AWS credential chain (SigV4).`,
 		deploymentsCmd,
 		targetsCmd,
 		sessionCmd,
+		breakglassCmd,
+		approveCmd,
+		rejectCmd,
 		runCmd,
 		getCmd,
 		outputCmd,
