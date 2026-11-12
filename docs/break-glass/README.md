@@ -22,5 +22,5 @@ Emergency scoped `kubectl` / `aws` from the **boundary** only. Same patterns as 
 | [ROSAENG-75951](https://redhat.atlassian.net/browse/ROSAENG-75951) | rosa-seaplane-zoa | Core |
 | [ROSAENG-75952](https://redhat.atlassian.net/browse/ROSAENG-75952) | rosa-seaplane | Infra |
 | [ROSAENG-75953](https://redhat.atlassian.net/browse/ROSAENG-75953) | Both | Docs |
-| [ROSAENG-75954](https://redhat.atlassian.net/browse/ROSAENG-75954) | rosa-seaplane-zoa | E2E |
-| [ROSAENG-75955](https://redhat.atlassian.net/browse/ROSAENG-75955) | rosa-seaplane | Observability |
+| [ROSAENG-75954](https://redhat.atlassian.net/browse/ROSAENG-75954) | rosa-seaplane-zoa | E2E (separate PR) |
+| [ROSAENG-75955](https://redhat.atlassian.net/browse/ROSAENG-75955) | rosa-seaplane | Observability (separate PR) |
