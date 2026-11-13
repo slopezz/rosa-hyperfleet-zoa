@@ -144,11 +144,20 @@ CLI: `zoa breakglass requests|history` with `--status`, `--approval`, `--decided
 
 ### Trusted Actions (future)
 
-TA will mirror break-glass list semantics:
+When the workflow epic lands, **execution rows** get the same split as break-glass (not a rename of `status` into `approval`):
 
-- **`status`** — run lifecycle (`dispatched`, `succeeded`, …)
-- **`approval`** + **`decided_at` / `decided_by`** — same workflow column meaning as break-glass
-- Catalog `authorization.approval` on each action stays in `pkg/actions`, not duplicated on every execution row
+| Field | TA meaning |
+| ----- | ---------- |
+| `status` | **Run lifecycle only** — `dispatched`, `succeeded`, `failed`, `timed_out`, … **Not** `pending_approval`. |
+| `approval` | **Peer workflow** — `pending`, `approved`, `rejected` (same vocabulary as break-glass; never `expired`). |
+| `decided_at`, `decided_by` | Set on peer approve/reject; empty for catalog `none` auto path (audit may still record synthetic approver). |
+
+**Do not** model “waiting for peer” as `status=pending_approval` on executions. That value exists today on `store.Status` for early sketches only; new TA workflow code should use **`approval=pending`** while `status` stays in the run lifecycle (e.g. hold dispatch until `approval=approved`, or a dedicated pre-dispatch status agreed in the epic — not `pending_approval`).
+
+List/history UX mirrors break-glass:
+
+- **`zoa runs`** (and `-o wide`): **STATUS** = run lifecycle; **APPROVAL** + **DECIDED_*** = peer columns; filters `--status`, `--approval`, `--decided-by`, `--decided-since`.
+- Catalog `authorization.approval` on each action stays in `pkg/actions` / describe; **not** copied onto every execution row.
 
 Until the workflow epic, TA rows keep a single lifecycle `status`; only break-glass ships the split.
 
