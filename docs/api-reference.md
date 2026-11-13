@@ -84,7 +84,7 @@ Requires `BREAKGLASS_TABLE` on the target API Lambda. Identity and task-binding 
 | `POST` | `/api/v0/breakglass/requests`              | Create request (`scope`, `reason`)               |
 | `GET`  | `/api/v0/breakglass/requests`              | List requests for the authenticated operator     |
 | `GET`  | `/api/v0/breakglass/requests/{id}`         | Get request                                      |
-| `POST` | `/api/v0/breakglass/requests/{id}/connect` | Provision access and return credentials (task-bound) |
+| `POST` | `/api/v0/breakglass/requests/{id}/activate` | Provision access and return credentials (task-bound) |
 | `GET`  | `/api/v0/breakglass/requests?scope=mine`   | Your requests only (not audited)                   |
 | `GET`  | `/api/v0/breakglass/requests` (no scope=mine) | Cross-operator history (audited `breakglass_history`) |
 

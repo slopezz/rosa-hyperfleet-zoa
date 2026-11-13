@@ -13,8 +13,9 @@ Emergency scoped `kubectl` / `aws` from the **boundary** only. Same patterns as 
 
 1. **Boundary:** `zoa breakglass request --scope kube-read --reason ROSAENG-…` (all v1 scopes use **`approval: none`** → immediate approve via same workflow as future peer approve)
 2. **Laptop:** `zoa approve <deployment>/<request-id>` — for future workflows; not required while scopes stay `none` ([approval workflow](../approval-workflow.md))
-3. **Boundary:** `zoa breakglass use <request-id>` then stock `kubectl` / `aws`
-4. **Expiry:** worker reconciler marks expired grants and GCs `zoa-bg-<id>` RBAC
+3. **Boundary:** `zoa breakglass activate <request-id>` then stock `kubectl` / `aws` (at most **one active kube** + **one active aws**; a new activate on the same plane replaces the previous scope in `~/.config/zoa/breakglass/active` and the PS1)
+4. **Discovery:** `zoa breakglass describe <scope>` shows composition bullets plus effective **RBAC** (kube) or **IAM** notes (aws) — same data the API returns for that target type
+5. **Expiry:** worker reconciler marks expired grants and GCs `zoa-bg-<id>` RBAC
 
 ## Jira (ROSAENG-69)
 

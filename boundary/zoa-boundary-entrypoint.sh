@@ -28,6 +28,10 @@ zoa_actions_catalog_path() {
   echo "$(zoa_sre_home)/.claude/ZOA_ACTIONS.md"
 }
 
+zoa_breakglass_scopes_catalog_path() {
+  echo "$(zoa_sre_home)/.claude/ZOA_BREAKGLASS_SCOPES.md"
+}
+
 zoa_target_type() {
   if [[ -n "${ZOA_TARGET_TYPE:-}" ]]; then
     echo "${ZOA_TARGET_TYPE}"
@@ -67,6 +71,7 @@ write_zoa_session_md() {
     echo "**Target type \`${target_type}\`** matches **TYPE** in \`zoa targets\` — \`rc\` = Regional Cluster EKS (one per region); \`mc\` = Management Cluster EKS (HyperShift; may be several per region). kube-api TAs use this cluster; aws-api TAs use this cluster's AWS account/region."
     echo ""
     echo "Trusted Actions catalog: \`$(zoa_actions_catalog_path)\` (offline render from embedded CLI registry; live API is authoritative when connected)."
+    echo "Break-glass scope catalog: \`$(zoa_breakglass_scopes_catalog_path)\` (offline; live: \`zoa breakglass describe <scope>\`)."
     echo "Live details: \`zoa describe <action>\` · Offline: \`zoa actions --offline\` · See CLAUDE.md"
   } > "$(zoa_session_md_path)"
 }
@@ -83,6 +88,23 @@ install_actions_catalog() {
 
   if ! zoa actions --offline -o markdown >"${catalog_path}"; then
     echo "FATAL: zoa actions --offline -o markdown failed" >&2
+    exit 1
+  fi
+}
+
+install_breakglass_scopes_catalog() {
+  local catalog_path target_type
+  catalog_path="$(zoa_breakglass_scopes_catalog_path)"
+  target_type="$(zoa_target_type)"
+  mkdir --parents "$(zoa_sre_home)/.claude"
+
+  if ! command -v zoa &>/dev/null; then
+    echo "FATAL: zoa CLI not found — cannot render offline break-glass scope catalog" >&2
+    exit 1
+  fi
+
+  if ! zoa breakglass scopes --offline -o markdown --target-type "${target_type}" >"${catalog_path}"; then
+    echo "FATAL: zoa breakglass scopes --offline -o markdown failed" >&2
     exit 1
   fi
 }
@@ -104,6 +126,7 @@ print_startup_banner() {
 main() {
   write_zoa_session_md
   install_actions_catalog
+  install_breakglass_scopes_catalog
   require_ecs_exec_logging_bins
   print_startup_banner
   exec "$@"

@@ -20,7 +20,7 @@ func TestCreateBreakglassRequest_WhenZOAReasonEnvSet_ItShouldSendEnvReason(t *te
 	}
 
 	global := newMockGlobalOpts(mock)
-	_, err := createBreakglassRequest(context.Background(), global, "kube-read", "", false, 0, 0)
+	_, err := createBreakglassRequest(context.Background(), global, "kube-read", "")
 	if err != nil {
 		t.Fatalf("createBreakglassRequest: %v", err)
 	}
@@ -41,7 +41,7 @@ func TestCreateBreakglassRequest_WhenFlagAndEnvSet_ItShouldPreferFlag(t *testing
 	}
 
 	global := newMockGlobalOpts(mock)
-	_, err := createBreakglassRequest(context.Background(), global, "kube-read", "ROSAENG-4242", false, 0, 0)
+	_, err := createBreakglassRequest(context.Background(), global, "kube-read", "ROSAENG-4242")
 	if err != nil {
 		t.Fatalf("createBreakglassRequest: %v", err)
 	}

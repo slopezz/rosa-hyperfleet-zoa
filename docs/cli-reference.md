@@ -173,11 +173,12 @@ These apply to **every** subcommand (`session`, `run`, `runs`, `audit`, …). Wh
 | ------- | ----------- |
 | `breakglass scopes [--offline]` | List or describe scopes (`--offline` uses embedded catalog) |
 | `breakglass request --scope <id> --reason <ticket>` | Create a pending request |
-| `breakglass requests` | List your requests |
-| `breakglass get <request-id>` | Get request; `--wait` polls then `use` when approved (like `run --wait`) |
+| `breakglass requests` | List your requests (human table; `-o json` like `zoa runs`) |
+| `breakglass get <request-id>` | Get request metadata on stdout (`zoa get` style); `--wait` polls with stderr spinner until terminal decision |
+| `breakglass request … --wait` | Create ack on stderr, poll like `zoa run --wait`, then stdout metadata; operator runs `activate` separately |
 | `breakglass describe <scope>`     | Scope details (like `zoa describe`)  |
 | `breakglass history`              | All operators on this target (audit) |
-| `breakglass use <request-id>` | Activate credentials under `~/.config/zoa/breakglass/` |
+| `breakglass activate <request-id>` | Provision and activate credentials under `~/.config/zoa/breakglass/` |
 
 ### Laptop approval (Access Lambda)
 

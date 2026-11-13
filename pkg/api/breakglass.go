@@ -44,7 +44,11 @@ func (h *Handler) handleDescribeBreakglassScope(w http.ResponseWriter, r *http.R
 		writeError(w, http.StatusNotFound, "not_found", "unknown break-glass scope")
 		return
 	}
-	writeJSON(w, http.StatusOK, def.Metadata)
+	targetType := h.cfg.TargetType
+	if targetType == "" {
+		targetType = breakglass.DefaultDescribeTargetType(def.Metadata)
+	}
+	writeJSON(w, http.StatusOK, breakglass.DescribeScope(def, targetType))
 }
 
 type breakglassCreateRequest struct {
@@ -114,9 +118,9 @@ func (h *Handler) handleCreateBreakglassRequest(w http.ResponseWriter, r *http.R
 	}
 	h.recordAudit(r, http.StatusCreated, AuditActionBreakglassRequest, req.RequestID, withReason(reasonValue))
 
-	resp, err := MaybeAutoApproveBreakglassAfterCreate(r.Context(), h.breakglassStore, req, def)
+	resp, err := ApproveBreakglassOnCreateWhenNoPeerWorkflow(r.Context(), h.breakglassStore, req, def)
 	if err != nil {
-		h.logger.Error("auto-approve breakglass request", "error", err, "request_id", req.RequestID)
+		h.logger.Error("approve breakglass on create", "error", err, "request_id", req.RequestID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "failed to approve break-glass request")
 		return
 	}
@@ -206,7 +210,7 @@ func (h *Handler) handleListBreakglassRequests(w http.ResponseWriter, r *http.Re
 	writeJSON(w, http.StatusOK, map[string]interface{}{"items": items, "count": len(items)})
 }
 
-func (h *Handler) handleConnectBreakglassRequest(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) handleActivateBreakglassRequest(w http.ResponseWriter, r *http.Request) {
 	if !h.breakglassEnabled(w) {
 		return
 	}
@@ -223,7 +227,7 @@ func (h *Handler) handleConnectBreakglassRequest(w http.ResponseWriter, r *http.
 	operator, signerARN, _ := h.resolveIdentity(r)
 	taskID, _ := extractTaskIDFromSigner(signerARN)
 	if taskID == "" || req.CreatorTaskID == "" || taskID != req.CreatorTaskID {
-		writeError(w, http.StatusForbidden, "task_mismatch", "connect is only allowed from the boundary task that created the request")
+		writeError(w, http.StatusForbidden, "task_mismatch", "activate is only allowed from the boundary task that created the request")
 		return
 	}
 	if req.Operator != "" && operator != "" && req.Operator != operator {
@@ -238,8 +242,10 @@ func (h *Handler) handleConnectBreakglassRequest(w http.ResponseWriter, r *http.
 		}
 	}
 	resp := map[string]interface{}{
+		"id":               req.RequestID,
 		"request_id":       req.RequestID,
 		"scope":            req.Scope,
+		"target_cluster":   req.TargetCluster,
 		"grant_expires_at": req.GrantExpiresAt,
 		"status":           "ready",
 		"kind":             "breakglass",
@@ -249,9 +255,9 @@ func (h *Handler) handleConnectBreakglassRequest(w http.ResponseWriter, r *http.
 		remaining := time.Until(mustParseRFC3339(req.GrantExpiresAt))
 		switch def.Metadata.Plane {
 		case breakglass.PlaneKube:
-			cluster, err := h.executor.BreakglassKubeConnect(r.Context(), req.RequestID, req.Scope)
+			cluster, err := h.executor.BreakglassKubeActivate(r.Context(), req.RequestID, req.Scope)
 			if err != nil {
-				h.logger.Error("breakglass connect kube", "error", err)
+				h.logger.Error("breakglass activate kube", "error", err)
 				writeError(w, http.StatusInternalServerError, "provision_failed", "failed to provision break-glass kube access")
 				return
 			}
@@ -265,7 +271,7 @@ func (h *Handler) handleConnectBreakglassRequest(w http.ResponseWriter, r *http.
 		case breakglass.PlaneAWS:
 			creds, err := h.executor.AssumeBreakglassRole(r.Context(), req.RequestID, req.Scope, remaining)
 			if err != nil {
-				h.logger.Error("breakglass connect aws", "error", err)
+				h.logger.Error("breakglass activate aws", "error", err)
 				writeError(w, http.StatusInternalServerError, "provision_failed", "failed to provision break-glass AWS access")
 				return
 			}
@@ -280,7 +286,7 @@ func (h *Handler) handleConnectBreakglassRequest(w http.ResponseWriter, r *http.
 		}
 	}
 	writeJSON(w, http.StatusOK, resp)
-	h.recordAudit(r, http.StatusOK, AuditActionBreakglassConnect, id, withReason(req.Scope))
+	h.recordAudit(r, http.StatusOK, AuditActionBreakglassActivate, id, withReason(req.Scope))
 }
 
 func mustParseRFC3339(s string) time.Time {

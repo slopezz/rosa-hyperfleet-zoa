@@ -65,6 +65,7 @@ zoa_boundary_print_motd() {
   echo "    ~/.claude/CLAUDE.md       — ROSA Seaplane architecture, boundary rules, RC vs MC, identity bridge, TA workflow"
   echo "    ~/.claude/ZOA_SESSION.md  — this session (deployment, target, target type)"
   echo "    ~/.claude/ZOA_ACTIONS.md  — offline TA catalog (live API: zoa actions)"
+  echo "    ~/.claude/ZOA_BREAKGLASS_SCOPES.md — offline break-glass scopes (last resort; see CLAUDE.md)"
   echo "    Claude Code: plain 'claude' = new chat; 'claude --resume' = pick a prior chat (or --continue for latest)"
   echo ""
 }

@@ -19,8 +19,8 @@ type BreakglassKubeCluster struct {
 	RequestID                string `json:"request_id"`
 }
 
-// BreakglassKubeConnect prepares RBAC and returns cluster metadata for exec-based auth.
-func (e *Executor) BreakglassKubeConnect(ctx context.Context, requestID, scopeID string) (*BreakglassKubeCluster, error) {
+// BreakglassKubeActivate prepares RBAC and returns cluster metadata for exec-based auth.
+func (e *Executor) BreakglassKubeActivate(ctx context.Context, requestID, scopeID string) (*BreakglassKubeCluster, error) {
 	saName, err := e.EnsureBreakglassKube(ctx, requestID, scopeID)
 	if err != nil {
 		return nil, err

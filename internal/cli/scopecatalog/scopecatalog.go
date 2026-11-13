@@ -34,8 +34,14 @@ func Get(targetType, scopeID string) (*client.ScopeMetadata, error) {
 	if !ok {
 		return nil, fmt.Errorf("scope %q not found for target type %q", scopeID, targetType)
 	}
-	scope := ClientScopeFromMetadata(def.Metadata)
+	desc := breakglass.DescribeScope(def, targetType)
+	scope := ClientScopeFromDescribe(desc)
 	return &scope, nil
+}
+
+// Describe returns full scope detail for offline describe (includes RBAC / IAM composition).
+func Describe(targetType, scopeID string) (*client.ScopeMetadata, error) {
+	return Get(targetType, scopeID)
 }
 
 // ClientScopeFromMetadata maps registry metadata to the API/CLI ScopeMetadata shape.
@@ -62,5 +68,25 @@ func ClientScopeFromMetadata(m breakglass.ScopeMetadata) client.ScopeMetadata {
 		Authorization: auth,
 		Capabilities:  m.Capabilities,
 		Restrictions:  m.Restrictions,
+		AwsRoleKey:    m.AwsRoleKey,
 	}
+}
+
+// ClientScopeFromDescribe maps DescribeScope output to the CLI/API client shape.
+func ClientScopeFromDescribe(d breakglass.ScopeDescribe) client.ScopeMetadata {
+	scope := ClientScopeFromMetadata(d.ScopeMetadata)
+	scope.Composition = d.Composition
+	scope.IAMComposition = d.IAMComposition
+	scope.TargetType = d.TargetType
+	if len(d.RBAC) > 0 {
+		scope.RBAC = make([]client.ScopeRBACRule, 0, len(d.RBAC))
+		for _, rule := range d.RBAC {
+			scope.RBAC = append(scope.RBAC, client.ScopeRBACRule{
+				APIGroups: append([]string(nil), rule.APIGroups...),
+				Resources: append([]string(nil), rule.Resources...),
+				Verbs:     append([]string(nil), rule.Verbs...),
+			})
+		}
+	}
+	return scope
 }
