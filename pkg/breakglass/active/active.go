@@ -14,10 +14,10 @@ import (
 
 // Stanza is one active grant on a plane (kube or aws).
 type Stanza struct {
-	RequestID         string `json:"requestId"`
-	Scope             string `json:"scope"`
-	GrantExpiresAt    string `json:"grantExpiresAt"`
-	BearerExpiresAt   string `json:"bearerExpiresAt,omitempty"`
+	RequestID       string `json:"requestId"`
+	Scope           string `json:"scope"`
+	GrantExpiresAt  string `json:"grantExpiresAt"`
+	BearerExpiresAt string `json:"bearerExpiresAt,omitempty"`
 }
 
 // Active holds at most one grant per plane.

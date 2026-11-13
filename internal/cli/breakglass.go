@@ -60,7 +60,7 @@ catalog embedded in this CLI build, filtered by --target-type or ZOA_TARGET_TYPE
 			if err != nil {
 				return err
 			}
-			return renderBreakglassScopes(global.OutputFormat, list.Items)
+			return renderBreakglassScopes(global.OutputFormat, list)
 		},
 	}
 	registerCatalogFlags(cmd, catalogOpts)
@@ -103,7 +103,10 @@ func listBreakglassScopesOffline(global *GlobalOptions, catalogOpts *catalogOpti
 	if err != nil {
 		return err
 	}
-	return renderBreakglassScopes(global.OutputFormat, items)
+	return renderBreakglassScopes(global.OutputFormat, &client.BreakglassScopeList{
+		Items: items,
+		Count: len(items),
+	})
 }
 
 func describeBreakglassScope(ctx context.Context, global *GlobalOptions, catalogOpts *catalogOptions, scopeID string) error {
@@ -149,8 +152,8 @@ func printScopeMetadata(scope *client.ScopeMetadata) {
 		if v, ok := scope.Authorization["approval"].(string); ok {
 			fmt.Printf("Approval:    %s\n", v)
 		}
-		if v, ok := scope.Authorization["default_grant_hours"].(float64); ok {
-			fmt.Printf("Grant TTL:   %.0fh default after approve\n", v)
+		if ttl := scopeCatalogGrantTTL(*scope); ttl != "" {
+			fmt.Printf("Grant TTL:   %s default after approve\n", ttl)
 		}
 	}
 	fmt.Printf("Description: %s\n", scope.Description)
@@ -181,14 +184,69 @@ func printScopeMetadata(scope *client.ScopeMetadata) {
 	fmt.Printf("\nExample: zoa breakglass request --scope %s --reason %s\n", scope.ID, reason.ExampleJiraIssue)
 }
 
-func renderBreakglassScopes(format output.Format, items []client.ScopeMetadata) error {
+func scopeCatalogApproval(s client.ScopeMetadata) string {
+	return scopeCatalogAuthString(s, "approval")
+}
+
+func scopeCatalogGrantTTL(s client.ScopeMetadata) string {
+	h := scopeCatalogAuthInt(s, "default_grant_hours")
+	if h <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("%dh", h)
+}
+
+func scopeCatalogAuthString(s client.ScopeMetadata, key string) string {
+	if s.Authorization == nil {
+		return ""
+	}
+	raw, ok := s.Authorization[key]
+	if !ok || raw == nil {
+		return ""
+	}
+	if v, ok := raw.(string); ok {
+		return v
+	}
+	return fmt.Sprint(raw)
+}
+
+func scopeCatalogAuthInt(s client.ScopeMetadata, key string) int {
+	if s.Authorization == nil {
+		return 0
+	}
+	raw, ok := s.Authorization[key]
+	if !ok || raw == nil {
+		return 0
+	}
+	switch v := raw.(type) {
+	case int:
+		return v
+	case int64:
+		return int(v)
+	case float64:
+		return int(v)
+	default:
+		return 0
+	}
+}
+
+func renderBreakglassScopes(format output.Format, list *client.BreakglassScopeList) error {
+	if list == nil {
+		list = &client.BreakglassScopeList{}
+	}
 	if format == output.FormatJSON {
-		return output.JSON(os.Stdout, map[string]interface{}{"items": items, "count": len(items)})
+		return output.JSON(os.Stdout, list)
 	}
-	for _, s := range items {
-		fmt.Printf("%-14s %-6s %-8s %s\n", s.ID, s.Plane, s.Type, s.Description)
+	tw := output.NewTable(os.Stdout)
+	fmt.Fprintf(tw, "SCOPE\tPLANE\tTYPE\tAPPROVAL\tGRANT_TTL\tDESCRIPTION\n")
+	for _, s := range list.Items {
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",
+			s.ID, s.Plane, s.Type,
+			output.Dash(scopeCatalogApproval(s)),
+			output.Dash(scopeCatalogGrantTTL(s)),
+			s.Description)
 	}
-	return nil
+	return tw.Flush()
 }
 
 func newBreakglassRequestCommand(global *GlobalOptions) *cobra.Command {
