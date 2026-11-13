@@ -111,16 +111,15 @@ zoa_breakglass_ps1_part() {
   grant_left="$(zoa_breakglass_time_left "${exp}")"
   bearer_exp="$(jq -r --arg p "${plane}" '.[$p].bearerExpiresAt // empty' "${active}")"
   cred_left="$(zoa_breakglass_time_left "${bearer_exp}")"
-  if [[ -z "${cred_left}" ]]; then
-    cred_left='≤1h'
-  else
-    cred_left="~${cred_left#~}"
-  fi
   part="${plane}=${scope}"
   if [[ -n "${grant_left}" ]]; then
     part="${part} grant${grant_left}"
   fi
-  part="${part} cred${cred_left}"
+  if [[ -z "${cred_left}" ]]; then
+    part="${part} cred≤1h"
+  else
+    part="${part} cred${cred_left}"
+  fi
   printf '%s' "${part}"
 }
 
