@@ -14,9 +14,10 @@ import (
 
 // Stanza is one active grant on a plane (kube or aws).
 type Stanza struct {
-	RequestID      string `json:"requestId"`
-	Scope          string `json:"scope"`
-	GrantExpiresAt string `json:"grantExpiresAt"`
+	RequestID         string `json:"requestId"`
+	Scope             string `json:"scope"`
+	GrantExpiresAt    string `json:"grantExpiresAt"`
+	BearerExpiresAt   string `json:"bearerExpiresAt,omitempty"`
 }
 
 // Active holds at most one grant per plane.
@@ -35,7 +36,7 @@ func ActivePath(home string) string {
 	return filepath.Join(ConfigDir(home), "active")
 }
 
-// AWSCredentialsPath is a shared credentials file for zoa-bg-* profiles.
+// AWSCredentialsPath is the dedicated aws-cli credentials file ([default] when aws grant is active).
 func AWSCredentialsPath(home string) string {
 	return filepath.Join(ConfigDir(home), "aws-credentials")
 }

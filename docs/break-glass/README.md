@@ -27,7 +27,15 @@ Emergency scoped `kubectl` / `aws` from the **boundary** only. Same patterns as 
 
 **Refresh:** run `zoa breakglass activate <same-request-id>` again before creds expire (while `status=approved` and before grant end). You do **not** need a new request.
 
-**Shell wiring:** boundary bashrc wraps `zoa` and runs `PROMPT_COMMAND` so `KUBECONFIG` / `AWS_PROFILE` apply after `activate` with no manual `export`.
+**Shell wiring (boundary):**
+
+| Tool | Credentials |
+|------|-------------|
+| `kubectl` | `KUBECONFIG` → break-glass kubeconfig |
+| `aws` | Break-glass only: with an aws grant, `AWS_SHARED_CREDENTIALS_FILE` → `~/.config/zoa/breakglass/aws-credentials` (`[default]`). No grant → file unset (do not use stock `aws` for task-role work in boundary). |
+| `zoa` | **ECS task role only** (Lambda / TAs); ignores break-glass credential files. |
+
+`PROMPT_COMMAND` sets/unsets env from `active` — the SRE never runs manual `unset`. No `AWS_PROFILE`. `AWS_PAGER` is empty. PS1 uses `|` between kube and aws; cred countdown uses `bearerExpiresAt` from `activate`.
 
 ## Jira (ROSAENG-69)
 

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 
-	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/spf13/cobra"
 
@@ -231,7 +230,7 @@ func getClient(opts *GlobalOptions) (APIClient, error) {
 // and the explicit API URL.
 func newRealClient(opts *GlobalOptions) (*client.Client, error) {
 	ctx := context.Background()
-	cfg, err := awsconfig.LoadDefaultConfig(ctx)
+	cfg, err := loadBoundaryAPIAWSConfig(ctx, opts.Region)
 	if err != nil {
 		return nil, fmt.Errorf("loading AWS config: %w", err)
 	}

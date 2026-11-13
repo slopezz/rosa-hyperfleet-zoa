@@ -451,10 +451,15 @@ func activateBreakglass(ctx context.Context, global *GlobalOptions, requestID st
 	if err := os.WriteFile(filepath.Join(dir, "meta.json"), metaBytes, 0o600); err != nil {
 		return err
 	}
+	plane, err := active.PlaneForScope(resp.Scope)
+	if err != nil {
+		return err
+	}
 	stanza := active.Stanza{
-		RequestID:      requestID,
-		Scope:          resp.Scope,
-		GrantExpiresAt: resp.GrantExpiresAt,
+		RequestID:       requestID,
+		Scope:           resp.Scope,
+		GrantExpiresAt:  resp.GrantExpiresAt,
+		BearerExpiresAt: breakglassBearerExpiresAt(plane, resp),
 	}
 	if err := active.Activate(home, stanza); err != nil {
 		return err
@@ -465,10 +470,6 @@ func activateBreakglass(ctx context.Context, global *GlobalOptions, requestID st
 		}
 	}
 	if err := writeBreakglassAWSProfile(home, requestID, resp.AWS); err != nil {
-		return err
-	}
-	plane, err := active.PlaneForScope(resp.Scope)
-	if err != nil {
 		return err
 	}
 	if err := validateBreakglassActivateArtifacts(home, requestID, plane, resp); err != nil {
