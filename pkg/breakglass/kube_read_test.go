@@ -67,10 +67,14 @@ func TestKubeReadScope_WhenRegistered_ItShouldIncludePlatformOperatorAPIGroups(t
 		{actions.TargetTypeRC, "cert-manager.io"},
 		{actions.TargetTypeRC, "external-secrets.io"},
 		{actions.TargetTypeRC, "monitoring.thanos.io"},
+		{actions.TargetTypeRC, "vpcresources.k8s.aws"},
+		{actions.TargetTypeRC, "generators.external-secrets.io"},
 		{actions.TargetTypeMC, "monitoring.coreos.com"},
 		{actions.TargetTypeMC, "cert-manager.io"},
 		{actions.TargetTypeMC, "external-secrets.io"},
 		{actions.TargetTypeMC, "secrets-store.csi.x-k8s.io"},
+		{actions.TargetTypeMC, "cluster.x-k8s.io"},
+		{actions.TargetTypeMC, "infrastructure.cluster.x-k8s.io"},
 	}
 	for _, tc := range cases {
 		tc := tc

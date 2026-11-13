@@ -240,7 +240,7 @@ Read **`ZOA_BREAKGLASS_SCOPES.md`** before discussing break-glass with the opera
 
 ### Operator workflow (three steps)
 
-1. **`zoa breakglass request --scope <id> --reason TICKET`** — creates the request; may be `pending_approval` or `approved` depending on catalog approval policy (v1: auto-approve when `approval: none`).
+1. **`zoa breakglass request --scope <id> --reason TICKET`** — creates the request; may be `pending` or `approved` depending on catalog approval policy (v1: auto-approve when `approval: none`).
 2. **Peer (laptop):** **`zoa approve <deployment>/<request-id>`** when approval is required.
 3. **Operator (this boundary):** **`zoa breakglass activate <request-id>`** — credentials and prompt change only after this command.
 

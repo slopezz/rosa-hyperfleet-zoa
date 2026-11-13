@@ -7,7 +7,7 @@ Decisions and behavior for **peer approval** on TAs and break-glass. Target arch
 1. **Single vocabulary for “no workflow”:** `authorization.approval: "none"` — same field name in `pkg/actions` (TAs) and `pkg/breakglass` (break-glass scopes).
 2. **v1 catalog:** Every shipped TA and every break-glass scope is **`none`**. A **reason** (Jira / PagerDuty) is still required via `pkg/reason` / CLI `ZOA_REASON`.
 3. **No deployment-wide approval bypass env var.** When scope metadata is `none`, create handler calls `ApproveBreakglassOnCreateWhenNoPeerWorkflow` (same `ApproveBreakglassRequest` as laptop approve), not a Lambda toggle.
-4. **Break-glass still creates `pending_approval` first**, then transitions to `approved` in the same request when `none`, using the same `ApproveBreakglassRequest` path as laptop approve (synthetic approver `auto` in audit).
+4. **Break-glass still creates `status=pending` first**, then transitions to `approved` in the same HTTP request when the **scope catalog** has `authorization.approval: "none"` via `ApproveBreakglassOnCreateWhenNoPeerWorkflow`. Audit may record synthetic approver `auto`; the **Dynamo row** leaves `decided_by` / `decided_at` empty (`approval` workflow column = `approved`, lifecycle `status` = `approved`).
 5. **Peer approve/reject (v1):** one opaque UUID on `POST /api/v0/approve/{id}` and `POST /api/v0/reject/{id}` (API + Access). Handler **looks up break-glass first**, then executions (TA). TA execution approve returns **501**. Split per-pillar routes are planned (below).
 6. **`ZOA_ENVIRONMENT`** (platform tier from Terraform/GitOps) is **deferred** until the workflow epic; operators do not set it.
 7. **Future strictness** is expressed as an **approval object** (`min_count`, `approver`, `ttl`, …) per the gist — not as named tiers on metadata.
@@ -57,7 +57,7 @@ v1 **legacy** `/approve/{id}` on Access may stay as a thin wrapper (deployment i
 ### Break-glass
 
 - Metadata: **`approval: "none"` on all scopes in v1** (workflow epic will require peer approval). Shorter `DefaultGrantHours` on elevated scopes is **grant duration**, not approval policy.
-- Create: `POST /breakglass/requests` → row starts `pending_approval`; if catalog `approval: none`, **`ApproveBreakglassOnCreateWhenNoPeerWorkflow`** transitions to `approved` in the same request (synthetic approver `auto` in audit). When scopes require peer workflow, that call is a no-op and status stays pending.
+- Create: `POST /breakglass/requests` → row starts `status=pending`, `approval=pending`; if catalog `approval: none`, **`ApproveBreakglassOnCreateWhenNoPeerWorkflow`** transitions lifecycle to `approved` in the same request (synthetic approver `auto` in audit only). When scopes require peer workflow, that call is a no-op and both columns stay `pending`.
 - Logic lives in `pkg/api/breakglass_workflow.go` — driven only by **scope catalog metadata**, like TA dispatch ignoring approval when `none`.
 - **Three-step UX (always):** request (boundary) → approve (peer / auto when `none`) → **`zoa breakglass activate <id>`** (operator, boundary). CLI **`--wait`** on `request` / `get` polls with a **stderr progress line** (like `zoa run --wait`) until **`approved`**, **`rejected`**, or **`expired`**, then prints **`✓`/`✗` + elapsed** on stderr and **metadata on stdout** (or JSON envelope with `next_step`); it **never** calls activate.
 - **Task binding:** only the **same boundary ECS task** that created the request may call `POST …/requests/{id}/activate`. Stored `creatorTaskId` is the full **32-character ECS task id** from the boundary task role session name.
@@ -96,6 +96,61 @@ Shared evaluation for TA and break-glass: Rego + approval records (LDAP snapshot
 
 1. Per-environment override vs dedicated test action/scope for approval CI on shared ephemeral.
 2. Approvals storage: shared table vs fields on execution/break-glass rows for multi-approver v1.
+
+## Break-glass row: `status` vs `approval` (implemented)
+
+Scope catalog policy (`authorization.approval`: `none`, `manual`, …) lives in **`pkg/breakglass`** and `zoa breakglass scopes describe` — it is **not** copied onto each request row.
+
+Each **request row** stores two axes:
+
+| Field | Meaning | Values | Notes |
+| ----- | ------- | ------ | ----- |
+| `status` | **Lifecycle** (what is true now) | `pending`, `approved`, `rejected`, `expired` | Same vocabulary as workflow `approval` while waiting (`pending`). Worker expiry and `target-status-index` use this field only. |
+| `approval` | **Workflow outcome** (peer decision) | `pending`, `approved`, `rejected` | Never becomes `expired`. When a grant times out, `status` → `expired` while `approval` stays `approved`. |
+
+Shared timestamps (break-glass today; **same shape planned for TA** when the workflow epic lands):
+
+| Field | When set |
+| ----- | -------- |
+| `created_at` | Create |
+| `request_expires_at` | Create (peer window) |
+| `grant_expires_at` | Peer or auto approve |
+| `decided_at`, `decided_by` | Peer approve/reject only (empty for catalog `none` auto path) |
+| `expired_at` | Worker when `status` → `expired` |
+| `activate_at[]` | Each successful `POST …/activate` |
+| `decision_note` | Peer approve/reject when required |
+
+### Expiry (worker vs HTTP activate)
+
+- **Worker** (`pkg/scheduler/breakglass.go`, ~1m tick): queries `target-status-index` for lifecycle `pending` and `approved`, compares `request_expires_at` / `grant_expires_at`, sets `status=expired` and `expired_at`. Does **not** change `approval` or `decided_*`.
+- **Activate HTTP** (`POST /breakglass/requests/{id}/activate`): rejects immediately if lifecycle `status` ≠ `approved`, workflow `approval` ≠ `approved`, grant is past `grant_expires_at`, or **identity binding** fails (operator, session/task id from signer ARN, `creator_task_id` on the row). That keeps mistakes cheap before RBAC/creds; the worker eventually aligns rows whose grant window ended without activate.
+
+Example after grant timeout:
+
+```text
+status=expired, approval=approved, decided_by=<peer>, expired_at=<worker>
+```
+
+### List / history filters (API + CLI)
+
+`date-bucket-index` scopes time by **`created_at`** (`--since`). Additional query params:
+
+- `status` — lifecycle
+- `approval` — workflow outcome
+- `decided_by` — peer actor
+- `decided_since` — post-filter on `decided_at`
+
+CLI: `zoa breakglass requests|history` with `--status`, `--approval`, `--decided-by`, `--decided-since`.
+
+### Trusted Actions (future)
+
+TA will mirror break-glass list semantics:
+
+- **`status`** — run lifecycle (`dispatched`, `succeeded`, …)
+- **`approval`** + **`decided_at` / `decided_by`** — same workflow column meaning as break-glass
+- Catalog `authorization.approval` on each action stays in `pkg/actions`, not duplicated on every execution row
+
+Until the workflow epic, TA rows keep a single lifecycle `status`; only break-glass ships the split.
 
 ## Code map
 

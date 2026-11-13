@@ -29,20 +29,36 @@ func (m *mockBreakglassServiceStore) QueryByTargetAndStatus(context.Context, str
 }
 func (m *mockBreakglassServiceStore) MarkCleaned(context.Context, string) error { return nil }
 
+func (m *mockBreakglassServiceStore) AppendActivateAt(context.Context, string, string) error {
+	return nil
+}
+
 func (m *mockBreakglassServiceStore) Transition(_ context.Context, _ string, from, to store.Status, updates map[string]interface{}) error {
 	if m.req.Status != from {
 		return context.Canceled
 	}
 	m.req.Status = to
+	applyBreakglassUpdates(m.req, updates)
+	return nil
+}
+
+func applyBreakglassUpdates(req *store.BreakglassRequest, updates map[string]interface{}) {
 	for k, v := range updates {
 		switch k {
-		case "approvedBy":
-			m.req.ApprovedBy = v.(string)
+		case "approval":
+			req.Approval = v.(string)
+		case "grantExpiresAt":
+			req.GrantExpiresAt = v.(string)
+		case "decidedBy":
+			req.DecidedBy = v.(string)
+		case "decidedAt":
+			req.DecidedAt = v.(string)
+		case "expiredAt":
+			req.ExpiredAt = v.(string)
 		case "decisionNote":
-			m.req.DecisionNote = v.(string)
+			req.DecisionNote = v.(string)
 		}
 	}
-	return nil
 }
 
 func TestApproveBreakglassRequest_WhenSelfApprove_ItShouldFail(t *testing.T) {
@@ -50,7 +66,7 @@ func TestApproveBreakglassRequest_WhenSelfApprove_ItShouldFail(t *testing.T) {
 		RequestID:        "id-1",
 		Scope:            "kube-read",
 		Operator:         "alice",
-		Status:           store.StatusPendingApproval,
+		Status:           store.StatusPending,
 		RequestExpiresAt: time.Now().Add(time.Hour).Format(time.RFC3339Nano),
 	}
 	store := &mockBreakglassServiceStore{req: req}
@@ -60,5 +76,23 @@ func TestApproveBreakglassRequest_WhenSelfApprove_ItShouldFail(t *testing.T) {
 	}
 }
 
-// Note-required approve/reject paths are covered when approval-workflow scopes
-// set Authorization.RequireDecisionNote; v1 scopes use approval "none" only.
+func TestApproveBreakglassRequest_WhenPeerApprove_ItShouldSetDecidedFields(t *testing.T) {
+	req := &store.BreakglassRequest{
+		RequestID:        "id-2",
+		Scope:            "kube-read",
+		Operator:         "alice",
+		Status:           store.StatusPending,
+		Approval:         store.WorkflowApprovalPending,
+		RequestExpiresAt: time.Now().Add(time.Hour).Format(time.RFC3339Nano),
+	}
+	st := &mockBreakglassServiceStore{req: req}
+	if err := ApproveBreakglassRequest(context.Background(), st, req, "bob", "ok"); err != nil {
+		t.Fatal(err)
+	}
+	if st.req.Approval != store.WorkflowApprovalApproved {
+		t.Fatalf("approval %q", st.req.Approval)
+	}
+	if st.req.DecidedBy != "bob" || st.req.DecidedAt == "" {
+		t.Fatalf("decided: by=%q at=%q", st.req.DecidedBy, st.req.DecidedAt)
+	}
+}

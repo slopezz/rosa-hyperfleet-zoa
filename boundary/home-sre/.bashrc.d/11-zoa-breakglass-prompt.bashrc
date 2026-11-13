@@ -31,38 +31,8 @@ zoa_breakglass_time_left() {
     printf '~%sm' $((diff / 60))
     return
   fi
-  printf '~%sh' $((diff / 3600))
-}
-
-zoa_breakglass_migrate_legacy_active() {
-  local active rid meta scope exp plane
-  active="$(zoa_breakglass_active_file)"
-  if [[ ! -f "${active}" ]] || command -v jq >/dev/null 2>&1 && jq -e . "${active}" >/dev/null 2>&1; then
-    return
-  fi
-  rid="$(tr -d '[:space:]' < "${active}")"
-  meta="${HOME}/.config/zoa/breakglass/${rid}/meta.json"
-  if [[ ! -f "${meta}" ]]; then
-    return
-  fi
-  scope="$(jq -r '.scope // empty' "${meta}")"
-  exp="$(jq -r '.grant_expires_at // empty' "${meta}")"
-  if [[ -z "${scope}" ]]; then
-    return
-  fi
-  if [[ "${scope}" == aws-* ]]; then
-    plane="aws"
-  else
-    plane="kube"
-  fi
-  jq -n \
-    --arg rid "${rid}" \
-    --arg scope "${scope}" \
-    --arg exp "${exp}" \
-    --arg plane "${plane}" \
-    'if $plane == "aws" then {aws: {requestId: $rid, scope: $scope, grantExpiresAt: $exp}}
-     else {kube: {requestId: $rid, scope: $scope, grantExpiresAt: $exp}} end' > "${active}.tmp" \
-    && mv "${active}.tmp" "${active}"
+  # Round up so a 4h grant does not show ~3h for most of the window.
+  printf '~%sh' $(((diff + 3599) / 3600))
 }
 
 zoa_breakglass_expire_stanzas() {
@@ -71,7 +41,6 @@ zoa_breakglass_expire_stanzas() {
   if [[ ! -f "${active}" ]] || ! command -v jq >/dev/null 2>&1; then
     return
   fi
-  zoa_breakglass_migrate_legacy_active
   now="$(zoa_breakglass_now_epoch)"
   changed=0
   for plane in kube aws; do
@@ -139,9 +108,9 @@ zoa_breakglass_ps1_suffix() {
     exp="$(jq -r --arg p "${plane}" '.[$p].grantExpiresAt // empty' "${active}")"
     left="$(zoa_breakglass_time_left "${exp}")"
     if [[ -n "${left}" ]]; then
-      parts+=("${plane}=${scope} (${left})")
+      parts+=("${plane}=${scope} grant${left} cred≤1h")
     else
-      parts+=("${plane}=${scope}")
+      parts+=("${plane}=${scope} cred≤1h")
     fi
   done
   if ((${#parts[@]} == 0)); then
@@ -151,3 +120,23 @@ zoa_breakglass_ps1_suffix() {
   joined="$(IFS=' '; printf '%s' "${parts[*]}")"
   printf ' [BG: %s]' "${joined}"
 }
+
+# Wire KUBECONFIG / AWS_PROFILE before every prompt (and after zoa breakglass activate).
+zoa_breakglass_precmd() {
+  zoa_breakglass_apply_env
+}
+
+if [[ -n "${ZOA_SESSION_ID:-}" || -n "${ZOA_API_URL:-}" ]]; then
+  case "${PROMPT_COMMAND:-}" in
+    *zoa_breakglass_precmd*) ;;
+    *) PROMPT_COMMAND="${PROMPT_COMMAND:+$PROMPT_COMMAND; }zoa_breakglass_precmd" ;;
+  esac
+  zoa() {
+    local rc=0
+    command zoa "$@" || rc=$?
+    if (( rc == 0 )) && [[ "${1:-}" == "breakglass" && "${2:-}" == "activate" ]]; then
+      zoa_breakglass_apply_env
+    fi
+    return "${rc}"
+  }
+fi

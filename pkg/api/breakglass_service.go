@@ -20,7 +20,7 @@ var (
 
 // ApproveBreakglassRequest transitions pending → approved with grant expiry.
 func ApproveBreakglassRequest(ctx context.Context, bgStore store.BreakglassStore, req *store.BreakglassRequest, approver, note string) error {
-	if req.Status != store.StatusPendingApproval {
+	if req.Status != store.StatusPending {
 		return errBreakglassNotPending
 	}
 	if req.RequestExpiresAt != "" {
@@ -46,17 +46,21 @@ func ApproveBreakglassRequest(ctx context.Context, bgStore store.BreakglassStore
 	now := time.Now()
 	grantExpires := now.Add(time.Duration(grantHours) * time.Hour)
 	updates := map[string]interface{}{
-		"approvedBy":     approver,
-		"approvedAt":     now.Format(time.RFC3339Nano),
+		"approval":       store.WorkflowApprovalApproved,
 		"grantExpiresAt": grantExpires.Format(time.RFC3339Nano),
 		"decisionNote":   note,
 	}
-	return bgStore.Transition(ctx, req.RequestID, store.StatusPendingApproval, store.StatusApproved, updates)
+	if approver != BreakglassAutoApprover {
+		decidedAt := now.Format(time.RFC3339Nano)
+		updates["decidedBy"] = approver
+		updates["decidedAt"] = decidedAt
+	}
+	return bgStore.Transition(ctx, req.RequestID, req.Status, store.StatusApproved, updates)
 }
 
 // RejectBreakglassRequest transitions pending → rejected.
 func RejectBreakglassRequest(ctx context.Context, bgStore store.BreakglassStore, req *store.BreakglassRequest, approver, note string) error {
-	if req.Status != store.StatusPendingApproval {
+	if req.Status != store.StatusPending {
 		return errBreakglassNotPending
 	}
 	if approver == "" {
@@ -67,18 +71,20 @@ func RejectBreakglassRequest(ctx context.Context, bgStore store.BreakglassStore,
 		return errBreakglassNoteRequired
 	}
 	now := time.Now()
+	decidedAt := now.Format(time.RFC3339Nano)
 	updates := map[string]interface{}{
-		"rejectedBy":   approver,
-		"rejectedAt":   now.Format(time.RFC3339Nano),
+		"approval":     store.WorkflowApprovalRejected,
+		"decidedBy":    approver,
+		"decidedAt":    decidedAt,
 		"decisionNote": note,
 	}
-	return bgStore.Transition(ctx, req.RequestID, store.StatusPendingApproval, store.StatusRejected, updates)
+	return bgStore.Transition(ctx, req.RequestID, req.Status, store.StatusRejected, updates)
 }
 
 func writeBreakglassDecisionError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, errBreakglassNotPending):
-		writeError(w, http.StatusConflict, "invalid_status", "request is not pending approval")
+		writeError(w, http.StatusConflict, "invalid_status", "request is not pending")
 	case errors.Is(err, errBreakglassRequestExpired):
 		writeError(w, http.StatusGone, "request_expired", "pending request expired")
 	case errors.Is(err, errBreakglassNoApprover):

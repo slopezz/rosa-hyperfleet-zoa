@@ -10,8 +10,8 @@ import (
 
 func TestBreakglassTargetStatusKey_WhenPending_ItShouldPrefixStatus(t *testing.T) {
 	deadline := "2026-10-17T12:00:00.000000000Z"
-	got := BreakglassTargetStatusKey(StatusPendingApproval, deadline)
-	if got != "pending_approval#"+deadline {
+	got := BreakglassTargetStatusKey(StatusPending, deadline)
+	if got != "pending#"+deadline {
 		t.Errorf("unexpected key: %q", got)
 	}
 }
@@ -32,7 +32,8 @@ func TestDynamoDBBreakglassStore_Create_WhenPending_ItShouldSetTTLAndTargetStatu
 		Reason:           "incident",
 		Operator:         "alice",
 		TargetCluster:    "mc01",
-		Status:           StatusPendingApproval,
+		Status:           StatusPending,
+		Approval:         WorkflowApprovalPending,
 		RequestExpiresAt: expires,
 	}
 	if err := s.Create(context.Background(), req); err != nil {
@@ -44,7 +45,7 @@ func TestDynamoDBBreakglassStore_Create_WhenPending_ItShouldSetTTLAndTargetStatu
 	if req.TTL == 0 {
 		t.Error("expected ttl to be set")
 	}
-	wantKey := BreakglassTargetStatusKey(StatusPendingApproval, expires)
+	wantKey := BreakglassTargetStatusKey(StatusPending, expires)
 	if req.TargetStatusKey != wantKey {
 		t.Errorf("expected targetStatusKey %q, got %q", wantKey, req.TargetStatusKey)
 	}

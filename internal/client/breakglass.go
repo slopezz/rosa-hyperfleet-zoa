@@ -8,26 +8,28 @@ import (
 )
 
 type BreakglassRequest struct {
-	RequestID        string `json:"id"`
-	Scope            string `json:"scope"`
-	Reason           string `json:"reason"`
-	Operator         string `json:"operator"`
-	Status           string `json:"status"`
-	TargetCluster    string `json:"target_cluster"`
-	TargetType       string `json:"target_type,omitempty"`
-	Approval         string `json:"approval,omitempty"`
-	SignerARN        string `json:"signer_arn,omitempty"`
-	SessionID        string `json:"session_id,omitempty"`
-	Revision         string `json:"revision,omitempty"`
-	CreatedAt        string `json:"created_at,omitempty"`
-	GrantExpiresAt   string `json:"grant_expires_at,omitempty"`
-	RequestExpiresAt string `json:"request_expires_at,omitempty"`
-	ApprovedBy       string `json:"approved_by,omitempty"`
-	ApprovedAt       string `json:"approved_at,omitempty"`
-	RejectedBy       string `json:"rejected_by,omitempty"`
-	RejectedAt       string `json:"rejected_at,omitempty"`
-	DecisionNote     string `json:"decision_note,omitempty"`
-	Kind             string `json:"kind,omitempty"`
+	RequestID        string   `json:"id"`
+	Scope            string   `json:"scope"`
+	Reason           string   `json:"reason"`
+	Operator         string   `json:"operator"`
+	Status           string   `json:"status"`
+	TargetCluster    string   `json:"target_cluster"`
+	TargetType       string   `json:"target_type,omitempty"`
+	Approval         string   `json:"approval,omitempty"`
+	SignerARN        string   `json:"signer_arn,omitempty"`
+	SessionID        string   `json:"session_id,omitempty"`
+	CreatorTaskID    string   `json:"creator_task_id,omitempty"`
+	AccountID        string   `json:"account_id,omitempty"`
+	Revision         string   `json:"revision,omitempty"`
+	CreatedAt        string   `json:"created_at,omitempty"`
+	RequestExpiresAt string   `json:"request_expires_at,omitempty"`
+	GrantExpiresAt   string   `json:"grant_expires_at,omitempty"`
+	ExpiredAt        string   `json:"expired_at,omitempty"`
+	DecidedAt        string   `json:"decided_at,omitempty"`
+	DecidedBy        string   `json:"decided_by,omitempty"`
+	ActivateAt       []string `json:"activate_at,omitempty"`
+	DecisionNote     string   `json:"decision_note,omitempty"`
+	Kind             string   `json:"kind,omitempty"`
 }
 
 type BreakglassScopeList struct {
@@ -62,15 +64,16 @@ type BreakglassRequestList struct {
 }
 
 type BreakglassActivateResponse struct {
-	RequestID      string                 `json:"request_id"`
-	ID             string                 `json:"id"`
-	Scope          string                 `json:"scope"`
-	TargetCluster  string                 `json:"target_cluster"`
-	Status         string                 `json:"status"`
-	GrantExpiresAt string                 `json:"grant_expires_at"`
-	Kube           map[string]interface{} `json:"kube,omitempty"`
-	AWS            map[string]interface{} `json:"aws,omitempty"`
-	KubeToken      string                 `json:"kube_token,omitempty"`
+	RequestID          string                 `json:"request_id"`
+	ID                 string                 `json:"id"`
+	Scope              string                 `json:"scope"`
+	TargetCluster      string                 `json:"target_cluster"`
+	Status             string                 `json:"status"`
+	GrantExpiresAt     string                 `json:"grant_expires_at"`
+	KubeTokenExpiresAt string                 `json:"kube_token_expires_at"`
+	Kube               map[string]interface{} `json:"kube,omitempty"`
+	AWS                map[string]interface{} `json:"aws,omitempty"`
+	KubeToken          string                 `json:"kube_token,omitempty"`
 }
 
 func (c *Client) GetBreakglassScope(ctx context.Context, scopeID string) (*ScopeMetadata, error) {
@@ -107,12 +110,15 @@ func (c *Client) GetBreakglassRequest(ctx context.Context, id string) (*Breakgla
 }
 
 type BreakglassListParams struct {
-	Scope    string // "mine" (default) or "fleet" for cross-operator history
-	Operator string
-	Status   string
-	Since    string
-	Until    string
-	Limit    int
+	Scope        string // "mine" (default) or "fleet" for cross-operator history
+	Operator     string
+	Status       string
+	Approval     string
+	DecidedBy    string
+	Since        string
+	DecidedSince string
+	Until        string
+	Limit        int
 }
 
 func (c *Client) ListBreakglassRequests(ctx context.Context, params *BreakglassListParams) (*BreakglassRequestList, error) {
@@ -127,8 +133,17 @@ func (c *Client) ListBreakglassRequests(ctx context.Context, params *BreakglassL
 		if params.Status != "" {
 			q.Set("status", params.Status)
 		}
+		if params.Approval != "" {
+			q.Set("approval", params.Approval)
+		}
+		if params.DecidedBy != "" {
+			q.Set("decided_by", params.DecidedBy)
+		}
 		if params.Since != "" {
 			q.Set("since", params.Since)
+		}
+		if params.DecidedSince != "" {
+			q.Set("decided_since", params.DecidedSince)
 		}
 		if params.Until != "" {
 			q.Set("until", params.Until)

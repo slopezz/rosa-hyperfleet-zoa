@@ -25,15 +25,15 @@ type BreakglassRequest struct {
 	TargetType       string            `json:"target_type" dynamodbav:"targetType"`
 	AccountID        string            `json:"account_id" dynamodbav:"accountId"`
 	Status           Status            `json:"status" dynamodbav:"status"`
-	Approval         string            `json:"approval" dynamodbav:"approval"`
+	Approval         string            `json:"approval" dynamodbav:"approval"` // workflow: pending | approved | rejected (never expired)
 	Revision         string            `json:"revision,omitempty" dynamodbav:"revision,omitempty"`
 	CreatedAt        string            `json:"created_at" dynamodbav:"createdAt"`
 	RequestExpiresAt string            `json:"request_expires_at" dynamodbav:"requestExpiresAt"`
 	GrantExpiresAt   string            `json:"grant_expires_at,omitempty" dynamodbav:"grantExpiresAt,omitempty"`
-	ApprovedBy       string            `json:"approved_by,omitempty" dynamodbav:"approvedBy,omitempty"`
-	ApprovedAt       string            `json:"approved_at,omitempty" dynamodbav:"approvedAt,omitempty"`
-	RejectedBy       string            `json:"rejected_by,omitempty" dynamodbav:"rejectedBy,omitempty"`
-	RejectedAt       string            `json:"rejected_at,omitempty" dynamodbav:"rejectedAt,omitempty"`
+	ExpiredAt        string            `json:"expired_at,omitempty" dynamodbav:"expiredAt,omitempty"`
+	DecidedAt        string            `json:"decided_at,omitempty" dynamodbav:"decidedAt,omitempty"`
+	DecidedBy        string            `json:"decided_by,omitempty" dynamodbav:"decidedBy,omitempty"`
+	ActivateAt       []string          `json:"activate_at,omitempty" dynamodbav:"activateAt,omitempty"`
 	DecisionNote     string            `json:"decision_note,omitempty" dynamodbav:"decisionNote,omitempty"`
 	Cleaned          bool              `json:"cleaned" dynamodbav:"cleaned"`
 	CleanedAt        string            `json:"cleaned_at,omitempty" dynamodbav:"cleanedAt,omitempty"`
@@ -45,12 +45,15 @@ type BreakglassRequest struct {
 
 // BreakglassFilter filters list queries.
 type BreakglassFilter struct {
-	Operator *string
-	Target   *string
-	Status   *Status
-	Since    *time.Time
-	Before   *time.Time
-	Limit    int
+	Operator     *string
+	Target       *string
+	Status       *Status
+	Approval     *string // workflow approval column
+	DecidedBy    *string
+	Since        *time.Time // created_at window (date-bucket index)
+	DecidedSince *time.Time // post-filter on decided_at
+	Before       *time.Time
+	Limit        int
 }
 
 // BreakglassStore persists break-glass requests.
@@ -62,6 +65,7 @@ type BreakglassStore interface {
 	Transition(ctx context.Context, requestID string, from, to Status, updates map[string]interface{}) error
 	QueryByTargetAndStatus(ctx context.Context, target string, status Status) ([]*BreakglassRequest, error)
 	MarkCleaned(ctx context.Context, requestID string) error
+	AppendActivateAt(ctx context.Context, requestID string, at string) error
 }
 
 // DynamoDBBreakglassStore implements BreakglassStore.
@@ -88,15 +92,18 @@ func (s *DynamoDBBreakglassStore) prepareForWrite(req *BreakglassRequest) error 
 	if req.RequestID == "" {
 		return fmt.Errorf("requestId is required")
 	}
+	if req.Approval == "" {
+		req.Approval = WorkflowApprovalPending
+	}
 	if req.CreatedAt == "" {
 		req.CreatedAt = time.Now().Format(time.RFC3339Nano)
 	}
 	req.DateBucket = req.CreatedAt[:10]
 	req.TTL = time.Now().AddDate(0, 0, s.ttlDays).Unix()
 	switch req.Status {
-	case StatusPendingApproval:
+	case StatusPending:
 		if req.RequestExpiresAt == "" {
-			return fmt.Errorf("requestExpiresAt required for pending_approval")
+			return fmt.Errorf("requestExpiresAt required for pending")
 		}
 		req.TargetStatusKey = BreakglassTargetStatusKey(req.Status, req.RequestExpiresAt)
 	case StatusApproved:
@@ -162,7 +169,7 @@ func (s *DynamoDBBreakglassStore) Transition(ctx context.Context, requestID stri
 	}
 	if suffix, ok := stringAttrFromUpdates(updates, "grantExpiresAt"); ok && to == StatusApproved {
 		update = update.Set(expression.Name("targetStatusKey"), expression.Value(BreakglassTargetStatusKey(to, suffix)))
-	} else if suffix, ok := stringAttrFromUpdates(updates, "requestExpiresAt"); ok && to == StatusPendingApproval {
+	} else if suffix, ok := stringAttrFromUpdates(updates, "requestExpiresAt"); ok && to == StatusPending {
 		update = update.Set(expression.Name("targetStatusKey"), expression.Value(BreakglassTargetStatusKey(to, suffix)))
 	} else if to == StatusRejected || to == StatusExpired || to == StatusFailed {
 		update = update.Set(expression.Name("targetStatusKey"), expression.Value(BreakglassTargetStatusKey(to, time.Now().Format(time.RFC3339Nano))))
@@ -262,14 +269,34 @@ func (s *DynamoDBBreakglassStore) ListByOperator(ctx context.Context, operator s
 		bucket := day.Format("2006-01-02")
 		keyCond := expression.Key("dateBucket").Equal(expression.Value(bucket))
 		builder := expression.NewBuilder().WithKeyCondition(keyCond)
+		var filt expression.ConditionBuilder
+		hasFilter := false
+		addFilter := func(part expression.ConditionBuilder) {
+			if hasFilter {
+				filt = filt.And(part)
+			} else {
+				filt = part
+				hasFilter = true
+			}
+		}
 		if operator != "" {
-			filt := expression.Name("operator").Equal(expression.Value(operator))
-			if filter != nil && filter.Status != nil {
-				filt = filt.And(expression.Name("status").Equal(expression.Value(string(*filter.Status))))
+			addFilter(expression.Name("operator").Equal(expression.Value(operator)))
+		}
+		if filter != nil {
+			if filter.Status != nil {
+				addFilter(expression.Name("status").Equal(expression.Value(string(*filter.Status))))
 			}
-			if filter != nil && filter.Target != nil && *filter.Target != "" {
-				filt = filt.And(expression.Name("targetCluster").Equal(expression.Value(*filter.Target)))
+			if filter.Approval != nil {
+				addFilter(expression.Name("approval").Equal(expression.Value(*filter.Approval)))
 			}
+			if filter.DecidedBy != nil {
+				addFilter(expression.Name("decidedBy").Equal(expression.Value(*filter.DecidedBy)))
+			}
+			if filter.Target != nil && *filter.Target != "" {
+				addFilter(expression.Name("targetCluster").Equal(expression.Value(*filter.Target)))
+			}
+		}
+		if hasFilter {
 			builder = builder.WithFilter(filt)
 		}
 		expr, err := builder.Build()
@@ -295,5 +322,83 @@ func (s *DynamoDBBreakglassStore) ListByOperator(ctx context.Context, operator s
 		}
 		results = append(results, batch...)
 	}
-	return results, nil
+	return filterBreakglassItems(results, filter), nil
+}
+
+func filterBreakglassItems(items []*BreakglassRequest, filter *BreakglassFilter) []*BreakglassRequest {
+	if filter == nil {
+		return items
+	}
+	var out []*BreakglassRequest
+	for _, item := range items {
+		if filter.Status != nil && item.Status != *filter.Status {
+			continue
+		}
+		if filter.Approval != nil && item.Approval != *filter.Approval {
+			continue
+		}
+		if filter.DecidedBy != nil && item.DecidedBy != *filter.DecidedBy {
+			continue
+		}
+		if filter.Target != nil && *filter.Target != "" && item.TargetCluster != *filter.Target {
+			continue
+		}
+		if filter.Before != nil && item.CreatedAt != "" {
+			if t, err := time.Parse(time.RFC3339Nano, item.CreatedAt); err == nil && t.After(*filter.Before) {
+				continue
+			}
+		}
+		if filter.DecidedSince != nil {
+			if item.DecidedAt == "" {
+				continue
+			}
+			t, err := time.Parse(time.RFC3339Nano, item.DecidedAt)
+			if err != nil || t.Before(*filter.DecidedSince) {
+				continue
+			}
+		}
+		out = append(out, item)
+	}
+	return out
+}
+
+func (s *DynamoDBBreakglassStore) AppendActivateAt(ctx context.Context, requestID string, at string) error {
+	if at == "" {
+		at = time.Now().Format(time.RFC3339Nano)
+	}
+	req, err := s.Get(ctx, requestID)
+	if err != nil {
+		return err
+	}
+	if req == nil {
+		return fmt.Errorf("breakglass request not found")
+	}
+	req.ActivateAt = append(req.ActivateAt, at)
+	item, err := attributevalue.MarshalMap(map[string]interface{}{
+		"requestId":  requestID,
+		"activateAt": req.ActivateAt,
+	})
+	if err != nil {
+		return err
+	}
+	key := map[string]types.AttributeValue{
+		"requestId": item["requestId"],
+	}
+	delete(item, "requestId")
+	update := expression.Set(expression.Name("activateAt"), expression.Value(req.ActivateAt))
+	expr, err := expression.NewBuilder().WithUpdate(update).Build()
+	if err != nil {
+		return fmt.Errorf("building activate append: %w", err)
+	}
+	_, err = s.client.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+		TableName:                 &s.tableName,
+		Key:                       key,
+		UpdateExpression:          expr.Update(),
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+	})
+	if err != nil {
+		return fmt.Errorf("appending activateAt: %w", err)
+	}
+	return nil
 }

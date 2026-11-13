@@ -66,9 +66,12 @@ func (h *Handler) handleApproveBreakglass(w http.ResponseWriter, r *http.Request
 		writeBreakglassDecisionError(w, err)
 		return
 	}
-	req.Status = store.StatusApproved
-	req.ApprovedBy = approver
-	writeJSON(w, http.StatusOK, req)
+	updated, err := h.breakglassStore.Get(r.Context(), req.RequestID)
+	if err != nil || updated == nil {
+		writeError(w, http.StatusInternalServerError, "internal_error", "failed to load request after approve")
+		return
+	}
+	writeJSON(w, http.StatusOK, updated)
 	h.recordAudit(r, http.StatusOK, AuditActionBreakglassApprove, req.RequestID, withReason(note))
 }
 
@@ -82,8 +85,12 @@ func (h *Handler) handleRejectBreakglass(w http.ResponseWriter, r *http.Request,
 		writeBreakglassDecisionError(w, err)
 		return
 	}
-	req.Status = store.StatusRejected
-	writeJSON(w, http.StatusOK, req)
+	updated, err := h.breakglassStore.Get(r.Context(), req.RequestID)
+	if err != nil || updated == nil {
+		writeError(w, http.StatusInternalServerError, "internal_error", "failed to load request after reject")
+		return
+	}
+	writeJSON(w, http.StatusOK, updated)
 	h.recordAudit(r, http.StatusOK, AuditActionBreakglassReject, req.RequestID, withReason(note))
 }
 

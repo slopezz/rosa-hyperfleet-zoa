@@ -5,6 +5,9 @@ import "time"
 type Status string
 
 const (
+	// StatusPending is break-glass lifecycle while awaiting peer decision (same word as workflow approval column).
+	StatusPending Status = "pending"
+	// StatusPendingApproval is reserved for TA / execution workflow (workflow epic).
 	StatusPendingApproval Status = "pending_approval"
 	StatusApproved        Status = "approved"
 	StatusRejected        Status = "rejected"

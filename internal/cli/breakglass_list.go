@@ -20,55 +20,74 @@ func printBreakglassRequestTable(global *GlobalOptions, list *client.BreakglassR
 
 	wide := global.OutputFormat == output.FormatWide
 	tw := output.NewTable(os.Stdout)
-	if wide {
-		fmt.Fprintln(tw, "CREATED\tOPERATOR\tID\tSCOPE\tTARGET\tSTATUS\tAPPROVAL\tREASON\tAPPROVED_BY\tGRANT_EXPIRES")
-	} else if fleet {
-		fmt.Fprintln(tw, "CREATED\tOPERATOR\tID\tSCOPE\tTARGET\tSTATUS\tREASON")
-	} else {
-		fmt.Fprintln(tw, "CREATED\tID\tSCOPE\tTARGET\tSTATUS\tREASON")
+
+	rowHeader := "CREATED\tSESSION\tREQUEST\tSCOPE\tTARGET\tSTATUS\tAPPROVAL\tREQ_EXPIRES\tGRANT_EXPIRES\tEXPIRED_AT\tDECIDED_AT\tDECIDED_BY\tREASON"
+	if fleet {
+		rowHeader = "CREATED\tOPERATOR\tSESSION\tREQUEST\tSCOPE\tTARGET\tSTATUS\tAPPROVAL\tREQ_EXPIRES\tGRANT_EXPIRES\tEXPIRED_AT\tDECIDED_AT\tDECIDED_BY\tREASON"
 	}
+	if wide {
+		fmt.Fprintln(tw, rowHeader+"\tSIGNER\tTASK_ID\tACCOUNT\tACTIVATES\tNOTE")
+	} else {
+		fmt.Fprintln(tw, rowHeader)
+	}
+
 	for i := range list.Items {
 		r := &list.Items[i]
 		created := formatBreakglassTime(r.CreatedAt)
-		reason := output.Dash(r.Reason)
+		session := breakglassSessionDisplay(r.SessionID, wide)
+		requestID := r.RequestID
+		scope := r.Scope
 		target := output.Truncate(breakglassTargetCluster(r.TargetCluster), 25)
+		status := breakglassLifecycleStatus(r)
+		approval := breakglassWorkflowApproval(r)
+		reqExp := formatBreakglassTime(r.RequestExpiresAt)
+		grantExp := formatBreakglassTime(r.GrantExpiresAt)
+		expiredAt := formatBreakglassTime(r.ExpiredAt)
+		decidedAt := formatBreakglassTime(breakglassDecidedAt(r))
+		decidedBy := output.Dash(breakglassDecidedBy(r))
+		reason := output.Truncate(output.Dash(r.Reason), 40)
+		if !wide && !fleet {
+			reason = output.Truncate(output.Dash(r.Reason), 30)
+		}
+
 		if wide {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-				created,
-				output.Dash(r.Operator),
-				r.RequestID,
-				r.Scope,
-				target,
-				r.Status,
-				output.Dash(r.Approval),
-				output.Truncate(reason, 40),
-				output.Dash(r.ApprovedBy),
-				formatBreakglassTime(r.GrantExpiresAt),
+			row := fmt.Sprintf("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s",
+				created, session, requestID, scope, target, status, approval,
+				reqExp, grantExp, expiredAt, decidedAt, decidedBy, reason,
+			)
+			if fleet {
+				row = fmt.Sprintf("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s",
+					created, output.Dash(r.Operator), session, requestID, scope, target, status, approval,
+					reqExp, grantExp, expiredAt, decidedAt, decidedBy, reason,
+				)
+			}
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",
+				row,
+				output.Truncate(breakglassSignerShort(r.SignerARN), 24),
+				output.Dash(r.CreatorTaskID),
+				output.Dash(r.AccountID),
+				breakglassActivatesSummary(r),
+				output.Truncate(output.Dash(r.DecisionNote), 30),
 			)
 			continue
 		}
+
 		if fleet {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-				created,
-				output.Dash(r.Operator),
-				r.RequestID,
-				r.Scope,
-				target,
-				r.Status,
-				output.Truncate(reason, 30),
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+				created, output.Dash(r.Operator), session, requestID, scope, target, status, approval,
+				reqExp, grantExp, expiredAt, decidedAt, decidedBy, reason,
 			)
 		} else {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",
-				created,
-				r.RequestID,
-				r.Scope,
-				target,
-				r.Status,
-				output.Truncate(reason, 30),
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+				created, session, requestID, scope, target, status, approval,
+				reqExp, grantExp, expiredAt, decidedAt, decidedBy, reason,
 			)
 		}
 	}
-	return tw.Flush()
+	if err := tw.Flush(); err != nil {
+		return err
+	}
+	return nil
 }
 
 func formatBreakglassTime(s string) string {

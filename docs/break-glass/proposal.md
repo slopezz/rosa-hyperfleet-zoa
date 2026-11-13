@@ -1,10 +1,125 @@
 # ZOA Break-Glass — Feature Proposal
 
-> **Scratch only.** Working notes while the feature is in flight — not linked from the doc index, not a merge target, and not an approval source of truth. Use [approval-workflow.md](../approval-workflow.md), [README.md](README.md), and the implementation (`pkg/breakglass`, `pkg/api/breakglass_*`) for what actually ships.
+> **Design archive + implementation snapshot.** Long-form background for reviews; **not** the day-to-day operator source of truth. For what ships, use [README.md](README.md), [approval-workflow.md](../approval-workflow.md), [break-glass-scopes.md](../break-glass-scopes.md), and [cli-reference.md](../cli-reference.md#break-glass). Sections below §0 may still say `connect` / `use` — those names were renamed to **`activate`** in v1.
 
-**Status:** Draft for review (HyperFleet / ZOA)  
+**Status:** v1 shipped on `feat/zoa-breakglass` (ephemeral validation ongoing); workflow epic items still open  
 **Audience:** Engineering, security, SRE  
 **Repos:** `rosa-hyperfleet-zoa` (API, CLI, worker), `rosa-hyperfleet` (Terraform, observability)
+
+## 0. Implementation snapshot (shipped v1)
+
+**Last aligned with code:** November 2026.
+
+### 0.1 Operator flow (three explicit steps)
+
+| Step        | Where                                                                                         | Command / action                                          |
+| ----------- | --------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| 1. Request  | Boundary                                                                                      | `zoa breakglass request --scope <id> --reason <Jira\|PD>` |
+| 2. Approve  | Laptop when peer workflow is required; **auto** when catalog `approval: none` (all v1 scopes) | `zoa approve <deployment>/<request-id>`                   |
+| 3. Activate | Boundary — **same ECS task** that created the request                                         | `zoa breakglass activate <request-id>`                    |
+
+- **`--wait` on `request` or `get`** polls until `approved`, `rejected`, or `expired` (stderr progress like `zoa run --wait`); it **never** calls activate.
+- After activate: stock **`kubectl`** / **`aws`**; PS1 shows **`grant~Nh cred≤1h`** (two clocks — see [README](README.md#two-clocks-grant-vs-credentials)); **`zoa breakglass activate <same-id>`** ~hourly refreshes bearer creds while grant valid.
+
+### 0.2 Scope catalog (v1)
+
+All six scopes use **`authorization.approval: none`** (synthetic approver `auto` via `ApproveBreakglassOnCreateWhenNoPeerWorkflow`). Reason is still required (`--reason`, `ZOA_REASON`).
+
+| Scope           | Plane | Targets (typical) | Notes                                                                                           |
+| --------------- | ----- | ----------------- | ----------------------------------------------------------------------------------------------- |
+| `kube-read`     | kube  | RC, MC            | Composed RBAC in `kube_read.go` (platform addon API groups on RC; Hypershift/CAPI groups on MC) |
+| `kube-write`    | kube  | RC, MC            | No secrets / exec in v1 read paths; write scope separate                                        |
+| `kube-elevated` | kube  | RC, MC            | Shorter default grant hours; broader rules with explicit denies                                 |
+| `aws-read`      | aws   | RC, MC            | STS into Terraform-mapped read roles                                                            |
+| `aws-write`     | aws   | RC, MC            | Mutating allow-list IAM                                                                         |
+| `aws-elevated`  | aws   | RC, MC            | Elevated IAM; boundary task role denied ECS Exec for this path                                  |
+
+`zoa breakglass describe <scope>` mirrors `GET /api/v0/breakglass/scopes/{scope}` (composition bullets + effective RBAC or IAM notes).
+
+### 0.3 HTTP API (`HANDLER_MODE=api`)
+
+| Method | Path                                        | Purpose                              |
+| ------ | ------------------------------------------- | ------------------------------------ |
+| `GET`  | `/api/v0/breakglass/scopes`                 | List scopes                          |
+| `GET`  | `/api/v0/breakglass/scopes/{scope}`         | Describe scope                       |
+| `POST` | `/api/v0/breakglass/requests`               | Create request                       |
+| `GET`  | `/api/v0/breakglass/requests/{id}`          | Get request                          |
+| `GET`  | `/api/v0/breakglass/requests`               | List (operator-scoped)               |
+| `POST` | `/api/v0/breakglass/requests/{id}/activate` | Lazy provision + credential material |
+
+Laptop approve/reject: shared `POST /api/v0/approve/{id}` and `/reject/{id}` on **Access** (`deployment/<uuid>`); handler looks up break-glass before executions.
+
+### 0.4 CLI (boundary) — TA-aligned UX
+
+| Command                              | Behavior                                                                                                                    |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| `zoa breakglass request`             | stderr dispatch line (`✓ id [target] scope=…`); optional `--wait`                                                           |
+| `zoa breakglass get`                 | stdout metadata like `zoa get`; `--wait` for approval only                                                                  |
+| `zoa breakglass activate`            | Provision + write artifacts; CLI validates kubeconfig / aws profile files; API returns **500** if kube token issuance fails |
+| `zoa breakglass list` / `history`    | Human tables with `APPROVED_BY`, `GRANT_EXPIRES` (wide mode for extra columns)                                              |
+| `zoa breakglass describe` / `scopes` | Catalog discovery                                                                                                           |
+
+### 0.5 Credentials, active state, and clocks
+
+| Clock   | Meaning                                                                                                           |
+| ------- | ----------------------------------------------------------------------------------------------------------------- |
+| Pending | `requestExpiresAt` — cannot approve after expiry                                                                  |
+| Grant   | `grantExpiresAt` on approve (`decisionAt +` scope `DefaultGrantHours`)                                            |
+| Bearer  | Kube **TokenRequest** and STS session creds capped (~**1 hour**); **re-activate** while grant is valid to refresh |
+
+**On disk** (`pkg/breakglass/active`):
+
+- `~/.config/zoa/breakglass/<requestId>/kubeconfig`
+- `~/.config/zoa/breakglass/aws-credentials` with profile `zoa-bg-<requestId>`
+- `~/.config/zoa/breakglass/active` — at most one active kube grant and one active aws grant; new activate on a plane replaces the previous stanza
+- `boundary/home-sre/.bashrc.d/11-zoa-breakglass-prompt.bashrc` — silent `KUBECONFIG` / `AWS_PROFILE` + PS1 grant time remaining (hours rounded **up**)
+
+**Task binding:** activate allowed only when stored `creatorTaskId` matches the caller boundary ECS task id (32-char task id from the task role session name).
+
+### 0.6 Code and platform map
+
+| Area           | Location                                                                                                                                   |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Catalog        | `pkg/breakglass/` + `conformance_test.go`                                                                                                  |
+| API + workflow | `pkg/api/breakglass.go`, `breakglass_workflow.go`                                                                                          |
+| Executor       | `pkg/executor/` — `zoa-bg-<requestId>` SA and labeled RBAC                                                                                 |
+| CLI / client   | `internal/cli/breakglass*.go`, `internal/client/breakglass.go`                                                                             |
+| Worker         | scheduler reconciler — expire rows + GC RBAC                                                                                               |
+| Terraform      | `rosa-seaplane` `terraform/modules/zoa-lambda/breakglass_*.tf` (DynamoDB, IAM roles, env vars, **DenyZoaBoundaryECSExec** on aws-elevated) |
+
+Audit types include `breakglass_request`, `breakglass_approve`, **`breakglass_activate`**, `breakglass_expire` (`pkg/api/audit_actions.go`).
+
+### 0.7 Ephemeral validation notes
+
+- RC clusters may run platform workloads before Seaplane CRDs exist in the cluster; **`kube-read`** still targets observed addon CRD groups (e.g. AWS ACK, VPC CNI, cert-manager, external-secrets).
+- MC validation covers Hypershift/CAPI groups even with zero HostedClusters.
+- Symptom `kubectl` → `localhost:8080` means no effective `KUBECONFIG` (empty token or missing file); v1 hardens with API failure + CLI artifact checks after activate.
+- `aws` commands use the boundary task role until bashrc sets `AWS_PROFILE` after a successful aws-scope activate.
+
+### 0.8 Shipped vs planned
+
+| Shipped v1                         | Planned                                                |
+| ---------------------------------- | ------------------------------------------------------ |
+| Auto-approve when `approval: none` | Peer approval + OPA/gist policy                        |
+| `activate` + bashrc / PS1          | AWS console federation CLI flags                       |
+| Polymorphic `/approve/{id}`        | Split break-glass vs execution approve routes          |
+| Lazy provision on activate         | Operator-initiated revoke                              |
+| —                                  | TA manual approve (shared route returns **501** today) |
+
+### 0.9 Original phase checklist
+
+- [x] DynamoDB + API + scope describe
+- [x] Auto-approve workflow + laptop compound approve id
+- [x] Kube activate (SA, RBAC, token, kubeconfig)
+- [x] AWS activate (AssumeRole)
+- [x] CLI request / get / list / activate / `--wait` poll / tables
+- [x] Worker expiry + RBAC GC
+- [x] Terraform IAM + boundary elevated deny
+- [ ] Peer-required scopes
+- [ ] Console URL minting
+- [ ] Split approve routes; TA peer approve
+
+---
 
 ## 1. Summary
 
@@ -17,16 +132,16 @@ Break-glass (BG) grants **time-boxed, scoped `kubectl` and/or `aws` CLI access**
 
 **Architect decision (lifecycle):** two independent clocks.
 
-| Phase                                   | Expiration                                                                                                                                                                                                                  |
-| --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Pending request** (awaiting approval) | Set at create: **`requestExpiresAt = createdAt + pendingTTL`**. If approval does not complete before this time, the request becomes **`expired`** — it cannot be approved, connected, or revived (must open a new request). |
-| **Approved grant**                      | Set on approve/reject decision: **`grantExpiresAt = decisionAt + 4h`** (configurable; only when `status=approved`). Credential TTLs capped by remaining time until `grantExpiresAt`. No separate “activate” clock.          |
+| Phase                                   | Expiration                                                                                                                                                                                                                                                                   |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Pending request** (awaiting approval) | Set at create: **`requestExpiresAt = createdAt + pendingTTL`**. If approval does not complete before this time, the request becomes **`expired`** — it cannot be approved, connected, or revived (must open a new request).                                                  |
+| **Approved grant**                      | Set on approve: **`grantExpiresAt = decisionAt + DefaultGrantHours`** from scope snapshot (typically **4h**). **Bearer** creds (kube token, STS) capped ~**1h**; refresh via **`zoa breakglass activate`** while grant valid. Activation is explicit (not part of `--wait`). |
 
 **`pendingTTL`** is environment/config driven (TBD; e.g. shorter in prod for manual approval, longer in dev if approvers are sparse). Distinct from the 4h post-approve window.
 
 **Approval:** Ship with **auto-approve** in dev/ephemeral; same code paths as **manual** approve/reject (reuse approval pattern from TA manual workflow).
 
-**Operator UX:** SRE does **not** hand-build kubeconfig or `aws configure`. After approval, **`zoa breakglass use <request-id>`** provisions (if needed), writes **secret-free** files under `~/.config/zoa/breakglass/<requestId>/`, and activates via **bashrc** (silent env + **PS1** break-glass line for kube and/or aws). No `export` spam, no `env` / public `credential` commands. Stock **`kubectl` / `aws`**. See §5.6 and §7.1.
+**Operator UX:** SRE does **not** hand-build kubeconfig or `aws configure`. After approval, **`zoa breakglass activate <request-id>`** provisions (lazy), writes **secret-free** files under `~/.config/zoa/breakglass/<requestId>/`, updates **`active`**, and **bashrc** sets env + **PS1**. Stock **`kubectl` / `aws`**. See **§0** (shipped) and §5.6 / §7.1 (design detail).
 
 ---
 
@@ -56,7 +171,7 @@ Break-glass (BG) grants **time-boxed, scoped `kubectl` and/or `aws` CLI access**
 Laptop                    Boundary (ECS)                 API Lambda (VPC)
   |                              |                              |
   | session start (Access)       | zoa breakglass request       |
-  |                              | zoa breakglass connect ----->| identity bridge
+  |                              | zoa breakglass activate ---->| identity bridge
   | zoa approve <id> (Access)    |                              | AssumeRole (AWS) / K8s API (kube)
   |                              |<----- one-time material -----| write SA + token / STS creds
   |                              | kubectl / aws (native)       |
@@ -844,11 +959,11 @@ Today’s GC (`pkg/scheduler/gc.go`) is **DynamoDB-first**, not “dumb label-on
 
 Break-glass should **plug into the same Worker**, not a parallel design:
 
-| Phase                 | Where                                                  | Behavior                                                                                                                                                                                                                                                                                                                                              |
-| --------------------- | ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Phase                 | Where                                                                          | Behavior                                                                                                                                                                                                                                                                                                                                              |
+| --------------------- | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Expiry**            | `pkg/scheduler/breakglass.go` (worker **reconciler** tick, 1m — not gc/reaper) | Query `target-status-index` for pending/grant deadlines → `status=expired` → call **`CleanupBreakglass(requestId)`** (mirror `CleanupExecution`: delete `zoa-bg-<requestId>` + bindings by derived name / shared label). Optional short **gcDelay** (e.g. 5m) after `grantExpiresAt` like TA terminal GC — tokens already dead, this is RBAC hygiene. |
-| **Orphan safety net** | Extend **`RunGC`** (dedicated GC EventBridge schedule) | List cluster-scoped (and namespaced) objects with **`zoa.openshift.io/request-id`**; if **no row** or row already `expired`/`rejected`/`failed` → delete. Same “stupid but safe” philosophy as `orphanGC`, not a second source of truth.                                                                                                              |
-| **AWS**               | —                                                      | **Nothing to delete** in AWS API; STS expires. Do not “revoke” sessions in v1 beyond TTL.                                                                                                                                                                                                                                                             |
+| **Orphan safety net** | Extend **`RunGC`** (dedicated GC EventBridge schedule)                         | List cluster-scoped (and namespaced) objects with **`zoa.openshift.io/request-id`**; if **no row** or row already `expired`/`rejected`/`failed` → delete. Same “stupid but safe” philosophy as `orphanGC`, not a second source of truth.                                                                                                              |
+| **AWS**               | —                                                                              | **Nothing to delete** in AWS API; STS expires. Do not “revoke” sessions in v1 beyond TTL.                                                                                                                                                                                                                                                             |
 
 ### Kube: is access really temporary?
 
@@ -909,11 +1024,13 @@ Detail for debugging: **`audit`** + Dynamo + HTTP logs — not extra labels.
 
 ## 11. Suggested implementation phases
 
-1. **Storage + API skeleton:** request/grant types, pending/approved/expired, auto-approve, audit events, approve/reject wiring (no K8s yet).
-2. **Kube connect:** SA + RBAC + TokenRequest + CLI local files; reconciler cleanup; e2e in ephemeral.
-3. **Manual approval:** approver rules, requester≠approver, Access Lambda approve from laptop.
-4. **AWS scopes:** Terraform roles + AssumeRole connect path.
-5. **Hardening:** deny high scopes on identity bridge miss; alerts; docs in `docs/break-glass/`.
+Shipped vs remaining: **§0.9**. Original plan (for history):
+
+1. Storage + API skeleton — **done**
+2. Kube activate (SA + RBAC + TokenRequest + CLI files + reconciler) — **done**
+3. Manual approval / laptop approve — **wired**; v1 scopes still `approval: none`
+4. AWS scopes + AssumeRole on activate — **done**
+5. Hardening (elevated IAM deny, docs, tables, poll UX) — **largely done**; alerts and strict peer rules **open**
 
 ---
 
@@ -922,7 +1039,7 @@ Detail for debugging: **`audit`** + Dynamo + HTTP logs — not extra labels.
 | Topic                                | Proposal                                                                                                                                                                        |
 | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `pendingTTL` (`requestExpiresAt`)    | Max time **unapproved** request stays valid; e.g. 4–24h by env (prod manual approval may be shorter). **Not** the same as post-approve 4h grant.                                |
-| Eager vs lazy provision              | Lazy on first `connect`; clock still `decisionAt + 4h`.                                                                                                                         |
+| Eager vs lazy provision              | **Lazy on first `activate`** (shipped); grant clock from `decisionAt + DefaultGrantHours`.                                                                                      |
 | Namespace for BG SA                  | `zoa-system` or `kube-system` — match TA SA placement pattern.                                                                                                                  |
 | Scope IAM/RBAC text                  | Security review on **§5.8.3** before stage write/elevated; align `get_resource` with RC/MC `kube-read`.                                                                         |
 | Console on `aws-write`               | Allow from v1 or gate until policy sign-off.                                                                                                                                    |
@@ -936,13 +1053,13 @@ Detail for debugging: **`audit`** + Dynamo + HTTP logs — not extra labels.
 
 ## 13. Acceptance (MVP)
 
-1. SRE in boundary: `zoa breakglass request kube-read --reason INC-1` → auto-approved in dev.
-2. Within 4h of approve: `zoa breakglass use <request-id>` → `kubectl get ns` works with no manual config and no export spam in the transcript.
-3. K8s audit shows SA `zoa-bg-…`; DynamoDB / `zoa audit` links grant → operator → boundary session.
-4. Different task id cannot `connect` to same grant (403).
-5. After `grantExpiresAt`, connect fails; reconciler removes SA/RBAC.
-6. Approver can `zoa approve <deployment>/<request-id>` from laptop when manual mode enabled.
-7. Observability: break-glass HTTP routes on existing `HttpRequestCount`; optional `BreakGlassDecision` (`Cluster` + `Outcome`); worker errors via existing Reaper/GC metrics.
+1. SRE in boundary: `zoa breakglass request --scope kube-read --reason INC-1` → **`approved`** when catalog `approval: none`.
+2. Within grant window: `zoa breakglass activate <request-id>` → `kubectl get ns` without manual config; bashrc wires `KUBECONFIG`.
+3. K8s audit shows SA `zoa-bg-…`; DynamoDB / `zoa audit` links grant → operator → boundary session (`breakglass_activate` audit).
+4. Different boundary task id cannot **`activate`** the same grant (403).
+5. After `grantExpiresAt`, activate fails; worker reconciler removes SA/RBAC.
+6. Approver can `zoa approve <deployment>/<request-id>` from laptop when scopes require peer approval (not v1 catalog).
+7. Observability: break-glass HTTP routes on existing `HttpRequestCount`; optional `BreakGlassDecision`; worker errors via reconciler metrics.
 
 ---
 

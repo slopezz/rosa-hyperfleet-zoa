@@ -15,7 +15,7 @@ func TestCreateBreakglassRequest_WhenZOAReasonEnvSet_ItShouldSendEnvReason(t *te
 	mock := &mockClient{
 		createBreakglassFn: func(_ context.Context, _ string, r string) (*client.BreakglassRequest, error) {
 			sentReason = r
-			return &client.BreakglassRequest{RequestID: "req-1", Status: "pending_approval"}, nil
+			return &client.BreakglassRequest{RequestID: "req-1", Status: "pending"}, nil
 		},
 	}
 
@@ -36,7 +36,7 @@ func TestCreateBreakglassRequest_WhenFlagAndEnvSet_ItShouldPreferFlag(t *testing
 	mock := &mockClient{
 		createBreakglassFn: func(_ context.Context, _ string, r string) (*client.BreakglassRequest, error) {
 			sentReason = r
-			return &client.BreakglassRequest{RequestID: "req-2", Status: "pending_approval"}, nil
+			return &client.BreakglassRequest{RequestID: "req-2", Status: "pending"}, nil
 		},
 	}
 

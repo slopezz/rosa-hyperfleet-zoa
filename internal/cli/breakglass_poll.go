@@ -39,7 +39,7 @@ func pollBreakglassRequestWithProgress(ctx context.Context, c APIClient, request
 			return &breakglassPollResult{req: req, timedOut: true, elapsed: elapsed}, nil
 		}
 		if output.IsTerminal() {
-			fmt.Fprintf(os.Stderr, "\r\033[K⠋ %s (%s)", req.Status, elapsed.Round(time.Second))
+			fmt.Fprintf(os.Stderr, "\r\033[K⠋ %s (%s)", breakglassLifecycleStatus(req), elapsed.Round(time.Second))
 		}
 		select {
 		case <-ctx.Done():
@@ -60,14 +60,15 @@ func printBreakglassWaitOutcome(req *client.BreakglassRequest, timedOut bool, el
 	if req == nil {
 		return
 	}
+	lifecycle := breakglassLifecycleStatus(req)
 	switch req.Status {
 	case "approved":
-		fmt.Fprintf(breakglassProgressWriter(), "✓ %s (%s)\n", req.Status, elapsed.Round(time.Second))
+		fmt.Fprintf(breakglassProgressWriter(), "✓ %s (%s)\n", lifecycle, elapsed.Round(time.Second))
 	case "rejected", "expired":
-		fmt.Fprintf(breakglassProgressWriter(), "✗ %s (%s)\n", req.Status, elapsed.Round(time.Second))
-	case "pending_approval":
+		fmt.Fprintf(breakglassProgressWriter(), "✗ %s (%s)\n", lifecycle, elapsed.Round(time.Second))
+	case "pending":
 		if timedOut {
-			fmt.Fprintf(breakglassProgressWriter(), "✗ still %s after %s\n", req.Status, elapsed.Round(time.Second))
+			fmt.Fprintf(breakglassProgressWriter(), "✗ still %s after %s\n", lifecycle, elapsed.Round(time.Second))
 		}
 	}
 }
