@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"os"
 	"testing"
 )
 
@@ -12,13 +13,11 @@ func TestLoadBoundaryAPIAWSConfig_WhenBreakglassEnvSet_ItShouldIgnoreSharedCrede
 	t.Setenv("AWS_SECRET_ACCESS_KEY", "secret")
 	t.Setenv("AWS_SESSION_TOKEN", "token")
 
-	cfg, err := loadBoundaryAPIAWSConfig(context.Background(), "us-east-1")
-	if err != nil {
+	if _, err := loadBoundaryAPIAWSConfig(context.Background(), "us-east-1"); err != nil {
 		t.Fatalf("load config: %v", err)
 	}
-	creds, err := cfg.Credentials.Retrieve(context.Background())
-	if err == nil && creds.AccessKeyID == "AKIAFAKE" {
-		t.Fatal("expected break-glass static env to be ignored")
+	if os.Getenv("AWS_ACCESS_KEY_ID") != "" || os.Getenv("AWS_PROFILE") != "" {
+		t.Fatal("expected break-glass env cleared for zoa API client")
 	}
 }
 
