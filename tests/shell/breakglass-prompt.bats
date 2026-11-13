@@ -35,6 +35,28 @@ EOF
   [[ "${output}" == *"kube=kube-read"* ]]
   [[ "${output}" == *"aws=aws-write"* ]]
   [[ "${output}" == *"|"* ]]
+  [[ "${output}" != *"cred~~"* ]]
+}
+
+@test "ps1 part does not double tilde on cred countdown" {
+  cat > "${TEST_HOME}/.config/zoa/breakglass/active" <<'EOF'
+{
+  "kube": {
+    "requestId": "11111111-1111-1111-1111-111111111111",
+    "scope": "kube-read",
+    "grantExpiresAt": "2099-06-01T12:00:00Z",
+    "bearerExpiresAt": "2099-06-01T11:58:00Z"
+  }
+}
+EOF
+  run env HOME="${TEST_HOME}" bash -c '
+    source "$1"
+    zoa_breakglass_ps1_part kube "${HOME}/.config/zoa/breakglass/active"
+  ' bash "${BG_RC}"
+
+  [ "${status}" -eq 0 ]
+  [[ "${output}" == *"cred~"* ]]
+  [[ "${output}" != *"cred~~"* ]]
 }
 
 @test "apply_env uses AWS_SHARED_CREDENTIALS_FILE not AWS_PROFILE" {
