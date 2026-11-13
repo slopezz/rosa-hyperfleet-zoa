@@ -33,7 +33,7 @@ Laptop approvers use: zoa approve <deployment>/<request-id> [--comment ...]`,
 		newBreakglassRequestsCommand(global),
 		newBreakglassHistoryCommand(global),
 		newBreakglassGetCommand(global),
-		newBreakglassUseCommand(global),
+		newBreakglassActivateCommand(global),
 	)
 	return cmd
 }
@@ -46,6 +46,9 @@ func newBreakglassScopesCommand(global *GlobalOptions) *cobra.Command {
 		Long: `List break-glass scopes. With --offline (or without ZOA_API_URL in the boundary), uses the
 catalog embedded in this CLI build, filtered by --target-type or ZOA_TARGET_TYPE.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if global.OutputFormat == output.FormatMarkdown && !useScopeCatalogOffline(global, catalogOpts) {
+				return fmt.Errorf("-o markdown requires --offline (embedded catalog from this CLI build)")
+			}
 			if useScopeCatalogOffline(global, catalogOpts) {
 				return listBreakglassScopesOffline(global, catalogOpts)
 			}
@@ -88,6 +91,14 @@ func listBreakglassScopesOffline(global *GlobalOptions, catalogOpts *catalogOpti
 	if err != nil {
 		return err
 	}
+	if global.OutputFormat == output.FormatMarkdown {
+		body, err := scopecatalog.Markdown(targetType)
+		if err != nil {
+			return err
+		}
+		fmt.Fprint(os.Stdout, body)
+		return nil
+	}
 	items, err := scopecatalog.List(targetType)
 	if err != nil {
 		return err
@@ -109,7 +120,7 @@ func describeBreakglassScope(ctx context.Context, global *GlobalOptions, catalog
 		if global.OutputFormat == output.FormatJSON {
 			return output.JSON(os.Stdout, scope)
 		}
-		printScopeMetadata(clientScopeToLocal(scope))
+		printScopeMetadata(scope)
 		return nil
 	}
 	c, err := getClient(global)
@@ -123,40 +134,51 @@ func describeBreakglassScope(ctx context.Context, global *GlobalOptions, catalog
 	if global.OutputFormat == output.FormatJSON {
 		return output.JSON(os.Stdout, scope)
 	}
-	printScopeMetadata(clientScopeToLocal(scope))
+	printScopeMetadata(scope)
 	return nil
 }
 
-func clientScopeToLocal(s *client.ScopeMetadata) breakglass.ScopeMetadata {
-	out := breakglass.ScopeMetadata{
-		ID:           s.ID,
-		Plane:        s.Plane,
-		Type:         s.Type,
-		Description:  s.Description,
-		Capabilities: s.Capabilities,
-		Restrictions: s.Restrictions,
+func printScopeMetadata(scope *client.ScopeMetadata) {
+	if scope == nil {
+		return
 	}
-	if s.Authorization != nil {
-		if v, ok := s.Authorization["approval"].(string); ok {
-			out.Authorization.Approval = v
+	fmt.Printf("Scope:       %s\n", scope.ID)
+	fmt.Printf("Plane:       %s\n", scope.Plane)
+	fmt.Printf("Type:        %s\n", scope.Type)
+	if scope.Authorization != nil {
+		if v, ok := scope.Authorization["approval"].(string); ok {
+			fmt.Printf("Approval:    %s\n", v)
+		}
+		if v, ok := scope.Authorization["default_grant_hours"].(float64); ok {
+			fmt.Printf("Grant TTL:   %.0fh default after approve\n", v)
 		}
 	}
-	return out
-}
-
-func printScopeMetadata(meta breakglass.ScopeMetadata) {
-	fmt.Printf("Scope:       %s\n", meta.ID)
-	fmt.Printf("Plane:       %s\n", meta.Plane)
-	fmt.Printf("Type:        %s\n", meta.Type)
-	fmt.Printf("Approval:    %s\n", meta.Authorization.Approval)
-	fmt.Printf("Description: %s\n", meta.Description)
-	for _, c := range meta.Capabilities {
+	fmt.Printf("Description: %s\n", scope.Description)
+	composition := scope.Composition
+	if len(composition) == 0 {
+		composition = scope.Capabilities
+	}
+	for _, c := range composition {
 		fmt.Printf("  • %s\n", c)
 	}
-	for _, r := range meta.Restrictions {
+	for _, r := range scope.Restrictions {
 		fmt.Printf("  ✗ %s\n", r)
 	}
-	fmt.Printf("\nExample: zoa breakglass request --scope %s --reason %s\n", meta.ID, reason.FormatHint)
+	if scope.Plane == breakglass.PlaneKube && len(scope.RBAC) > 0 {
+		fmt.Printf("\nEffective RBAC (target %s, %d rules):\n", scope.TargetType, len(scope.RBAC))
+		for i, rule := range scope.RBAC {
+			fmt.Printf("  [%d] apiGroups=%v resources=%v verbs=%v\n", i+1, rule.APIGroups, rule.Resources, rule.Verbs)
+		}
+	}
+	if scope.Plane == breakglass.PlaneAWS {
+		if scope.AwsRoleKey != "" {
+			fmt.Printf("\nAWS role key: %s\n", scope.AwsRoleKey)
+		}
+		for _, line := range scope.IAMComposition {
+			fmt.Printf("  • %s\n", line)
+		}
+	}
+	fmt.Printf("\nExample: zoa breakglass request --scope %s --reason %s\n", scope.ID, reason.ExampleJiraIssue)
 }
 
 func renderBreakglassScopes(format output.Format, items []client.ScopeMetadata) error {
@@ -180,36 +202,57 @@ func newBreakglassRequestCommand(global *GlobalOptions) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "request",
 		Short: "Create a break-glass request",
-		Long: `Create a break-glass request. Default: print the request JSON and exit (like async zoa run without --wait).
+		Long: `Create a break-glass request. Default (human): stderr ack + hints; -o json prints the request object on stdout (like zoa run).
 
-With --wait: poll until approved or terminal failure, then provision credentials (same as zoa breakglass use).`,
+With --wait: stderr ack, poll with progress until approved/rejected/expired, then stdout metadata (like zoa get).
+--wait does not activate credentials — run zoa breakglass activate <id> yourself after approval.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			resp, err := createBreakglassRequest(cmd.Context(), global, scope, reasonFlag, wait, pollInterval, waitTimeout)
+			resp, err := createBreakglassRequest(cmd.Context(), global, scope, reasonFlag)
 			if err != nil {
 				return err
 			}
-			requestID := resp.RequestID
 			if !wait {
-				if !isTerminalBreakglassStatus(resp.Status) {
-					fmt.Fprintf(os.Stderr, "  request %s — use 'zoa breakglass get %s' or --wait to track\n", requestID, requestID)
+				progress := breakglassProgressWriter()
+				printBreakglassRequestDispatched(progress, resp)
+				if global.OutputFormat == output.FormatJSON {
+					printBreakglassRequestHints(progress, resp)
+					return output.JSON(os.Stdout, resp)
 				}
-				return output.JSON(os.Stdout, resp)
+				printBreakglassRequestDetail(progress, resp, breakglassApprovalDeployment(), false, breakglassRequestNextStep(resp, breakglassApprovalDeployment(), false))
+				return nil
 			}
-			return nil
+			progress := breakglassProgressWriter()
+			printBreakglassRequestDispatched(progress, resp)
+			if isTerminalBreakglassStatus(resp.Status) {
+				return finishBreakglassWait(global, resp, false, 0)
+			}
+			c, err := getClient(global)
+			if err != nil {
+				return err
+			}
+			pollRes, err := pollBreakglassRequestWithProgress(cmd.Context(), c, resp.RequestID, breakglassPollConfig{
+				interval: pollInterval,
+				timeout:  waitTimeout,
+			})
+			if err != nil {
+				return err
+			}
+			printBreakglassWaitOutcome(pollRes.req, pollRes.timedOut, pollRes.elapsed)
+			return finishBreakglassWait(global, pollRes.req, pollRes.timedOut, pollRes.elapsed)
 		},
 	}
 	cmd.Flags().StringVar(&scope, "scope", "", "Break-glass scope id (required)")
 	cmd.Flags().StringVar(&reasonFlag, "reason", "",
 		fmt.Sprintf("Required; env %s (%s)", reason.EnvVar, reason.FormatHint))
-	cmd.Flags().BoolVar(&wait, "wait", false, "Wait for approval then activate (like async zoa run --wait)")
+	cmd.Flags().BoolVar(&wait, "wait", false, "Wait for approval decision (does not activate)")
 	cmd.Flags().DurationVar(&waitTimeout, "wait-timeout", 5*time.Minute, "Max poll duration when --wait is active")
 	cmd.Flags().DurationVar(&pollInterval, "wait-poll-interval", 30*time.Second, "Poll frequency when --wait is active")
 	_ = cmd.MarkFlagRequired("scope")
 	return cmd
 }
 
-// createBreakglassRequest resolves reason (--reason, then ZOA_REASON), creates the row, and optionally waits.
-func createBreakglassRequest(ctx context.Context, global *GlobalOptions, scope, reasonFlag string, wait bool, pollInterval, waitTimeout time.Duration) (*client.BreakglassRequest, error) {
+// createBreakglassRequest resolves reason (--reason, then ZOA_REASON) and creates the row.
+func createBreakglassRequest(ctx context.Context, global *GlobalOptions, scope, reasonFlag string) (*client.BreakglassRequest, error) {
 	reasonValue, err := reason.Resolve(reasonFlag)
 	if err != nil {
 		return nil, err
@@ -218,30 +261,18 @@ func createBreakglassRequest(ctx context.Context, global *GlobalOptions, scope, 
 	if err != nil {
 		return nil, err
 	}
-	resp, err := c.CreateBreakglassRequest(ctx, scope, reasonValue)
-	if err != nil {
-		return nil, err
-	}
-	if !wait {
-		return resp, nil
-	}
-	final, err := pollBreakglassRequest(ctx, c, resp.RequestID, pollInterval, waitTimeout)
-	if err != nil {
-		return nil, err
-	}
-	switch final.Status {
-	case "rejected":
-		return nil, fmt.Errorf("break-glass request %s was rejected", resp.RequestID)
-	case "expired":
-		return nil, fmt.Errorf("break-glass request %s expired before approval", resp.RequestID)
-	case "approved":
-		if err := activateBreakglass(ctx, global, resp.RequestID); err != nil {
-			return nil, err
+	return c.CreateBreakglassRequest(ctx, scope, reasonValue)
+}
+
+func finishBreakglassWait(global *GlobalOptions, req *client.BreakglassRequest, timedOut bool, _ time.Duration) error {
+	if global.OutputFormat == output.FormatJSON {
+		if err := renderBreakglassRequest(global, req, timedOut); err != nil {
+			return err
 		}
-		return final, nil
-	default:
-		return nil, fmt.Errorf("break-glass request %s not approved before timeout (status %s)", resp.RequestID, final.Status)
+		return breakglassWaitApprovalError(req, timedOut)
 	}
+	renderBreakglassGetHuman(os.Stdout, req, timedOut)
+	return breakglassWaitApprovalError(req, timedOut)
 }
 
 func isTerminalBreakglassStatus(status string) bool {
@@ -250,28 +281,6 @@ func isTerminalBreakglassStatus(status string) bool {
 		return true
 	default:
 		return false
-	}
-}
-
-func pollBreakglassRequest(ctx context.Context, c APIClient, requestID string, interval, timeout time.Duration) (*client.BreakglassRequest, error) {
-	deadline := time.Now().Add(timeout)
-	for {
-		req, err := c.GetBreakglassRequest(ctx, requestID)
-		if err != nil {
-			return nil, err
-		}
-		switch req.Status {
-		case "approved", "rejected", "expired":
-			return req, nil
-		}
-		if time.Now().After(deadline) {
-			return req, nil
-		}
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-time.After(interval):
-		}
 	}
 }
 
@@ -300,7 +309,7 @@ Use 'zoa breakglass history' for fleet-wide audit view.`,
 			if err != nil {
 				return err
 			}
-			return output.JSON(os.Stdout, list)
+			return printBreakglassRequestTable(global, list, false)
 		},
 	}
 	cmd.Flags().StringVar(&since, "since", "24h", "Start of time window (duration: 1h, 7d; date: 2026-08-25; RFC3339)")
@@ -334,7 +343,7 @@ Does not pass scope=mine — same pattern as session history vs session list.`,
 			if err != nil {
 				return err
 			}
-			return output.JSON(os.Stdout, list)
+			return printBreakglassRequestTable(global, list, true)
 		},
 	}
 	cmd.Flags().StringVar(&since, "since", "24h", "Start of time window (duration: 1h, 7d; date: 2026-08-25; RFC3339)")
@@ -351,7 +360,7 @@ func newBreakglassGetCommand(global *GlobalOptions) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "get <request-id>",
 		Short: "Get a break-glass request",
-		Long:  `Get request status. With --wait, poll GET until approved/rejected/expired, then activate on approved (like zoa run --wait: poll get, then deliver the result — here use/credentials instead of TA output).`,
+		Long:  `Get request status (stdout metadata, like zoa get). With --wait, poll with progress until approved/rejected/expired. Does not activate — use zoa breakglass activate after approval.`,
 		Example: `  zoa breakglass get <request-id>
   zoa breakglass get <request-id> --wait
   zoa breakglass get <request-id> --wait --wait-timeout 10m`,
@@ -367,37 +376,41 @@ func newBreakglassGetCommand(global *GlobalOptions) *cobra.Command {
 				return err
 			}
 			if wait {
+				elapsed := time.Duration(0)
+				timedOut := false
 				if !isTerminalBreakglassStatus(resp.Status) {
-					resp, err = pollBreakglassRequest(cmd.Context(), c, id, pollInterval, waitTimeout)
-					if err != nil {
-						return err
+					pollRes, pollErr := pollBreakglassRequestWithProgress(cmd.Context(), c, id, breakglassPollConfig{
+						interval: pollInterval,
+						timeout:  waitTimeout,
+					})
+					if pollErr != nil {
+						return pollErr
 					}
+					resp = pollRes.req
+					timedOut = pollRes.timedOut
+					elapsed = pollRes.elapsed
+					printBreakglassWaitOutcome(resp, timedOut, elapsed)
 				}
-				switch resp.Status {
-				case "approved":
-					return activateBreakglass(cmd.Context(), global, id)
-				case "rejected":
-					return fmt.Errorf("break-glass request %s was rejected", id)
-				case "expired":
-					return fmt.Errorf("break-glass request %s expired", id)
-				default:
-					return fmt.Errorf("break-glass request %s not approved before timeout (status %s)", id, resp.Status)
-				}
+				return finishBreakglassWait(global, resp, timedOut, elapsed)
 			}
-			return output.JSON(os.Stdout, resp)
+			if global.OutputFormat == output.FormatJSON {
+				return output.JSON(os.Stdout, resp)
+			}
+			renderBreakglassGetHuman(os.Stdout, resp, false)
+			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&wait, "wait", false, "Poll until terminal, then use when approved")
+	cmd.Flags().BoolVar(&wait, "wait", false, "Poll until approval decision (does not activate)")
 	cmd.Flags().DurationVar(&waitTimeout, "wait-timeout", 5*time.Minute, "Max poll duration when --wait is active")
 	cmd.Flags().DurationVar(&pollInterval, "wait-poll-interval", 30*time.Second, "Poll frequency when --wait is active")
 	return cmd
 }
 
-func newBreakglassUseCommand(global *GlobalOptions) *cobra.Command {
+func newBreakglassActivateCommand(global *GlobalOptions) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "use <request-id>",
+		Use:   "activate <request-id>",
 		Short: "Provision and activate break-glass credentials",
-		Long: `Calls POST …/requests/{id}/connect: provisions RBAC or assumes AWS role, returns credentials,
+		Long: `Calls POST …/requests/{id}/activate: provisions RBAC or assumes AWS role, returns credentials,
 writes ~/.config/zoa/breakglass/, updates the shell prompt. Safe to retry (kube RBAC is idempotent by request id).`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -442,14 +455,27 @@ func activateBreakglass(ctx context.Context, global *GlobalOptions, requestID st
 	if err := writeBreakglassAWSProfile(home, requestID, resp.AWS); err != nil {
 		return err
 	}
+	progress := breakglassProgressWriter()
+	printBreakglassActivateDispatched(progress, requestID, resp.TargetCluster, resp.Scope)
 	if global.OutputFormat == output.FormatJSON {
-		safe := map[string]interface{}{"request_id": requestID, "scope": resp.Scope, "status": resp.Status, "config_dir": dir}
+		id := resp.ID
+		if id == "" {
+			id = requestID
+		}
+		safe := map[string]interface{}{
+			"id":             id,
+			"request_id":     requestID,
+			"scope":          resp.Scope,
+			"target_cluster": resp.TargetCluster,
+			"status":         resp.Status,
+			"config_dir":     dir,
+		}
 		return output.JSON(os.Stdout, safe)
 	}
 	return nil
 }
 
-func writeKubeconfig(dir string, resp *client.BreakglassConnectResponse) error {
+func writeKubeconfig(dir string, resp *client.BreakglassActivateResponse) error {
 	if resp.Kube == nil || resp.KubeToken == "" {
 		return nil
 	}

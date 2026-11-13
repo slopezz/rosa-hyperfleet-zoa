@@ -23,15 +23,16 @@ type Authorization struct {
 
 // ScopeMetadata is returned by list/describe APIs.
 type ScopeMetadata struct {
-	ID            string        `json:"id"`
-	Plane         string        `json:"plane"`
-	Type          string        `json:"type"`
-	Description   string        `json:"description"`
-	Authorization Authorization `json:"authorization"`
-	Capabilities  []string      `json:"capabilities,omitempty"`
-	Restrictions  []string      `json:"restrictions,omitempty"`
-	TargetTypes   []string      `json:"target_types,omitempty"`
-	AwsRoleKey    string        `json:"aws_role_key,omitempty"`
+	ID             string        `json:"id"`
+	Plane          string        `json:"plane"`
+	Type           string        `json:"type"`
+	Description    string        `json:"description"`
+	Authorization  Authorization `json:"authorization"`
+	Capabilities   []string      `json:"capabilities,omitempty"`
+	Restrictions   []string      `json:"restrictions,omitempty"`
+	TargetTypes    []string      `json:"target_types,omitempty"`
+	AwsRoleKey     string        `json:"aws_role_key,omitempty"`
+	IAMComposition []string      `json:"iam_composition,omitempty"`
 }
 
 // Definition compiles RBAC / AWS wiring for a scope.

@@ -8,7 +8,11 @@ func init() {
 			ID:          "kube-write",
 			Plane:       PlaneKube,
 			Type:        TypeWrite,
-			Description: "Surgical workload changes (patch/update; delete pods and jobs only)",
+			Description: "Full kube-read plus surgical workload changes (patch/update; delete pods and jobs)",
+			Capabilities: []string{
+				"Includes all kube-read RBAC",
+				"Patch/update deployments, statefulsets, daemonsets, pods, configmaps; delete pods and jobs",
+			},
 			Authorization: Authorization{
 				Approval:            "none",
 				DefaultGrantHours:   4,
@@ -19,11 +23,12 @@ func init() {
 			},
 			TargetTypes: []string{actions.TargetTypeRC, actions.TargetTypeMC},
 		},
-		RBAC: kubeWriteRBAC,
+		RBAC: kubeReadPlusWriteRBAC,
 	})
 }
 
-func kubeWriteRBAC(string) []actions.RBACRule {
+// kubeWriteMutationsRBAC is the write delta (no cluster-wide read).
+func kubeWriteMutationsRBAC(string) []actions.RBACRule {
 	return []actions.RBACRule{
 		{
 			APIGroups: []string{"apps"},

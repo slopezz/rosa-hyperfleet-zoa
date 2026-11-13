@@ -106,6 +106,29 @@ setup() {
   [[ "${output}" == *"Inactivity termination"* ]]
 }
 
+@test "install_breakglass_scopes_catalog renders markdown via zoa breakglass scopes --offline" {
+  if [[ ! -x "${ZOA_BIN}" ]]; then
+    skip "build zoa first: make build"
+  fi
+
+  run env \
+    ZOA_BOUNDARY_BANNER_PATH="${BANNER}" \
+    ZOA_BOUNDARY_BANNER="${BANNER}" \
+    HOME="/tmp/zoa-bats-bg-catalog" \
+    ZOA_TARGET_TYPE="rc" \
+    PATH="$(dirname "${ZOA_BIN}"):${PATH}" \
+    bash -c '
+      rm -rf "${HOME}/.claude"
+      source "$1"
+      install_breakglass_scopes_catalog
+      head -n 3 "$(zoa_breakglass_scopes_catalog_path)"
+    ' bash "${ENTRYPOINT}"
+
+  [ "${status}" -eq 0 ]
+  [[ "${output}" == *"break-glass scope catalog"* ]]
+  [[ "${output}" == *"Target type"* ]]
+}
+
 @test "install_actions_catalog renders markdown via zoa actions --offline" {
   if [[ ! -x "${ZOA_BIN}" ]]; then
     skip "build zoa first: make build"

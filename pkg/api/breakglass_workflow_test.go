@@ -8,19 +8,19 @@ import (
 	"github.com/openshift-online/rosa-seaplane-zoa/pkg/store"
 )
 
-func TestShouldAutoApproveBreakglass_WhenNone_ItShouldAutoApprove(t *testing.T) {
-	if !ShouldAutoApproveBreakglass(breakglass.Authorization{Approval: "none"}) {
-		t.Fatal("expected auto when approval is none")
+func TestBreakglassSkipsPeerApproval_WhenNone_ItShouldSkipPeerWorkflow(t *testing.T) {
+	if !BreakglassSkipsPeerApproval(breakglass.Authorization{Approval: "none"}) {
+		t.Fatal("expected skip peer when approval is none")
 	}
 }
 
-func TestShouldAutoApproveBreakglass_WhenWorkflowRequired_ItShouldStayPending(t *testing.T) {
-	if ShouldAutoApproveBreakglass(breakglass.Authorization{Approval: "manual"}) {
-		t.Fatal("expected pending when approval workflow required")
+func TestBreakglassSkipsPeerApproval_WhenWorkflowRequired_ItShouldRequirePeer(t *testing.T) {
+	if BreakglassSkipsPeerApproval(breakglass.Authorization{Approval: "manual"}) {
+		t.Fatal("expected peer workflow when approval is not none")
 	}
 }
 
-func TestMaybeAutoApproveBreakglassAfterCreate_ItShouldTransitionViaApproveWorkflow(t *testing.T) {
+func TestApproveBreakglassOnCreateWhenNoPeerWorkflow_ItShouldTransitionViaApproveWorkflow(t *testing.T) {
 	req := &store.BreakglassRequest{
 		RequestID:        "req-1",
 		Scope:            "kube-read",
@@ -38,7 +38,7 @@ func TestMaybeAutoApproveBreakglassAfterCreate_ItShouldTransitionViaApproveWorkf
 			},
 		},
 	}
-	out, err := MaybeAutoApproveBreakglassAfterCreate(context.Background(), st, req, def)
+	out, err := ApproveBreakglassOnCreateWhenNoPeerWorkflow(context.Background(), st, req, def)
 	if err != nil {
 		t.Fatal(err)
 	}

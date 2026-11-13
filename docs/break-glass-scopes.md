@@ -62,12 +62,15 @@ Use the same `authorization.approval` field as Trusted Actions (`none` in v1). S
 
 ### 4. Conformance
 
-`go test ./pkg/breakglass/...` runs conformance. Today it requires:
+`go test ./pkg/breakglass/...` is the PR gate (parallel to `pkg/actions/conformance_test.go`):
 
-- Every shipped scope uses `approval: "none"`
-- `DefaultGrantHours > 0`; elevated scopes `<= 2` hours
+- Subtest per registered scope id (catalog size is discovered from the registry, not hardcoded)
+- Metadata, authorization clocks, kube vs aws shape (`RBAC` vs `aws_role_key`)
+- `ValidateScope` / `ValidateAllScopes` — reuses TA forbidden RBAC patterns plus break-glass type rules (secrets read only on **elevated**; read/write without write verbs on read; only elevated `pods/exec`; no RBAC bind mutations; `serviceaccounts` get/list/watch on read+)
+- One `*_test.go` per scope id (`kube_read_test.go` → `kube-read`)
+- One `.go` implementation file per scope id (`aws_write.go` → `aws-write`)
 
-Extend conformance when the approval epic adds stricter rules.
+Extend `shippedApproval` in `conformance_test.go` when the approval workflow epic adds peer approve to the catalog.
 
 ## Scope dimensions
 
@@ -88,4 +91,4 @@ From the boundary: `zoa breakglass scopes`, `zoa breakglass describe <id>`. Offl
 | `pkg/breakglass` | Scope catalog (this guide) |
 | `pkg/breakglass/active` | Boundary `active` JSON + credential paths |
 | `pkg/api/breakglass_*` | HTTP API |
-| `pkg/executor/breakglass_*` | RBAC + STS on `use` |
+| `pkg/executor/breakglass_*` | RBAC + STS on activate |

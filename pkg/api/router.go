@@ -166,7 +166,7 @@ func (h *Handler) registerRoutes() {
 	h.mux.HandleFunc("POST "+PathBreakglassRequests, h.handleCreateBreakglassRequest)
 	h.mux.HandleFunc("GET "+PathBreakglassRequests+"/{id}", h.handleGetBreakglassRequest)
 	h.mux.HandleFunc("GET "+PathBreakglassRequests, h.handleListBreakglassRequests)
-	h.mux.HandleFunc("POST "+PathBreakglassRequests+"/{id}/connect", h.handleConnectBreakglassRequest)
+	h.mux.HandleFunc("POST "+PathBreakglassRequests+"/{id}/activate", h.handleActivateBreakglassRequest)
 	h.mux.HandleFunc("POST "+PathApprove+"{id}", h.handleApproveBreakglassOrExecution)
 	h.mux.HandleFunc("POST "+PathReject+"{id}", h.handleRejectBreakglassOrExecution)
 }

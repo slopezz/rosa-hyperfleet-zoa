@@ -55,6 +55,20 @@ func Get(id string) (*Definition, bool) {
 	return def, true
 }
 
+// ListDefinitions returns registered scope definitions for this target type, sorted by id.
+func ListDefinitions() []*Definition {
+	mu.RLock()
+	defer mu.RUnlock()
+	var out []*Definition
+	for _, def := range catalog {
+		if allowedOnRuntimeTarget(def.Metadata) {
+			out = append(out, def)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Metadata.ID < out[j].Metadata.ID })
+	return out
+}
+
 // List returns registered scopes for this target type, sorted by id.
 func List() []ScopeMetadata {
 	mu.RLock()

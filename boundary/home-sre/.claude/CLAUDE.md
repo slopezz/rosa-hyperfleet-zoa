@@ -1,6 +1,6 @@
 # ZOA Boundary session (Claude Code)
 
-You are running inside a **ZOA Boundary** container: a time-boxed, audited ECS Fargate task in the target VPC (Regional Cluster or Management Cluster). This is **not** a standing cluster-admin or AWS-admin workflow — operational access goes through **ZOA Trusted Actions** (and future **break-glass**, when enabled).
+You are running inside a **ZOA Boundary** container: a time-boxed, audited ECS Fargate task in the target VPC (Regional Cluster or Management Cluster). This is **not** a standing cluster-admin or AWS-admin workflow — operational access goes through **ZOA Trusted Actions** first; **break-glass** is audited last resort only.
 
 **Read these files first (updated every task start):**
 
@@ -8,6 +8,7 @@ You are running inside a **ZOA Boundary** container: a time-boxed, audited ECS F
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | `/home/sre/.claude/ZOA_SESSION.md` | Session ID, operator, deployment, target, API URL                                                       |
 | `/home/sre/.claude/ZOA_ACTIONS.md` | **Baked TA catalog** for this deployment target (`rc` or `mc`); use `zoa describe` for live API details |
+| `/home/sre/.claude/ZOA_BREAKGLASS_SCOPES.md` | **Baked break-glass scope catalog** (RBAC/IAM per scope); use `zoa breakglass describe` when connected |
 | This `CLAUDE.md`                   | **Agent essentials** table, rules, RC/MC platform, observability, control plane, ZOA execution          |
 
 The shell prompt is two lines: **`sessionId:<deployment>/<uuid>`** (audit handle — copy for `zoa session terminate`) and **`operator@zoa:deployment/target`**. Copy the session line when opening tickets or correlating CloudWatch Exec logs.
@@ -25,7 +26,7 @@ Quick map of what matters in this environment — details in the sections below.
 | **Identity bridge**                              | **`ZOA_OPERATOR`** / prompt env is **UX only**; TA audit uses SigV4 task ARN → DynamoDB session → human **operator**. Do not treat env as audit truth. → same section                                                                |
 | **TA read / write / cooldown / dry-run / async** | Safer change suggestions; write TAs need cooldown; use **`--dry-run`** / **`--force`** per **`zoa describe`**. → [Trusted Action safety](#trusted-action-safety-read-vs-write)                                                       |
 | **Session lifecycle**                            | **Exit Exec ≠ terminate task**; terminate from **laptop** with **`zoa session terminate <deployment>/<uuid>`**. Two audits: CloudWatch Exec transcript vs **`zoa runs`** / audit. → [Session lifecycle](#session-lifecycle-boundary) |
-| **Break-glass**                                  | **`kubectl`** / **`aws`** in the image have **no creds** today — not production; use **`zoa run`** only. → [How zoa run works](#how-zoa-run-works-from-this-container)                                                               |
+| **Break-glass**                                  | **Last resort** after TAs fail; **never suggest first**. Three steps: request → peer approve → operator **`activate`**. → [Break-glass](#break-glass-last-resort)                                                               |
 
 **Laptop vs boundary:** `zoa session list <deployment>` = **your** sessions; `zoa session history <deployment>` = **all operators** (audit). Not available inside the container.
 
@@ -160,7 +161,7 @@ You are **not** calling the Kubernetes API directly from the shell for TAs:
 
 Per-VPC **Worker Lambda** handles async jobs, reconciler, and GC — not your interactive **`zoa run`** path unless the action is async.
 
-**Break-glass** (direct **`kubectl`** / **`aws`** with creds in the container) is **not** production today — tools are present for a future epic only.
+**Break-glass** provisions scoped **`kubectl`** / **`aws`** creds for a time-boxed grant. It is **audited emergency access**, not the default interface.
 
 ## Trusted Action safety (read vs write)
 
@@ -215,8 +216,39 @@ You do **not** need `zoa deployments`, `zoa targets`, or `zoa session *` here �
 | **`zoa output` / `zoa logs` / `zoa download`** | Re-fetch or save artifacts from S3.                                                                                                  |
 | **`zoa audit`**                                | ZOA API audit trail (broader than TAs alone).                                                                                        |
 | **`zoa version`**                              | Client and API version.                                                                                                              |
+| **`zoa breakglass scopes`**                    | Scope catalog (`ZOA_BREAKGLASS_SCOPES.md` offline).                                                                                  |
+| **`zoa breakglass describe <scope>`**          | RBAC / IAM composition for one scope.                                                                                                |
+| **`zoa breakglass request --scope … --reason`** | Start approval workflow (does not elevate).                                                                                          |
+| **`zoa breakglass get <id> [--wait]`**         | Status; `--wait` until approved/rejected/expired (**no auto-activate**).                                                             |
+| **`zoa breakglass activate <id>`**             | Operator explicitly arms creds (only this task that created the request).                                                            |
 
 Use **`-o json`** and **`jq`** for scripting.
+
+## Break-glass (last resort)
+
+Read **`ZOA_BREAKGLASS_SCOPES.md`** before discussing break-glass with the operator.
+
+### Mandatory agent behavior
+
+1. **Never propose break-glass as the first step.** Exhaust **Trusted Actions** in **`ZOA_ACTIONS.md`** first (`get_resource`, `describe_*`, `must_gather`, `aws-api` TAs, etc.).
+2. Break-glass is for **urgent gaps** where TAs cannot do the job (missing action, unsupported API, incident time pressure) — and only when the **operator agrees**.
+3. **Minimum scope:** start at **`kube-read` / `aws-read`**; escalate to **write**, then **elevated** only when the scope RBAC in the catalog requires it (e.g. Secret data → **`kube-elevated`**).
+4. Use **`zoa breakglass describe <scope>`** or the offline catalog to justify the smallest scope.
+5. **Do not run `activate` for the operator** unless they explicitly ask. You may suggest commands; activation is their deliberate step.
+6. **During / after** break-glass use, propose a **follow-up Trusted Action** (new action or flag) so the same work never needs break-glass again. Name a concrete command to add (mirror patterns in **`ZOA_ACTIONS.md`**: read vs write, `--dry-run`, cooldown).
+7. **Do not use break-glass** to bypass TA safety (`get_secret` on HCP, cooldown, dry-run) without operator and security awareness.
+
+### Operator workflow (three steps)
+
+1. **`zoa breakglass request --scope <id> --reason TICKET`** — creates the request; may be `pending_approval` or `approved` depending on catalog approval policy (v1: auto-approve when `approval: none`).
+2. **Peer (laptop):** **`zoa approve <deployment>/<request-id>`** when approval is required.
+3. **Operator (this boundary):** **`zoa breakglass activate <request-id>`** — credentials and prompt change only after this command.
+
+**`--wait`** on `request` or `get` only waits for an **approval decision** and prints **`next_step`**; it **does not** activate.
+
+### After break-glass
+
+Help the operator document what they did and what TA to implement. Example follow-up text: “Implement `zoa run &lt;name&gt;` with scope kube-api, type read, params …” aligned with existing actions.
 
 ### Suggesting a TA during a session
 
@@ -224,7 +256,7 @@ Use **`-o json`** and **`jq`** for scripting.
 2. Match the problem to **scope** and **type**: e.g. need a Secret in a non-HCP namespace → **`get_secret`** (read); need pod list → **`get_resource`** with `--resource pods`; AWS networking → **`list_vpc_endpoints`** / **`describe_vpc_endpoint`**.
 3. Run **`zoa describe <action>`** when parameters are unclear (live API view with flag bindings).
 4. Execute with **`zoa run …`** (uses **`ZOA_REASON`** / **`ZOA_SESSION.md`** context) or **`--reason TICKET`** when overriding.
-5. Do **not** use `kubectl`/`aws` for operations that have a TA unless break-glass is active.
+5. Do **not** use `kubectl`/`aws` for operations that have a TA unless break-glass is **active** (after operator ran **`activate`**).
 
 ### Kubernetes discovery (when the namespace is unknown)
 
@@ -262,11 +294,11 @@ History lives under **`/home/sre/.claude/`** on the task disk only — **not** s
 | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **`jq`**                  | Parse `zoa -o json` output.                                                                                                                                                   |
 | **`claude`**              | **Amazon Bedrock**; **`ANTHROPIC_MODEL`** set by Terraform (Sonnet 5). Assistant only — not a bypass for TAs. See [Claude Code sessions](#claude-code-sessions-resume) below. |
-| **`aws`** / **`kubectl`** | Installed but **no default credentials**. Use after break-glass only.                                                                                                         |
+| **`aws`** / **`kubectl`** | No default credentials. Use only after operator **`zoa breakglass activate`**. Prefer **`zoa run`** always.                                                                   |
 
 ## What you must not do
 
-- Do not treat **`kubectl`** / **`aws`** as the primary interface without break-glass.
+- Do not treat **`kubectl`** / **`aws`** as the primary interface; do not suggest break-glass before TAs.
 - Do not exfiltrate customer data or paste secrets into Claude prompts.
 - Do not install packages — UID **`sre` (1000)**, no root.
 
@@ -275,7 +307,7 @@ History lives under **`/home/sre/.claude/`** on the task disk only — **not** s
 1. Confirm context in **`ZOA_SESSION.md`** (session id, **`ZOA_TARGET_TYPE`**, target) — know whether you are on **RC** or **MC** before choosing TAs or interpreting namespaces.
 2. For kube problems with unknown location: **namespace discovery first**, then resource-specific **`get_resource`** (see above).
 3. Pick a TA from **`ZOA_ACTIONS.md`** → **`zoa describe`** if needed → **`zoa run …`** (session **`ZOA_REASON`**).
-4. Use Claude to interpret output; execute changes only through **`zoa run`** (or approved break-glass later).
+4. Use Claude to interpret output; execute changes through **`zoa run`**, or break-glass only per [Break-glass](#break-glass-last-resort).
 
 ## Common mistakes to avoid
 

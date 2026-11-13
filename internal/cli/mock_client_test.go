@@ -152,7 +152,7 @@ func (m *mockClient) ListBreakglassRequests(context.Context, *client.BreakglassL
 	return nil, fmt.Errorf("ListBreakglassRequests not mocked")
 }
 
-func (m *mockClient) ActivateBreakglass(context.Context, string) (*client.BreakglassConnectResponse, error) {
+func (m *mockClient) ActivateBreakglass(context.Context, string) (*client.BreakglassActivateResponse, error) {
 	return nil, fmt.Errorf("ActivateBreakglass not mocked")
 }
 

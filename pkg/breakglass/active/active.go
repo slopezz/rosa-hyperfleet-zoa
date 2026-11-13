@@ -127,6 +127,7 @@ func Write(home string, a *Active) error {
 }
 
 // Activate merges one stanza for the scope's plane (replaces prior grant on that plane).
+// At most one active kube and one active aws grant; e.g. kube-write replaces kube-read in active + PS1.
 func Activate(home string, stanza Stanza) error {
 	plane, err := PlaneForScope(stanza.Scope)
 	if err != nil {

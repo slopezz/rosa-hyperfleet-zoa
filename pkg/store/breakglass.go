@@ -21,7 +21,6 @@ type BreakglassRequest struct {
 	SignerARN        string            `json:"signer_arn,omitempty" dynamodbav:"signerARN,omitempty"`
 	SessionID        string            `json:"session_id,omitempty" dynamodbav:"sessionId,omitempty"`
 	CreatorTaskID    string            `json:"creator_task_id,omitempty" dynamodbav:"creatorTaskId,omitempty"`
-	CreatorTaskArn   string            `json:"creator_task_arn,omitempty" dynamodbav:"creatorTaskArn,omitempty"`
 	TargetCluster    string            `json:"target_cluster" dynamodbav:"targetCluster"`
 	TargetType       string            `json:"target_type" dynamodbav:"targetType"`
 	AccountID        string            `json:"account_id" dynamodbav:"accountId"`

@@ -14,6 +14,9 @@ const EnvVar = "ZOA_REASON"
 // FormatHint re-exports accepted reason formats for flag help (matches API error text).
 const FormatHint = pkgreason.FormatHint
 
+// ExampleJiraIssue is a fictional Jira key for CLI examples (same as Trusted Action examples).
+const ExampleJiraIssue = pkgreason.ExampleJiraIssue
+
 // Resolve returns the reason: non-empty flag value, then EnvVar, else error.
 func Resolve(flagValue string) (string, error) {
 	if v, err := pkgreason.Normalize(flagValue); err != nil {

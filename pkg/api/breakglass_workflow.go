@@ -8,20 +8,20 @@ import (
 	"github.com/openshift-online/rosa-seaplane-zoa/pkg/store"
 )
 
-// BreakglassAutoApprover is the synthetic approver for deployment-wide auto-approve (pending → approved transition).
+// BreakglassAutoApprover is the synthetic approver when the scope catalog skips peer workflow (approval "none").
 const BreakglassAutoApprover = "auto"
 
 const breakglassAutoApproveNote = "break-glass auto-approve (approval workflow epic pending)"
 
-// ShouldAutoApproveBreakglass reports whether create should invoke ApproveBreakglassRequest immediately.
-// True when scope authorization is approval "none" (no peer workflow). Does not consult Lambda env overrides.
-func ShouldAutoApproveBreakglass(auth breakglass.Authorization) bool {
+// BreakglassSkipsPeerApproval is true when the scope metadata does not require peer approve before activate
+// (same idea as Trusted Actions with authorization.approval "none"). No Lambda env override.
+func BreakglassSkipsPeerApproval(auth breakglass.Authorization) bool {
 	return !breakglass.NeedsApproval(auth)
 }
 
-// MaybeAutoApproveBreakglassAfterCreate runs the same ApproveBreakglassRequest path used for peer approve
-// when the resolved scope does not require a workflow (approval none).
-func MaybeAutoApproveBreakglassAfterCreate(
+// ApproveBreakglassOnCreateWhenNoPeerWorkflow runs ApproveBreakglassRequest immediately after create when the
+// scope catalog allows it — same transition as laptop approve, synthetic approver for audit.
+func ApproveBreakglassOnCreateWhenNoPeerWorkflow(
 	ctx context.Context,
 	bgStore store.BreakglassStore,
 	req *store.BreakglassRequest,
@@ -30,7 +30,7 @@ func MaybeAutoApproveBreakglassAfterCreate(
 	if req == nil || def == nil {
 		return req, nil
 	}
-	if !ShouldAutoApproveBreakglass(def.Metadata.Authorization) {
+	if !BreakglassSkipsPeerApproval(def.Metadata.Authorization) {
 		return req, nil
 	}
 	note := ""
@@ -38,7 +38,7 @@ func MaybeAutoApproveBreakglassAfterCreate(
 		note = breakglassAutoApproveNote
 	}
 	if err := ApproveBreakglassRequest(ctx, bgStore, req, BreakglassAutoApprover, note); err != nil {
-		return nil, fmt.Errorf("auto-approve break-glass: %w", err)
+		return nil, fmt.Errorf("approve break-glass on create (no peer workflow): %w", err)
 	}
 	updated, err := bgStore.Get(ctx, req.RequestID)
 	if err != nil {
