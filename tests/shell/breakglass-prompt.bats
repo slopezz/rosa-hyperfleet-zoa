@@ -34,4 +34,28 @@ EOF
   [ "${status}" -eq 0 ]
   [[ "${output}" == *"kube=kube-read"* ]]
   [[ "${output}" == *"aws=aws-write"* ]]
+  [[ "${output}" == *"|"* ]]
+}
+
+@test "apply_env uses AWS_SHARED_CREDENTIALS_FILE not AWS_PROFILE" {
+  cat > "${TEST_HOME}/.config/zoa/breakglass/active" <<'EOF'
+{
+  "aws": {
+    "requestId": "22222222-2222-2222-2222-222222222222",
+    "scope": "aws-read",
+    "grantExpiresAt": "2099-06-01T14:00:00Z",
+    "bearerExpiresAt": "2099-06-01T13:00:00Z"
+  }
+}
+EOF
+  touch "${TEST_HOME}/.config/zoa/breakglass/aws-credentials"
+
+  run env HOME="${TEST_HOME}" bash -c '
+    source "$1"
+    zoa_breakglass_apply_env
+    test -n "${AWS_SHARED_CREDENTIALS_FILE}"
+    test -z "${AWS_PROFILE:-}"
+  ' bash "${BG_RC}"
+
+  [ "${status}" -eq 0 ]
 }

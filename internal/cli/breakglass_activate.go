@@ -59,6 +59,20 @@ func breakglassCredExpireNote(plane string, resp *client.BreakglassActivateRespo
 	}
 }
 
+func breakglassBearerExpiresAt(plane string, resp *client.BreakglassActivateResponse) string {
+	switch plane {
+	case breakglass.PlaneKube:
+		return resp.KubeTokenExpiresAt
+	case breakglass.PlaneAWS:
+		if resp.AWS != nil {
+			if raw, ok := resp.AWS["expiration"].(string); ok {
+				return raw
+			}
+		}
+	}
+	return ""
+}
+
 func formatBreakglassCredTTL(d time.Duration) string {
 	if d < 0 {
 		return "0m"
