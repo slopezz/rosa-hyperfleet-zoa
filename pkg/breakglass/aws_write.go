@@ -5,9 +5,9 @@ import "github.com/openshift-online/rosa-seaplane-zoa/pkg/actions"
 func init() {
 	register(&Definition{
 		Metadata: ScopeMetadata{
-			ID:    "aws-write",
-			Plane: PlaneAWS,
-			Type:  TypeWrite,
+			ID:          "aws-write",
+			Plane:       PlaneAWS,
+			Type:        TypeWrite,
 			Description: "ReadOnlyAccess plus RC-only reboot/start/stop. On MC, same effective IAM as aws-read.",
 			Authorization: Authorization{
 				Approval:            "none",

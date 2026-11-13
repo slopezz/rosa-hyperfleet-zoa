@@ -33,8 +33,11 @@ func (m *mockBreakglassAccessStore) Transition(_ context.Context, _ string, from
 		return context.Canceled
 	}
 	m.req.Status = to
-	if v, ok := updates["approvedBy"]; ok {
-		m.req.ApprovedBy = v.(string)
+	if v, ok := updates["decidedBy"]; ok {
+		m.req.DecidedBy = v.(string)
+	}
+	if v, ok := updates["approval"]; ok {
+		m.req.Approval = v.(string)
 	}
 	return nil
 }
@@ -43,12 +46,16 @@ func (m *mockBreakglassAccessStore) QueryByTargetAndStatus(context.Context, stri
 }
 func (m *mockBreakglassAccessStore) MarkCleaned(context.Context, string) error { return nil }
 
+func (m *mockBreakglassAccessStore) AppendActivateAt(context.Context, string, string) error {
+	return nil
+}
+
 func TestAccessHandler_WhenApproveCompoundID_ItShouldResolveRawRequest(t *testing.T) {
 	bg := &store.BreakglassRequest{
 		RequestID:        "550e8400-e29b-41d4-a716-446655440000",
 		Scope:            "kube-read",
 		Operator:         "requester",
-		Status:           store.StatusPendingApproval,
+		Status:           store.StatusPending,
 		RequestExpiresAt: time.Now().Add(time.Hour).Format(time.RFC3339Nano),
 	}
 	h := testAccessHandler(&mockSessionStoreAccess{}, &mockTargetStoreAccess{})

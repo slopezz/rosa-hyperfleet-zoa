@@ -104,8 +104,8 @@ func (h *Handler) handleCreateBreakglassRequest(w http.ResponseWriter, r *http.R
 		TargetCluster:    h.cfg.TargetCluster,
 		TargetType:       h.cfg.TargetType,
 		AccountID:        authenticatedAccountID(r),
-		Status:           store.StatusPendingApproval,
-		Approval:         def.Metadata.Authorization.Approval,
+		Status:           store.StatusPending,
+		Approval:         store.WorkflowApprovalPending,
 		Revision:         version.Get().GitCommit,
 		CreatedAt:        now.Format(time.RFC3339Nano),
 		RequestExpiresAt: requestExpires.Format(time.RFC3339Nano),
@@ -163,9 +163,20 @@ func (h *Handler) handleListBreakglassRequests(w http.ResponseWriter, r *http.Re
 		s := store.Status(v)
 		filter.Status = &s
 	}
+	if v := q.Get("approval"); v != "" && v != "all" {
+		filter.Approval = &v
+	}
+	if v := q.Get("decided_by"); v != "" {
+		filter.DecidedBy = &v
+	}
 	if v := q.Get("since"); v != "" {
 		if t, err := parseTimeValue(v); err == nil {
 			filter.Since = &t
+		}
+	}
+	if v := q.Get("decided_since"); v != "" {
+		if t, err := parseTimeValue(v); err == nil {
+			filter.DecidedSince = &t
 		}
 	}
 	if v := q.Get("until"); v != "" {
@@ -224,6 +235,10 @@ func (h *Handler) handleActivateBreakglassRequest(w http.ResponseWriter, r *http
 		writeError(w, http.StatusConflict, "not_approved", "request is not approved")
 		return
 	}
+	if req.Approval != store.WorkflowApprovalApproved {
+		writeError(w, http.StatusConflict, "not_approved", "request approval is not approved")
+		return
+	}
 	operator, signerARN, _ := h.resolveIdentity(r)
 	taskID, _ := extractTaskIDFromSigner(signerARN)
 	if taskID == "" || req.CreatorTaskID == "" || taskID != req.CreatorTaskID {
@@ -262,12 +277,14 @@ func (h *Handler) handleActivateBreakglassRequest(w http.ResponseWriter, r *http
 				return
 			}
 			resp["kube"] = cluster
-			if token, exp, err := h.executor.IssueBreakglassKubeToken(r.Context(), req.RequestID, req.Scope, remaining); err == nil {
-				resp["kube_token_expires_at"] = exp.Format(time.RFC3339Nano)
-				resp["kube_token"] = token
-			} else {
+			token, exp, err := h.executor.IssueBreakglassKubeToken(r.Context(), req.RequestID, req.Scope, remaining)
+			if err != nil {
 				h.logger.Error("breakglass issue kube token", "error", err, "request_id", req.RequestID)
+				writeError(w, http.StatusInternalServerError, "provision_failed", "failed to issue break-glass kube token")
+				return
 			}
+			resp["kube_token_expires_at"] = exp.Format(time.RFC3339Nano)
+			resp["kube_token"] = token
 		case breakglass.PlaneAWS:
 			creds, err := h.executor.AssumeBreakglassRole(r.Context(), req.RequestID, req.Scope, remaining)
 			if err != nil {
@@ -284,6 +301,10 @@ func (h *Handler) handleActivateBreakglassRequest(w http.ResponseWriter, r *http
 				"session_token":     creds.SessionToken,
 			}
 		}
+	}
+	activateAt := time.Now().Format(time.RFC3339Nano)
+	if err := h.breakglassStore.AppendActivateAt(r.Context(), id, activateAt); err != nil {
+		h.logger.Error("breakglass record activate", "error", err, "request_id", id)
 	}
 	writeJSON(w, http.StatusOK, resp)
 	h.recordAudit(r, http.StatusOK, AuditActionBreakglassActivate, id, withReason(req.Scope))

@@ -124,8 +124,33 @@ func kubeReadRBAC(targetType string) []actions.RBACRule {
 	return rules
 }
 
-// rcPlatformAPIGroups covers RC GitOps apps (e.g. hyperfleet, monitoring, thanos-operator, platform-api TGBs).
-var rcPlatformAPIGroups = []string{
+// eksAddonAPIGroups are AWS/EKS controllers present on RC and MC (eph inventory); each is a distinct apiGroup
+// (e.g. cert-manager.io does not cover acme.cert-manager.io or generators.external-secrets.io).
+var eksAddonAPIGroups = []string{
+	"acme.cert-manager.io",
+	"generators.external-secrets.io",
+	"gateway.k8s.aws",
+	"networking.k8s.aws",
+	"vpcresources.k8s.aws",
+	"crd.k8s.amazonaws.com",
+	"secrets-store.csi.x-k8s.io",
+	"autoscaling.x-k8s.io",
+	"aga.k8s.aws",
+}
+
+// mcClusterAPIGroups cover CAPI and HyperShift satellite groups on MC (not under hypershift.openshift.io alone).
+var mcClusterAPIGroups = []string{
+	"cluster.x-k8s.io",
+	"infrastructure.cluster.x-k8s.io",
+	"addons.cluster.x-k8s.io",
+	"ipam.cluster.x-k8s.io",
+	"auditlogpersistence.hypershift.openshift.io",
+	"certificates.hypershift.openshift.io",
+	"scheduling.hypershift.openshift.io",
+}
+
+// rcPlatformAPIGroups covers RC GitOps apps (hyperfleet/seaplane, monitoring, thanos, platform-api, LBC, Karpenter).
+var rcPlatformAPIGroups = append([]string{
 	"seaplane.io",
 	"argoproj.io",
 	"monitoring.coreos.com",
@@ -135,10 +160,10 @@ var rcPlatformAPIGroups = []string{
 	"elbv2.k8s.aws",
 	"karpenter.sh",
 	"karpenter.k8s.aws",
-}
+}, eksAddonAPIGroups...)
 
-// mcPlatformAPIGroups covers MC GitOps apps (hypershift, monitoring, shared cert-manager/karpenter/argocd).
-var mcPlatformAPIGroups = []string{
+// mcPlatformAPIGroups covers MC GitOps (hypershift, kube-applier, monitoring, cert-manager, karpenter).
+var mcPlatformAPIGroups = append(append([]string{
 	"hypershift.openshift.io",
 	"argoproj.io",
 	"monitoring.coreos.com",
@@ -146,9 +171,8 @@ var mcPlatformAPIGroups = []string{
 	"external-secrets.io",
 	"karpenter.sh",
 	"karpenter.k8s.aws",
-	"secrets-store.csi.x-k8s.io",
 	"route.openshift.io",
-}
+}, mcClusterAPIGroups...), eksAddonAPIGroups...)
 
 func platformOperatorReadRule(apiGroups []string) actions.RBACRule {
 	return actions.RBACRule{

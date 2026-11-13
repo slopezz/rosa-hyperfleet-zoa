@@ -1,10 +1,6 @@
 package api
 
-import (
-	"net/http"
-
-	"github.com/openshift-online/rosa-seaplane-zoa/pkg/store"
-)
+import "net/http"
 
 func (h *AccessHandler) handleApprove(w http.ResponseWriter, r *http.Request) {
 	deployment, rawID := resolveCompoundResource(r.PathValue("id"))
@@ -40,9 +36,12 @@ func (h *AccessHandler) handleApprove(w http.ResponseWriter, r *http.Request) {
 		writeBreakglassDecisionError(w, err)
 		return
 	}
-	req.Status = store.StatusApproved
-	req.ApprovedBy = approver
-	writeJSON(w, http.StatusOK, req)
+	updated, err := h.breakglassStore.Get(r.Context(), req.RequestID)
+	if err != nil || updated == nil {
+		writeError(w, http.StatusInternalServerError, "internal_error", "failed to load request after approve")
+		return
+	}
+	writeJSON(w, http.StatusOK, updated)
 	h.recordAccessAudit(r, http.StatusOK, AuditActionBreakglassApprove, req.RequestID, note, req.TargetCluster)
 }
 
@@ -75,8 +74,12 @@ func (h *AccessHandler) handleReject(w http.ResponseWriter, r *http.Request) {
 		writeBreakglassDecisionError(w, err)
 		return
 	}
-	req.Status = store.StatusRejected
-	writeJSON(w, http.StatusOK, req)
+	updated, err := h.breakglassStore.Get(r.Context(), req.RequestID)
+	if err != nil || updated == nil {
+		writeError(w, http.StatusInternalServerError, "internal_error", "failed to load request after reject")
+		return
+	}
+	writeJSON(w, http.StatusOK, updated)
 	h.recordAccessAudit(r, http.StatusOK, AuditActionBreakglassReject, req.RequestID, note, req.TargetCluster)
 }
 

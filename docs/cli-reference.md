@@ -153,13 +153,13 @@ These apply to **every** subcommand (`session`, `run`, `runs`, `audit`, …). Wh
 
 ### Boundary sessions (laptop — Access Lambda)
 
-| Command                                     | Description                                                                                                                           |
-| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Command                                     | Description                                                                                                                                 |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | `session start <deployment> <target>`       | Start a boundary session (default: interactive ECS Exec; `--no-connect` or `-o json` for metadata only; **`--exec-script`** for automation) |
 | `session join <deployment/session-id>`      | Join an existing session via ECS Exec (**`--exec-script`** for non-interactive script)                                                      |
-| `session terminate <deployment/session-id>` | Terminate a session (stops ECS task if running)                                                                                       |
-| `session list <deployment>`                 | List your sessions (last 24h by default)                                                                                              |
-| `session history <deployment>`              | Session history across all operators (audit view)                                                                                     |
+| `session terminate <deployment/session-id>` | Terminate a session (stops ECS task if running)                                                                                             |
+| `session list <deployment>`                 | List your sessions (last 24h by default)                                                                                                    |
+| `session history <deployment>`              | Session history across all operators (audit view)                                                                                           |
 
 **Session start:** Access runs the boundary task on start; default CLI flow then joins and opens ECS Exec. **`--no-connect`** (or **`-o json`**) provisions the task and prints session metadata without Exec. **`--exec-script`** provisions, joins, runs a script via Exec, and exits — same audit path as interactive join (see exec-script paragraph below). Use **`zoa session join`** to attach later when you used **`--no-connect`**.
 
@@ -169,23 +169,23 @@ These apply to **every** subcommand (`session`, `run`, `runs`, `audit`, …). Wh
 
 ### Break-glass (boundary — API Lambda)
 
-| Command | Description |
-| ------- | ----------- |
-| `breakglass scopes [--offline]` | List or describe scopes (`--offline` uses embedded catalog) |
-| `breakglass request --scope <id> --reason <ticket>` | Create a pending request |
-| `breakglass requests` | List your requests (human table; `-o json` like `zoa runs`) |
-| `breakglass get <request-id>` | Get request metadata on stdout (`zoa get` style); `--wait` polls with stderr spinner until terminal decision |
-| `breakglass request … --wait` | Create ack on stderr, poll like `zoa run --wait`, then stdout metadata; operator runs `activate` separately |
-| `breakglass describe <scope>`     | Scope details (like `zoa describe`)  |
-| `breakglass history`              | All operators on this target (audit) |
-| `breakglass activate <request-id>` | Provision and activate credentials under `~/.config/zoa/breakglass/` |
+| Command                                             | Description                                                                                                                                                                              |
+| --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `breakglass scopes [--offline]`                     | List or describe scopes (`--offline` uses embedded catalog)                                                                                                                              |
+| `breakglass request --scope <id> --reason <ticket>` | Create a pending request                                                                                                                                                                 |
+| `breakglass requests`                               | List your requests (table: status, approval, expiries, decided_*, session; filters `--status`, `--approval`, `--decided-by`, `--decided-since`; `-o wide` adds signer/task/activates) |
+| `breakglass get <request-id>`                       | Get request metadata on stdout (`zoa get` style); `--wait` polls with stderr spinner until terminal decision                                                                             |
+| `breakglass request … --wait`                       | Create ack on stderr, poll like `zoa run --wait`, then stdout metadata; operator runs `activate` separately                                                                              |
+| `breakglass describe <scope>`                       | Scope details (like `zoa describe`)                                                                                                                                                      |
+| `breakglass history`                                | All operators on this target (audit)                                                                                                                                                     |
+| `breakglass activate <request-id>`                  | Provision creds under `~/.config/zoa/breakglass/`; prints **grant (~4h)** vs **bearer (~1h)** and `export now:` lines. Re-run **same id** hourly to refresh STS/token while grant valid. |
 
 ### Laptop approval (Access Lambda)
 
-| Command | Description |
-| ------- | ----------- |
+| Command                                           | Description                 |
+| ------------------------------------------------- | --------------------------- |
 | `approve <deployment>/<request-id> [--comment …]` | Approve pending break-glass |
-| `reject <deployment>/<request-id> [--comment …]` | Reject pending break-glass |
+| `reject <deployment>/<request-id> [--comment …]`  | Reject pending break-glass  |
 
 ### Trusted Actions (boundary — API Lambda via `ZOA_API_URL`)
 
@@ -391,23 +391,23 @@ Per-command flags and filters (global flags are under [Configuration](#global-fl
 
 ### `session start`
 
-| Flag              | Short | Description                                                                                                                    |
-| ----------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `--reason`        |       | Reason for this session (required unless `ZOA_REASON` is set on laptop; normally required on laptop; **flag wins over env**)   |
-| `--deployment`    | `-d`  | Deployment name (alternative to positional arg)                                                                                |
-| `--target`        | `-t`  | Target ID (alternative to positional arg)                                                                                      |
-| `--no-connect`    |       | Provision boundary task and print session metadata; do not open ECS Exec                                                       |
-| `--exec-script`         |       | After connect, run a bash script via non-interactive ECS Exec (automation/e2e); incompatible with `--no-connect` and `-o json` |
-| `--exec-script-timeout` |       | Max duration for `--exec-script` (default `10m`)                                                                                     |
-| `--exec-script-max-output` |    | Max bytes of exec-script PTY output captured on the laptop (default `16777216`, 16 MiB; full transcript in CloudWatch)              |
+| Flag                       | Short | Description                                                                                                                    |
+| -------------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `--reason`                 |       | Reason for this session (required unless `ZOA_REASON` is set on laptop; normally required on laptop; **flag wins over env**)   |
+| `--deployment`             | `-d`  | Deployment name (alternative to positional arg)                                                                                |
+| `--target`                 | `-t`  | Target ID (alternative to positional arg)                                                                                      |
+| `--no-connect`             |       | Provision boundary task and print session metadata; do not open ECS Exec                                                       |
+| `--exec-script`            |       | After connect, run a bash script via non-interactive ECS Exec (automation/e2e); incompatible with `--no-connect` and `-o json` |
+| `--exec-script-timeout`    |       | Max duration for `--exec-script` (default `10m`)                                                                               |
+| `--exec-script-max-output` |       | Max bytes of exec-script PTY output captured on the laptop (default `16777216`, 16 MiB; full transcript in CloudWatch)         |
 
 ### `session join`
 
-| Flag              | Short | Description                                                                                     |
-| ----------------- | ----- | ----------------------------------------------------------------------------------------------- |
-| `--exec-script`         |       | Run a bash script inside the boundary via non-interactive ECS Exec; incompatible with `-o json` |
-| `--exec-script-timeout` |       | Max duration for `--exec-script` (default `10m`)                                                      |
-| `--exec-script-max-output` |    | Max bytes of exec-script PTY output captured on the laptop (default `16777216`, 16 MiB; full transcript in CloudWatch) |
+| Flag                       | Short | Description                                                                                                            |
+| -------------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------- |
+| `--exec-script`            |       | Run a bash script inside the boundary via non-interactive ECS Exec; incompatible with `-o json`                        |
+| `--exec-script-timeout`    |       | Max duration for `--exec-script` (default `10m`)                                                                       |
+| `--exec-script-max-output` |       | Max bytes of exec-script PTY output captured on the laptop (default `16777216`, 16 MiB; full transcript in CloudWatch) |
 
 <a id="session-join"></a>
 

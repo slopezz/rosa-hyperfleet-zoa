@@ -285,7 +285,7 @@ func isTerminalBreakglassStatus(status string) bool {
 }
 
 func newBreakglassRequestsCommand(global *GlobalOptions) *cobra.Command {
-	var since, until, status string
+	var since, until, status, approval, decidedBy, decidedSince string
 	var limit int
 	cmd := &cobra.Command{
 		Use:     "requests",
@@ -300,11 +300,14 @@ Use 'zoa breakglass history' for fleet-wide audit view.`,
 				return err
 			}
 			list, err := c.ListBreakglassRequests(cmd.Context(), &client.BreakglassListParams{
-				Scope:  "mine",
-				Since:  since,
-				Until:  until,
-				Status: status,
-				Limit:  limit,
+				Scope:        "mine",
+				Since:        since,
+				Until:        until,
+				Status:       status,
+				Approval:     approval,
+				DecidedBy:    decidedBy,
+				DecidedSince: decidedSince,
+				Limit:        limit,
 			})
 			if err != nil {
 				return err
@@ -314,13 +317,16 @@ Use 'zoa breakglass history' for fleet-wide audit view.`,
 	}
 	cmd.Flags().StringVar(&since, "since", "24h", "Start of time window (duration: 1h, 7d; date: 2026-08-25; RFC3339)")
 	cmd.Flags().StringVar(&until, "until", "", "End of time window (same formats as --since; default: now)")
-	cmd.Flags().StringVar(&status, "status", "", "Filter by status (omit or all for any)")
+	cmd.Flags().StringVar(&status, "status", "", "Filter by lifecycle status (pending, approved, rejected, expired)")
+	cmd.Flags().StringVar(&approval, "approval", "", "Filter by approval outcome (pending, approved, rejected)")
+	cmd.Flags().StringVar(&decidedBy, "decided-by", "", "Filter by approver/rejecter (peer decisions)")
+	cmd.Flags().StringVar(&decidedSince, "decided-since", "", "Only rows decided on/after this time (duration or RFC3339)")
 	cmd.Flags().IntVar(&limit, "limit", 50, "Max results (max 200)")
 	return cmd
 }
 
 func newBreakglassHistoryCommand(global *GlobalOptions) *cobra.Command {
-	var since, until, operator, status string
+	var since, until, operator, status, approval, decidedBy, decidedSince string
 	var limit int
 	cmd := &cobra.Command{
 		Use:   "history",
@@ -334,11 +340,14 @@ Does not pass scope=mine — same pattern as session history vs session list.`,
 				return err
 			}
 			list, err := c.ListBreakglassRequests(cmd.Context(), &client.BreakglassListParams{
-				Operator: operator,
-				Status:   status,
-				Since:    since,
-				Until:    until,
-				Limit:    limit,
+				Operator:     operator,
+				Status:       status,
+				Approval:     approval,
+				DecidedBy:    decidedBy,
+				DecidedSince: decidedSince,
+				Since:        since,
+				Until:        until,
+				Limit:        limit,
 			})
 			if err != nil {
 				return err
@@ -349,7 +358,10 @@ Does not pass scope=mine — same pattern as session history vs session list.`,
 	cmd.Flags().StringVar(&since, "since", "24h", "Start of time window (duration: 1h, 7d; date: 2026-08-25; RFC3339)")
 	cmd.Flags().StringVar(&until, "until", "", "End of time window (same formats as --since; default: now)")
 	cmd.Flags().StringVar(&operator, "operator", "", "Filter by operator")
-	cmd.Flags().StringVar(&status, "status", "", "Filter by status")
+	cmd.Flags().StringVar(&status, "status", "", "Filter by lifecycle status")
+	cmd.Flags().StringVar(&approval, "approval", "", "Filter by approval outcome")
+	cmd.Flags().StringVar(&decidedBy, "decided-by", "", "Filter by approver/rejecter")
+	cmd.Flags().StringVar(&decidedSince, "decided-since", "", "Only rows decided on/after this time")
 	cmd.Flags().IntVar(&limit, "limit", 50, "Max results (max 200)")
 	return cmd
 }
@@ -455,8 +467,16 @@ func activateBreakglass(ctx context.Context, global *GlobalOptions, requestID st
 	if err := writeBreakglassAWSProfile(home, requestID, resp.AWS); err != nil {
 		return err
 	}
+	plane, err := active.PlaneForScope(resp.Scope)
+	if err != nil {
+		return err
+	}
+	if err := validateBreakglassActivateArtifacts(home, requestID, plane, resp); err != nil {
+		return err
+	}
 	progress := breakglassProgressWriter()
 	printBreakglassActivateDispatched(progress, requestID, resp.TargetCluster, resp.Scope)
+	printBreakglassActivateHints(progress, home, requestID, plane, resp)
 	if global.OutputFormat == output.FormatJSON {
 		id := resp.ID
 		if id == "" {

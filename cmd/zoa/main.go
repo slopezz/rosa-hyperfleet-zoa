@@ -13,4 +13,5 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
 		os.Exit(1)
 	}
+	cli.CommandSpacer()
 }

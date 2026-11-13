@@ -24,7 +24,8 @@ func TestApproveBreakglassOnCreateWhenNoPeerWorkflow_ItShouldTransitionViaApprov
 	req := &store.BreakglassRequest{
 		RequestID:        "req-1",
 		Scope:            "kube-read",
-		Status:           store.StatusPendingApproval,
+		Status:           store.StatusPending,
+		Approval:         store.WorkflowApprovalPending,
 		Operator:         "alice",
 		RequestExpiresAt: "2099-01-01T00:00:00Z",
 	}
@@ -45,8 +46,11 @@ func TestApproveBreakglassOnCreateWhenNoPeerWorkflow_ItShouldTransitionViaApprov
 	if out.Status != store.StatusApproved {
 		t.Fatalf("expected approved, got %s", out.Status)
 	}
-	if out.ApprovedBy != BreakglassAutoApprover {
-		t.Fatalf("expected auto approver, got %q", out.ApprovedBy)
+	if out.Approval != store.WorkflowApprovalApproved {
+		t.Fatalf("expected workflow approval approved, got %q", out.Approval)
+	}
+	if out.DecidedBy != "" || out.DecidedAt != "" {
+		t.Fatalf("expected empty decided fields for auto path, got by=%q at=%q", out.DecidedBy, out.DecidedAt)
 	}
 }
 
@@ -54,7 +58,7 @@ func TestApproveBreakglassRequest_WhenAutoApproverOnStrictNoteScope_ItShouldAllo
 	req := &store.BreakglassRequest{
 		RequestID:        "req-2",
 		Scope:            "kube-elevated",
-		Status:           store.StatusPendingApproval,
+		Status:           store.StatusPending,
 		Operator:         "alice",
 		RequestExpiresAt: "2099-01-01T00:00:00Z",
 	}
