@@ -2,13 +2,14 @@
 
 Emergency scoped `kubectl` / `aws` from the **boundary** only. Same patterns as Trusted Actions and boundary sessions.
 
-| Document                                                       | Purpose                                                                      |
-| -------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| [Scope authoring guide](../break-glass-scopes.md)              | `pkg/breakglass/` catalog (like [trusted-actions.md](../trusted-actions.md)) |
-| [Approval workflow (TA + BG)](../approval-workflow.md)         | Approval policy (`none` today; gist/OPA planned)                             |
-| [API reference — break-glass](../api-reference.md#break-glass) | HTTP routes                                                                  |
-| [CLI reference — break-glass](../cli-reference.md#break-glass) | Operator commands                                                            |
-| [Feature proposal](proposal.md)                                | Long-form design archive; **§0** = shipped v1 snapshot                       |
+| Document                                                       | Purpose                                                                                                        |
+| -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| **[Credential architecture](credential-architecture.md)**      | How activate provisions kube/AWS creds (diagrams; like TA [implementation](../architecture/implementation.md)) |
+| [Scope authoring guide](../break-glass-scopes.md)              | `pkg/breakglass/` catalog (like [trusted-actions.md](../trusted-actions.md))                                   |
+| [Approval workflow (TA + BG)](../approval-workflow.md)         | Approval policy (`none` today; gist/OPA planned)                                                               |
+| [API reference — break-glass](../api-reference.md#break-glass) | HTTP routes                                                                                                    |
+| [CLI reference — break-glass](../cli-reference.md#break-glass) | Operator commands                                                                                              |
+| [Feature proposal](proposal.md)                                | Long-form design archive only — **not** merged with operator docs                                              |
 
 ## Quick flow
 
@@ -22,18 +23,18 @@ Emergency scoped `kubectl` / `aws` from the **boundary** only. Same patterns as 
 
 | Clock            | What it means                                                               | What you see                                                                            |
 | ---------------- | --------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| **Grant**        | How long lifecycle `status=approved` stays valid (per scope, from approve)  | PS1 `grant~3h`; `grant_expires` / `GRANT_EXPIRES` in `get` / `requests` / `history`    |
+| **Grant**        | How long lifecycle `status=approved` stays valid (per scope, from approve)  | PS1 `grant~3h`; `grant_expires` / `GRANT_EXPIRES` in `get` / `requests` / `history`     |
 | **Bearer creds** | Kube **ServiceAccount token** and **STS** session lifetime (capped ~**1h**) | `kubectl` / `aws` stop working when creds expire **even if grant still has hours left** |
 
 **Refresh:** run `zoa breakglass activate <same-request-id>` again before creds expire (while `status=approved` and before grant end). You do **not** need a new request.
 
 **Shell wiring (boundary):**
 
-| Tool | Credentials |
-|------|-------------|
-| `kubectl` | `KUBECONFIG` → break-glass kubeconfig |
-| `aws` | Break-glass only: with an aws grant, `AWS_SHARED_CREDENTIALS_FILE` → `~/.config/zoa/breakglass/aws-credentials` (`[default]`). No grant → file unset (do not use stock `aws` for task-role work in boundary). |
-| `zoa` | **ECS task role only** (Lambda / TAs); ignores break-glass credential files. |
+| Tool      | Credentials                                                                                                                                                                                                   |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `kubectl` | `KUBECONFIG` → break-glass kubeconfig                                                                                                                                                                         |
+| `aws`     | Break-glass only: with an aws grant, `AWS_SHARED_CREDENTIALS_FILE` → `~/.config/zoa/breakglass/aws-credentials` (`[default]`). No grant → file unset (do not use stock `aws` for task-role work in boundary). |
+| `zoa`     | **ECS task role only** (Lambda / TAs); ignores break-glass credential files.                                                                                                                                  |
 
 `PROMPT_COMMAND` sets/unsets env from `active` — the SRE never runs manual `unset`. No `AWS_PROFILE`. `AWS_PAGER` is empty. PS1 uses `|` between kube and aws; cred countdown uses `bearerExpiresAt` from `activate`.
 

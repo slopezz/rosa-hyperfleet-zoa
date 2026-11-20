@@ -119,6 +119,8 @@ sequenceDiagram
 - No output size limit — writes directly to S3 without Lambda response constraints
 - Clean permission separation: SA in K8s audit logs has only TA-declared RBAC; S3 upload uses a separate STS credential with no K8s permissions — no need for two containers or intermediate storage
 
+**Break-glass** uses the same API Lambda and executor packages but provisions **per-request** `zoa-bg-<requestId>` credentials for interactive `kubectl` / `aws` (kube plane vs AWS plane). See [Break-glass credential architecture](../break-glass/credential-architecture.md).
+
 ## Response Streaming
 
 Standard Lambda response body is limited to 6MB. Native Go streaming (`LambdaFunctionURLStreamingResponse` from `aws-lambda-go`) with `RESPONSE_STREAM` invoke mode on the Function URL enables streamed responses up to 200MB (first 6MB uncapped, remainder at 2MBps). This limit applies equally to sync outputs (returned inline) and async outputs (proxied from S3 via `zoa download`) — both are served through the API Lambda response. The streaming adapter lives in `pkg/lambdahttp/` and converts Function URL events to `net/http` requests served by the standard Go handler.

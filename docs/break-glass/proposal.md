@@ -1,6 +1,6 @@
 # ZOA Break-Glass — Feature Proposal
 
-> **Design archive + implementation snapshot.** Long-form background for reviews; **not** the day-to-day operator source of truth. For what ships, use [README.md](README.md), [approval-workflow.md](../approval-workflow.md), [break-glass-scopes.md](../break-glass-scopes.md), and [cli-reference.md](../cli-reference.md#break-glass). Sections below §0 may still say `connect` / `use` — those names were renamed to **`activate`** in v1.
+> **Design archive + implementation snapshot.** Long-form background for reviews; **not** the day-to-day operator source of truth and **not** updated when operator docs change. For what ships, use [README.md](README.md), [credential-architecture.md](credential-architecture.md), [approval-workflow.md](../approval-workflow.md), [break-glass-scopes.md](../break-glass-scopes.md), and [cli-reference.md](../cli-reference.md#break-glass). Sections below §0 may still say `connect` / `use` — those names were renamed to **`activate`** in v1.
 
 **Status:** v1 shipped on `feat/zoa-breakglass` (ephemeral validation ongoing); workflow epic items still open  
 **Audience:** Engineering, security, SRE  
