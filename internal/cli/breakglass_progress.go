@@ -87,14 +87,14 @@ func renderBreakglassRequest(global *GlobalOptions, req *client.BreakglassReques
 
 func breakglassRequestNextStep(req *client.BreakglassRequest, deployment string, timedOut bool) string {
 	switch req.Status {
-	case "approved":
+	case "active":
 		return fmt.Sprintf("zoa breakglass activate %s", req.RequestID)
 	case "pending":
 		if timedOut {
 			return fmt.Sprintf("zoa breakglass get %s --wait", req.RequestID)
 		}
 		return fmt.Sprintf("Peer: zoa approve %s/%s", deployment, req.RequestID)
-	case "rejected", "expired":
+	case "denied", "expired":
 		return ""
 	default:
 		return fmt.Sprintf("zoa breakglass get %s", req.RequestID)
@@ -118,7 +118,7 @@ func printBreakglassRequestDetail(w io.Writer, req *client.BreakglassRequest, de
 	}
 
 	switch req.Status {
-	case "approved":
+	case "active":
 		fmt.Fprintf(w, "  run: %s\n", next)
 	case "pending":
 		if timedOut {
@@ -126,8 +126,8 @@ func printBreakglassRequestDetail(w io.Writer, req *client.BreakglassRequest, de
 		}
 		fmt.Fprintf(w, "  peer approve: zoa approve %s/%s\n", deployment, req.RequestID)
 		fmt.Fprintf(w, "  track:        zoa breakglass get %s --wait\n", req.RequestID)
-	case "rejected":
-		fmt.Fprintln(w, "  rejected — do not activate")
+	case "denied":
+		fmt.Fprintln(w, "  denied — do not activate")
 	case "expired":
 		fmt.Fprintln(w, "  expired — create a new request if still needed")
 	}
@@ -139,7 +139,7 @@ func printBreakglassRequestHints(w io.Writer, req *client.BreakglassRequest) {
 	}
 	deployment := breakglassApprovalDeployment()
 	switch req.Status {
-	case "approved":
+	case "active":
 		fmt.Fprintf(w, "  run: zoa breakglass activate %s\n", req.RequestID)
 	case "pending":
 		fmt.Fprintf(w, "  peer approve: zoa approve %s/%s\n", deployment, req.RequestID)
@@ -207,16 +207,16 @@ func renderBreakglassGetHuman(w io.Writer, req *client.BreakglassRequest, timedO
 
 func breakglassWaitApprovalError(req *client.BreakglassRequest, timedOut bool) error {
 	switch req.Status {
-	case "rejected":
-		return fmt.Errorf("break-glass request %s was rejected", req.RequestID)
+	case "denied":
+		return fmt.Errorf("break-glass request %s was denied", req.RequestID)
 	case "expired":
 		return fmt.Errorf("break-glass request %s expired before approval", req.RequestID)
 	case "pending":
 		if timedOut {
 			return fmt.Errorf("break-glass request %s still pending after wait timeout", req.RequestID)
 		}
-		return fmt.Errorf("break-glass request %s not approved (status %s)", req.RequestID, breakglassLifecycleStatus(req))
-	case "approved":
+		return fmt.Errorf("break-glass request %s not active yet (status %s)", req.RequestID, breakglassLifecycleStatus(req))
+	case "active":
 		return nil
 	default:
 		return fmt.Errorf("break-glass request %s unexpected status %q after wait", req.RequestID, req.Status)

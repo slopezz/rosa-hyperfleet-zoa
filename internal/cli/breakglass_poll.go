@@ -62,9 +62,9 @@ func printBreakglassWaitOutcome(req *client.BreakglassRequest, timedOut bool, el
 	}
 	lifecycle := breakglassLifecycleStatus(req)
 	switch req.Status {
-	case "approved":
+	case "active":
 		fmt.Fprintf(breakglassProgressWriter(), "✓ %s (%s)\n", lifecycle, elapsed.Round(time.Second))
-	case "rejected", "expired":
+	case "denied", "expired":
 		fmt.Fprintf(breakglassProgressWriter(), "✗ %s (%s)\n", lifecycle, elapsed.Round(time.Second))
 	case "pending":
 		if timedOut {

@@ -34,7 +34,7 @@ func TestPrintBreakglassActivateDispatched_WhenComplete_ItShouldAppendActivatedS
 }
 
 func TestBreakglassRequestNextStep_WhenApproved_ItShouldSuggestActivate(t *testing.T) {
-	req := &client.BreakglassRequest{RequestID: "abc", Status: "approved"}
+	req := &client.BreakglassRequest{RequestID: "abc", Status: "active"}
 	got := breakglassRequestNextStep(req, "us-east-1", false)
 	if !strings.Contains(got, "activate abc") {
 		t.Fatalf("expected activate hint, got %q", got)
@@ -44,7 +44,7 @@ func TestBreakglassRequestNextStep_WhenApproved_ItShouldSuggestActivate(t *testi
 func TestRenderBreakglassRequest_WhenApproved_ItShouldPrintActivateHintOnStderr(t *testing.T) {
 	req := &client.BreakglassRequest{
 		RequestID:      "abc",
-		Status:         "approved",
+		Status:         "active",
 		Scope:          "kube-read",
 		TargetCluster:  "eph-regional",
 		GrantExpiresAt: "2030-01-01T00:00:00Z",
@@ -73,7 +73,7 @@ func TestRenderBreakglassRequest_WhenApproved_ItShouldPrintActivateHintOnStderr(
 }
 
 func TestBreakglassWaitApprovalError_WhenRejected_ItShouldFail(t *testing.T) {
-	req := &client.BreakglassRequest{RequestID: "x", Status: "rejected"}
+	req := &client.BreakglassRequest{RequestID: "x", Status: "denied"}
 	if err := breakglassWaitApprovalError(req, false); err == nil {
 		t.Fatal("expected error for rejected")
 	}
@@ -82,7 +82,7 @@ func TestBreakglassWaitApprovalError_WhenRejected_ItShouldFail(t *testing.T) {
 func TestRenderBreakglassGetHuman_WhenApproved_ItShouldPrintStdoutMetadata(t *testing.T) {
 	req := &client.BreakglassRequest{
 		RequestID:     "abc",
-		Status:        "approved",
+		Status:        "active",
 		Scope:         "kube-read",
 		TargetCluster: "eph-regional",
 	}
@@ -101,8 +101,8 @@ func TestRenderBreakglassGetHuman_WhenApproved_ItShouldPrintStdoutMetadata(t *te
 }
 
 func TestBreakglassWaitApprovalError_WhenApproved_ItShouldSucceed(t *testing.T) {
-	req := &client.BreakglassRequest{RequestID: "x", Status: "approved"}
+	req := &client.BreakglassRequest{RequestID: "x", Status: "active"}
 	if err := breakglassWaitApprovalError(req, false); err != nil {
-		t.Fatalf("approved should not error: %v", err)
+		t.Fatalf("active should not error: %v", err)
 	}
 }

@@ -5,21 +5,27 @@ import "time"
 type Status string
 
 const (
-	// StatusPending is break-glass lifecycle while awaiting peer decision (same word as workflow approval column).
+	// StatusPending is break-glass lifecycle while awaiting peer decision (approval column may also be pending).
 	StatusPending Status = "pending"
 	// StatusPendingApproval is reserved for TA / execution workflow (workflow epic).
 	StatusPendingApproval Status = "pending_approval"
-	StatusApproved        Status = "approved"
-	StatusRejected        Status = "rejected"
-	StatusDispatched      Status = "dispatched"
-	StatusSucceeded       Status = "succeeded"
-	StatusFailed          Status = "failed"
-	StatusTimedOut        Status = "timed_out"
-	StatusExpired         Status = "expired"
+	// StatusApproved is TA workflow: peer approved, not yet dispatched (not break-glass lifecycle).
+	StatusApproved Status = "approved"
+	StatusRejected Status = "rejected"
+	// StatusActive is break-glass lifecycle: grant window open (activate allowed when approval=approved).
+	StatusActive Status = "active"
+	// StatusDenied is break-glass lifecycle: closed by rejection (approval=rejected; never active or expired).
+	StatusDenied Status = "denied"
+	StatusDispatched Status = "dispatched"
+	StatusSucceeded  Status = "succeeded"
+	StatusFailed     Status = "failed"
+	StatusTimedOut   Status = "timed_out"
+	StatusExpired    Status = "expired"
 )
 
 func (s Status) IsTerminal() bool {
-	return s == StatusSucceeded || s == StatusFailed || s == StatusTimedOut || s == StatusRejected || s == StatusExpired
+	return s == StatusSucceeded || s == StatusFailed || s == StatusTimedOut || s == StatusRejected ||
+		s == StatusExpired || s == StatusDenied
 }
 
 type Execution struct {

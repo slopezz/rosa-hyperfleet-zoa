@@ -262,7 +262,7 @@ func newBreakglassRequestCommand(global *GlobalOptions) *cobra.Command {
 		Short: "Create a break-glass request",
 		Long: `Create a break-glass request. Default (human): stderr ack + hints; -o json prints the request object on stdout (like zoa run).
 
-With --wait: stderr ack, poll with progress until approved/rejected/expired, then stdout metadata (like zoa get).
+With --wait: stderr ack, poll with progress until active/denied/expired, then stdout metadata (like zoa get).
 --wait does not activate credentials — run zoa breakglass activate <id> yourself after approval.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			resp, err := createBreakglassRequest(cmd.Context(), global, scope, reasonFlag)
@@ -335,7 +335,7 @@ func finishBreakglassWait(global *GlobalOptions, req *client.BreakglassRequest, 
 
 func isTerminalBreakglassStatus(status string) bool {
 	switch status {
-	case "approved", "rejected", "expired":
+	case "active", "denied", "expired":
 		return true
 	default:
 		return false
@@ -375,7 +375,7 @@ Use 'zoa breakglass history' for fleet-wide audit view.`,
 	}
 	cmd.Flags().StringVar(&since, "since", "24h", "Start of time window (duration: 1h, 7d; date: 2026-08-25; RFC3339)")
 	cmd.Flags().StringVar(&until, "until", "", "End of time window (same formats as --since; default: now)")
-	cmd.Flags().StringVar(&status, "status", "", "Filter by lifecycle status (pending, approved, rejected, expired)")
+	cmd.Flags().StringVar(&status, "status", "", "Filter by lifecycle status (pending, active, expired, denied)")
 	cmd.Flags().StringVar(&approval, "approval", "", "Filter by approval outcome (pending, approved, rejected)")
 	cmd.Flags().StringVar(&decidedBy, "decided-by", "", "Filter by approver/rejecter (peer decisions)")
 	cmd.Flags().StringVar(&decidedSince, "decided-since", "", "Only rows decided on/after this time (duration or RFC3339)")
@@ -430,7 +430,7 @@ func newBreakglassGetCommand(global *GlobalOptions) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "get <request-id>",
 		Short: "Get a break-glass request",
-		Long:  `Get request status (stdout metadata, like zoa get). With --wait, poll with progress until approved/rejected/expired. Does not activate — use zoa breakglass activate after approval.`,
+		Long:  `Get request status (stdout metadata, like zoa get). With --wait, poll until lifecycle active, denied, or expired. Does not activate — use zoa breakglass activate after approval.`,
 		Example: `  zoa breakglass get <request-id>
   zoa breakglass get <request-id> --wait
   zoa breakglass get <request-id> --wait --wait-timeout 10m`,

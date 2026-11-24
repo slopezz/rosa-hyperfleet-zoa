@@ -75,14 +75,14 @@ func TestBreakglassReconciler_WhenPendingExpired_ItShouldMarkExpired(t *testing.
 	}
 }
 
-func TestBreakglassReconciler_WhenApprovedGrantExpired_ItShouldExpireWithoutChangingApproval(t *testing.T) {
+func TestBreakglassReconciler_WhenActiveGrantExpired_ItShouldExpireWithoutChangingApproval(t *testing.T) {
 	past := time.Now().Add(-time.Hour).Format(time.RFC3339Nano)
 	mock := &mockBreakglassStore{
 		items: []*store.BreakglassRequest{
 			{
 				RequestID:      "req-2",
 				TargetCluster:  "mc01",
-				Status:         store.StatusApproved,
+				Status:         store.StatusActive,
 				Approval:       store.WorkflowApprovalApproved,
 				GrantExpiresAt: past,
 				DecidedBy:      "bob",

@@ -23,10 +23,10 @@ Emergency scoped `kubectl` / `aws` from the **boundary** only. Same patterns as 
 
 | Clock            | What it means                                                               | What you see                                                                            |
 | ---------------- | --------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| **Grant**        | How long lifecycle `status=approved` stays valid (per scope, from approve)  | PS1 `grant~3h`; `grant_expires` / `GRANT_EXPIRES` in `get` / `requests` / `history`     |
+| **Grant**        | How long lifecycle `status=active` stays valid (per scope, from approve)    | PS1 `grant~3h`; `grant_expires` / `GRANT_EXPIRES` in `get` / `requests` / `history`     |
 | **Bearer creds** | Kube **ServiceAccount token** and **STS** session lifetime (capped ~**1h**) | `kubectl` / `aws` stop working when creds expire **even if grant still has hours left** |
 
-**Refresh:** run `zoa breakglass activate <same-request-id>` again before creds expire (while `status=approved` and before grant end). You do **not** need a new request.
+**Refresh:** run `zoa breakglass activate <same-request-id>` again before creds expire (while `status=active`, `approval=approved`, and before grant end). You do **not** need a new request. Lifecycle vs decision: [approval-workflow.md](../approval-workflow.md#break-glass-row-status-vs-approval-implemented).
 
 **Shell wiring (boundary):**
 

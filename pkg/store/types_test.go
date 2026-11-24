@@ -6,7 +6,7 @@ import (
 )
 
 func TestStatus_WhenTerminal_ItShouldReturnTrue(t *testing.T) {
-	terminals := []Status{StatusSucceeded, StatusFailed, StatusTimedOut, StatusRejected}
+	terminals := []Status{StatusSucceeded, StatusFailed, StatusTimedOut, StatusRejected, StatusExpired, StatusDenied}
 	for _, s := range terminals {
 		if !s.IsTerminal() {
 			t.Errorf("expected %q to be terminal", s)
@@ -15,7 +15,7 @@ func TestStatus_WhenTerminal_ItShouldReturnTrue(t *testing.T) {
 }
 
 func TestStatus_WhenNonTerminal_ItShouldReturnFalse(t *testing.T) {
-	nonTerminals := []Status{StatusPendingApproval, StatusApproved, StatusDispatched}
+	nonTerminals := []Status{StatusPendingApproval, StatusApproved, StatusDispatched, StatusPending, StatusActive}
 	for _, s := range nonTerminals {
 		if s.IsTerminal() {
 			t.Errorf("expected %q to be non-terminal", s)

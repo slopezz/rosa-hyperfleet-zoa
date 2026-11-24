@@ -87,7 +87,7 @@ func breakglassValidUntil(req *client.BreakglassRequest) string {
 	switch req.Status {
 	case "pending":
 		return req.RequestExpiresAt
-	case "approved":
+	case "active":
 		return req.GrantExpiresAt
 	default:
 		return ""

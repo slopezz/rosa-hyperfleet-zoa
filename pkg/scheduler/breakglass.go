@@ -10,7 +10,7 @@ import (
 	"github.com/openshift-online/rosa-seaplane-zoa/pkg/store"
 )
 
-// BreakglassReconciler expires pending and approved break-glass grants and GCs kube RBAC.
+// BreakglassReconciler expires pending and active break-glass grants and GCs kube RBAC.
 type BreakglassReconciler struct {
 	store         store.BreakglassStore
 	exec          *executor.Executor
@@ -24,7 +24,7 @@ func NewBreakglassReconciler(s store.BreakglassStore, exec *executor.Executor, t
 
 func (r *BreakglassReconciler) Run(ctx context.Context) error {
 	now := time.Now()
-	for _, status := range []store.Status{store.StatusPending, store.StatusApproved} {
+	for _, status := range []store.Status{store.StatusPending, store.StatusActive} {
 		items, err := r.store.QueryByTargetAndStatus(ctx, r.targetCluster, status)
 		if err != nil {
 			return err
@@ -65,7 +65,7 @@ func (r *BreakglassReconciler) expireIfNeeded(ctx context.Context, item *store.B
 	switch item.Status {
 	case store.StatusPending:
 		cutoff = item.RequestExpiresAt
-	case store.StatusApproved:
+	case store.StatusActive:
 		cutoff = item.GrantExpiresAt
 	default:
 		return nil

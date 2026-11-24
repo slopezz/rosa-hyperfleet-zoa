@@ -14,7 +14,7 @@ func TestBreakglassLifecycleStatus_WhenPending_ItShouldEchoStatus(t *testing.T) 
 }
 
 func TestBreakglassWorkflowApproval_WhenApproved_ItShouldNotFoldActor(t *testing.T) {
-	req := &client.BreakglassRequest{Status: "approved", Approval: "approved", DecidedBy: "bob"}
+	req := &client.BreakglassRequest{Status: "active", Approval: "approved", DecidedBy: "bob"}
 	if got := breakglassWorkflowApproval(req); got != "approved" {
 		t.Fatalf("got %q", got)
 	}
@@ -25,7 +25,7 @@ func TestBreakglassWorkflowApproval_WhenApproved_ItShouldNotFoldActor(t *testing
 
 func TestBreakglassDecidedAt_WhenRejected_ItShouldPreferUnifiedField(t *testing.T) {
 	req := &client.BreakglassRequest{
-		Status:    "rejected",
+		Status:    "denied",
 		Approval:  "rejected",
 		DecidedAt: "2026-11-13T12:00:00Z",
 	}

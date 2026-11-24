@@ -124,7 +124,7 @@ func (h *Handler) handleCreateBreakglassRequest(w http.ResponseWriter, r *http.R
 		writeError(w, http.StatusInternalServerError, "internal_error", "failed to approve break-glass request")
 		return
 	}
-	if resp != nil && resp.Status == store.StatusApproved {
+	if resp != nil && resp.Status == store.StatusActive {
 		h.recordAudit(r, http.StatusOK, AuditActionBreakglassApprove, resp.RequestID, withReason(breakglassAutoApproveNote))
 		req = resp
 	}
@@ -231,8 +231,8 @@ func (h *Handler) handleActivateBreakglassRequest(w http.ResponseWriter, r *http
 		writeError(w, http.StatusNotFound, "not_found", "request not found")
 		return
 	}
-	if req.Status != store.StatusApproved {
-		writeError(w, http.StatusConflict, "not_approved", "request is not approved")
+	if req.Status != store.StatusActive {
+		writeError(w, http.StatusConflict, "grant_not_active", "request grant is not active")
 		return
 	}
 	if req.Approval != store.WorkflowApprovalApproved {

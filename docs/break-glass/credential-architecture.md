@@ -135,7 +135,7 @@ Operators see both in PS1 (`grant~…` and credential countdown). Full UX table:
 | **Grant**  | `grant_expires_at` on the DynamoDB row (from scope TTL at approve) | After expiry, `activate` returns gone; reconciler sets `status=expired` |
 | **Bearer** | Kube token `ExpirationSeconds`; STS `DurationSeconds`              | `kubectl` / `aws` fail when bearer ends **even if grant still valid**   |
 
-**Refresh:** `zoa breakglass activate <same-request-id>` again from the **same boundary task** while `status=approved` and before `grant_expires_at`. Re-activate replaces tokens and STS keys; it does not create a new request.
+**Refresh:** `zoa breakglass activate <same-request-id>` again from the **same boundary task** while `status=active`, `approval=approved`, and before `grant_expires_at`. Re-activate replaces tokens and STS keys; it does not create a new request.
 
 ## Boundary shell wiring
 

@@ -106,12 +106,12 @@ func (s *DynamoDBBreakglassStore) prepareForWrite(req *BreakglassRequest) error 
 			return fmt.Errorf("requestExpiresAt required for pending")
 		}
 		req.TargetStatusKey = BreakglassTargetStatusKey(req.Status, req.RequestExpiresAt)
-	case StatusApproved:
+	case StatusActive:
 		if req.GrantExpiresAt == "" {
-			return fmt.Errorf("grantExpiresAt required for approved")
+			return fmt.Errorf("grantExpiresAt required for active")
 		}
 		req.TargetStatusKey = BreakglassTargetStatusKey(req.Status, req.GrantExpiresAt)
-	case StatusRejected, StatusExpired, StatusFailed:
+	case StatusDenied, StatusExpired, StatusFailed:
 		req.TargetStatusKey = BreakglassTargetStatusKey(req.Status, req.CreatedAt)
 	default:
 		req.TargetStatusKey = BreakglassTargetStatusKey(req.Status, req.CreatedAt)
@@ -167,11 +167,11 @@ func (s *DynamoDBBreakglassStore) Transition(ctx context.Context, requestID stri
 	for k, v := range updates {
 		update = update.Set(expression.Name(k), expression.Value(v))
 	}
-	if suffix, ok := stringAttrFromUpdates(updates, "grantExpiresAt"); ok && to == StatusApproved {
+	if suffix, ok := stringAttrFromUpdates(updates, "grantExpiresAt"); ok && to == StatusActive {
 		update = update.Set(expression.Name("targetStatusKey"), expression.Value(BreakglassTargetStatusKey(to, suffix)))
 	} else if suffix, ok := stringAttrFromUpdates(updates, "requestExpiresAt"); ok && to == StatusPending {
 		update = update.Set(expression.Name("targetStatusKey"), expression.Value(BreakglassTargetStatusKey(to, suffix)))
-	} else if to == StatusRejected || to == StatusExpired || to == StatusFailed {
+	} else if to == StatusDenied || to == StatusExpired || to == StatusFailed {
 		update = update.Set(expression.Name("targetStatusKey"), expression.Value(BreakglassTargetStatusKey(to, time.Now().Format(time.RFC3339Nano))))
 	}
 	cond := expression.Name("status").Equal(expression.Value(string(from)))

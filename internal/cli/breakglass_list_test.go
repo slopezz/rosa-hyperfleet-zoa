@@ -16,7 +16,7 @@ func TestPrintBreakglassRequestTable_WhenMine_ItShouldRenderRows(t *testing.T) {
 			RequestID:     "req-1",
 			Scope:         "kube-read",
 			TargetCluster: "eph-regional",
-			Status:        "approved",
+			Status:        "active",
 			Reason:        "ROSAENG-1",
 			CreatedAt:     "2026-01-15T10:00:00Z",
 		}},

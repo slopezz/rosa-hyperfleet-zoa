@@ -18,7 +18,7 @@ var (
 	errBreakglassNoteRequired   = errors.New("breakglass: note required")
 )
 
-// ApproveBreakglassRequest transitions pending → approved with grant expiry.
+// ApproveBreakglassRequest transitions pending → active with grant expiry (approval=approved).
 func ApproveBreakglassRequest(ctx context.Context, bgStore store.BreakglassStore, req *store.BreakglassRequest, approver, note string) error {
 	if req.Status != store.StatusPending {
 		return errBreakglassNotPending
@@ -55,10 +55,10 @@ func ApproveBreakglassRequest(ctx context.Context, bgStore store.BreakglassStore
 		updates["decidedBy"] = approver
 		updates["decidedAt"] = decidedAt
 	}
-	return bgStore.Transition(ctx, req.RequestID, req.Status, store.StatusApproved, updates)
+	return bgStore.Transition(ctx, req.RequestID, req.Status, store.StatusActive, updates)
 }
 
-// RejectBreakglassRequest transitions pending → rejected.
+// RejectBreakglassRequest transitions pending → denied (approval=rejected).
 func RejectBreakglassRequest(ctx context.Context, bgStore store.BreakglassStore, req *store.BreakglassRequest, approver, note string) error {
 	if req.Status != store.StatusPending {
 		return errBreakglassNotPending
@@ -78,7 +78,7 @@ func RejectBreakglassRequest(ctx context.Context, bgStore store.BreakglassStore,
 		"decidedAt":    decidedAt,
 		"decisionNote": note,
 	}
-	return bgStore.Transition(ctx, req.RequestID, req.Status, store.StatusRejected, updates)
+	return bgStore.Transition(ctx, req.RequestID, req.Status, store.StatusDenied, updates)
 }
 
 func writeBreakglassDecisionError(w http.ResponseWriter, err error) {

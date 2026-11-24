@@ -43,7 +43,7 @@ func TestApproveBreakglassOnCreateWhenNoPeerWorkflow_ItShouldTransitionViaApprov
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out.Status != store.StatusApproved {
+	if out.Status != store.StatusActive {
 		t.Fatalf("expected approved, got %s", out.Status)
 	}
 	if out.Approval != store.WorkflowApprovalApproved {

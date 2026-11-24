@@ -66,7 +66,7 @@ func TestAccessHandler_WhenApproveCompoundID_ItShouldResolveRawRequest(t *testin
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
 	}
-	if bg.Status != store.StatusApproved {
+	if bg.Status != store.StatusActive {
 		t.Fatalf("expected approved status, got %s", bg.Status)
 	}
 }
