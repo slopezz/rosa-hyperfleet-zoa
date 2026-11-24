@@ -34,7 +34,7 @@ $(GOLANGCI_LINT): $(TOOLS_DIR)/go.mod
 $(GINKGO): $(TOOLS_DIR)/go.mod
 	cd $(TOOLS_DIR); go build -tags=tools -o $(abspath $(TOOLS_BIN_DIR))/ginkgo github.com/onsi/ginkgo/v2/ginkgo
 
-VERSION     = 0.5.4
+VERSION     = 0.6.0
 VERSION_PKG = github.com/openshift-online/rosa-seaplane-zoa/internal/version
 VERSION_LDFLAGS = -X $(VERSION_PKG).Version=$(VERSION) -X $(VERSION_PKG).GitCommit=$(GIT_COMMIT) -X $(VERSION_PKG).BuildDate=$(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS         = -ldflags "$(VERSION_LDFLAGS)"
