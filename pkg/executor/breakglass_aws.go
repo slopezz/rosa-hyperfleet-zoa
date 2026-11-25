@@ -56,13 +56,11 @@ func (e *Executor) AssumeBreakglassRole(ctx context.Context, requestID, scopeID 
 	if err != nil {
 		return nil, err
 	}
-	secs := int32(duration.Seconds())
-	if secs < 900 {
-		secs = 900
+	credTTL, err := breakglass.CredentialDurationForGrant(breakglass.PlaneAWS, duration)
+	if err != nil {
+		return nil, err
 	}
-	if secs > 3600 {
-		secs = 3600
-	}
+	secs := int32(credTTL.Seconds())
 	out, err := e.stsClient.AssumeRole(ctx, &sts.AssumeRoleInput{
 		RoleArn:         aws.String(roleARN),
 		RoleSessionName: aws.String(fmt.Sprintf("zoa-bg-%s", requestID)),

@@ -16,7 +16,7 @@ func init() {
 			Authorization: Authorization{
 				Approval:            "none",
 				DefaultGrantHours:   4,
-				DefaultPendingHours: 24,
+				DefaultRequestHours: 24,
 			},
 			Restrictions: []string{
 				"No secrets, RBAC bind changes, or hosted cluster delete",

@@ -15,7 +15,7 @@ const (
 type Authorization struct {
 	Approval            string `json:"approval"`
 	DefaultGrantHours   int    `json:"default_grant_hours"`
-	DefaultPendingHours int    `json:"default_pending_hours"`
+	DefaultRequestHours int    `json:"default_request_hours"`
 	MinApprovers        int    `json:"min_approvers,omitempty"`
 	RequireDecisionNote bool   `json:"require_decision_note,omitempty"`
 	PageOnRequest       bool   `json:"page_on_request,omitempty"`

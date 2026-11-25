@@ -16,7 +16,7 @@ func TestValidateScope_WhenReadScopeHasPatchVerb_ItShouldReject(t *testing.T) {
 			Authorization: Authorization{
 				Approval:            "none",
 				DefaultGrantHours:   4,
-				DefaultPendingHours: 24,
+				DefaultRequestHours: 24,
 			},
 		},
 		RBAC: func(string) []actions.RBACRule {
@@ -40,7 +40,7 @@ func TestValidateScope_WhenWriteScopeListsSecrets_ItShouldReject(t *testing.T) {
 			Authorization: Authorization{
 				Approval:            "none",
 				DefaultGrantHours:   4,
-				DefaultPendingHours: 24,
+				DefaultRequestHours: 24,
 			},
 		},
 		RBAC: func(string) []actions.RBACRule {
@@ -64,7 +64,7 @@ func TestValidateScope_WhenElevatedScopeListsSecretRead_ItShouldAllow(t *testing
 			Authorization: Authorization{
 				Approval:            "none",
 				DefaultGrantHours:   1,
-				DefaultPendingHours: 8,
+				DefaultRequestHours: 8,
 			},
 		},
 		RBAC: func(string) []actions.RBACRule {

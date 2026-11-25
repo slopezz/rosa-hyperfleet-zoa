@@ -14,10 +14,10 @@ import (
 
 // Stanza is one active grant on a plane (kube or aws).
 type Stanza struct {
-	RequestID       string `json:"requestId"`
-	Scope           string `json:"scope"`
-	GrantExpiresAt  string `json:"grantExpiresAt"`
-	BearerExpiresAt string `json:"bearerExpiresAt,omitempty"`
+	RequestID           string `json:"requestId"`
+	Scope               string `json:"scope"`
+	GrantExpiresAt      string `json:"grantExpiresAt"`
+	CredentialExpiresAt string `json:"credentialExpiresAt,omitempty"`
 }
 
 // Active holds at most one grant per plane.
@@ -71,43 +71,13 @@ func Read(home string) (*Active, error) {
 		return &Active{}, nil
 	}
 	if trim[0] != '{' {
-		return migrateLegacy(home, trim)
+		return nil, fmt.Errorf("active: %s must be JSON (object with kube/aws stanzas)", ActivePath(home))
 	}
 	var a Active
 	if err := json.Unmarshal(data, &a); err != nil {
 		return nil, err
 	}
 	return &a, nil
-}
-
-func migrateLegacy(home, requestID string) (*Active, error) {
-	requestID = strings.TrimSpace(requestID)
-	metaPath := filepath.Join(ConfigDir(home), requestID, "meta.json")
-	data, err := os.ReadFile(metaPath)
-	if err != nil {
-		return &Active{}, nil
-	}
-	var meta struct {
-		Scope          string `json:"scope"`
-		GrantExpiresAt string `json:"grant_expires_at"`
-	}
-	if err := json.Unmarshal(data, &meta); err != nil {
-		return &Active{}, nil
-	}
-	plane, err := PlaneForScope(meta.Scope)
-	if err != nil {
-		return &Active{}, nil
-	}
-	a := &Active{}
-	stanza := Stanza{RequestID: requestID, Scope: meta.Scope, GrantExpiresAt: meta.GrantExpiresAt}
-	switch plane {
-	case breakglass.PlaneKube:
-		a.Kube = &stanza
-	case breakglass.PlaneAWS:
-		a.AWS = &stanza
-	}
-	_ = Write(home, a)
-	return a, nil
 }
 
 // Write persists active state (0600).

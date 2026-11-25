@@ -152,9 +152,15 @@ func printScopeMetadata(scope *client.ScopeMetadata) {
 		if v, ok := scope.Authorization["approval"].(string); ok {
 			fmt.Printf("Approval:    %s\n", v)
 		}
-		if ttl := scopeCatalogGrantTTL(*scope); ttl != "" {
-			fmt.Printf("Grant TTL:   %s default after approve\n", ttl)
-		}
+	}
+	if ttl := scopeCatalogRequestTTL(*scope); ttl != "" {
+		fmt.Printf("Request TTL: %s (decision must complete before request expires)\n", ttl)
+	}
+	if ttl := scopeCatalogGrantTTL(*scope); ttl != "" {
+		fmt.Printf("Grant TTL:   %s after approve\n", ttl)
+	}
+	if scope.Plane != "" {
+		fmt.Printf("Credential TTL: up to %s per activate (re-activate while grant valid)\n", breakglass.CredentialMaxTTLDisplay(scope.Plane))
 	}
 	fmt.Printf("Description: %s\n", scope.Description)
 	composition := scope.Composition
@@ -188,12 +194,27 @@ func scopeCatalogApproval(s client.ScopeMetadata) string {
 	return scopeCatalogAuthString(s, "approval")
 }
 
+func scopeCatalogRequestTTL(s client.ScopeMetadata) string {
+	h := scopeCatalogAuthInt(s, "default_request_hours")
+	if h <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("%dh", h)
+}
+
 func scopeCatalogGrantTTL(s client.ScopeMetadata) string {
 	h := scopeCatalogAuthInt(s, "default_grant_hours")
 	if h <= 0 {
 		return ""
 	}
 	return fmt.Sprintf("%dh", h)
+}
+
+func scopeCatalogCredentialTTL(s client.ScopeMetadata) string {
+	if s.Plane == "" {
+		return ""
+	}
+	return breakglass.CredentialMaxTTLDisplay(s.Plane)
 }
 
 func scopeCatalogAuthString(s client.ScopeMetadata, key string) string {
@@ -238,12 +259,14 @@ func renderBreakglassScopes(format output.Format, list *client.BreakglassScopeLi
 		return output.JSON(os.Stdout, list)
 	}
 	tw := output.NewTable(os.Stdout)
-	fmt.Fprintf(tw, "SCOPE\tPLANE\tTYPE\tAPPROVAL\tGRANT_TTL\tDESCRIPTION\n")
+	fmt.Fprintf(tw, "SCOPE\tPLANE\tTYPE\tAPPROVAL\tREQUEST_TTL\tGRANT_TTL\tCREDENTIAL_TTL\tDESCRIPTION\n")
 	for _, s := range list.Items {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 			s.ID, s.Plane, s.Type,
 			output.Dash(scopeCatalogApproval(s)),
+			output.Dash(scopeCatalogRequestTTL(s)),
 			output.Dash(scopeCatalogGrantTTL(s)),
+			output.Dash(scopeCatalogCredentialTTL(s)),
 			s.Description)
 	}
 	return tw.Flush()
@@ -520,10 +543,10 @@ func activateBreakglass(ctx context.Context, global *GlobalOptions, requestID st
 		return err
 	}
 	stanza := active.Stanza{
-		RequestID:       requestID,
-		Scope:           resp.Scope,
-		GrantExpiresAt:  resp.GrantExpiresAt,
-		BearerExpiresAt: breakglassBearerExpiresAt(plane, resp),
+		RequestID:           requestID,
+		Scope:               resp.Scope,
+		GrantExpiresAt:      resp.GrantExpiresAt,
+		CredentialExpiresAt: breakglassCredentialExpiresAt(plane, resp),
 	}
 	if err := active.Activate(home, stanza); err != nil {
 		return err

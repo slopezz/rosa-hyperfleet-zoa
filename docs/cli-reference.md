@@ -178,7 +178,7 @@ These apply to **every** subcommand (`session`, `run`, `runs`, `audit`, …). Wh
 | `breakglass request … --wait`                       | Create ack on stderr, poll like `zoa run --wait`, then stdout metadata; operator runs `activate` separately                                                                              |
 | `breakglass describe <scope>`                       | Scope details (like `zoa describe`)                                                                                                                                                      |
 | `breakglass history`                                | All operators; all targets by default (`-t` to filter one cluster). Audited.                                                                                                            |
-| `breakglass activate <request-id>`                  | Provision creds under `~/.config/zoa/breakglass/`; prints **grant (~4h)** vs **bearer (~1h)** and `export now:` lines. Re-run **same id** hourly to refresh STS/token while grant valid. |
+| `breakglass activate <request-id>`                  | Provision creds under `~/.config/zoa/breakglass/`; hints show grant vs credential TTL. Re-run **same id** before credentials expire while grant valid. **409 `grant_too_short`** if remaining grant is below kube/aws API minimum. |
 
 ### Laptop approval (Access Lambda)
 

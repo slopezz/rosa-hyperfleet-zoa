@@ -8,6 +8,8 @@ import (
 
 	authenticationv1 "k8s.io/api/authentication/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/openshift-online/rosa-seaplane-zoa/pkg/breakglass"
 )
 
 // BreakglassKubeCluster describes API server endpoint material for kubeconfig wiring.
@@ -41,19 +43,17 @@ func (e *Executor) BreakglassKubeActivate(ctx context.Context, requestID, scopeI
 	}, nil
 }
 
-// IssueBreakglassKubeToken returns a SA token for the grant (max 1h).
+// IssueBreakglassKubeToken returns a SA token for the grant (capped by breakglass.KubeCredentialMaxSeconds).
 func (e *Executor) IssueBreakglassKubeToken(ctx context.Context, requestID, scopeID string, grantRemaining time.Duration) (string, time.Time, error) {
 	saName, err := e.EnsureBreakglassKube(ctx, requestID, scopeID)
 	if err != nil {
 		return "", time.Time{}, err
 	}
-	secs := int64(grantRemaining.Seconds())
-	if secs > 3600 {
-		secs = 3600
+	credTTL, err := breakglass.CredentialDurationForGrant(breakglass.PlaneKube, grantRemaining)
+	if err != nil {
+		return "", time.Time{}, err
 	}
-	if secs < 600 {
-		secs = 600
-	}
+	secs := int64(credTTL.Seconds())
 	tr, err := e.kubeClient.CoreV1().ServiceAccounts(jobNamespace).CreateToken(ctx, saName, &authenticationv1.TokenRequest{
 		Spec: authenticationv1.TokenRequestSpec{
 			Audiences:         []string{"https://kubernetes.default.svc"},
@@ -63,7 +63,7 @@ func (e *Executor) IssueBreakglassKubeToken(ctx context.Context, requestID, scop
 	if err != nil {
 		return "", time.Time{}, fmt.Errorf("creating break-glass token: %w", err)
 	}
-	exp := time.Now().Add(grantRemaining)
+	exp := time.Now().Add(credTTL)
 	if !tr.Status.ExpirationTimestamp.IsZero() {
 		exp = tr.Status.ExpirationTimestamp.Time
 	}

@@ -14,7 +14,7 @@ func init() {
 			Authorization: Authorization{
 				Approval:            "none",
 				DefaultGrantHours:   4,
-				DefaultPendingHours: 24,
+				DefaultRequestHours: 24,
 			},
 			Capabilities: []string{
 				"Cluster-wide get/list/watch: core workloads, networking, storage, policy/HPA, admission webhooks, CRD catalog",

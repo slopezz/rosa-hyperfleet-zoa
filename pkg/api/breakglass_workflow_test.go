@@ -35,7 +35,7 @@ func TestApproveBreakglassOnCreateWhenNoPeerWorkflow_ItShouldTransitionViaApprov
 			Authorization: breakglass.Authorization{
 				Approval:            "none",
 				DefaultGrantHours:   4,
-				DefaultPendingHours: 24,
+				DefaultRequestHours: 24,
 			},
 		},
 	}

@@ -49,7 +49,7 @@ func ClientScopeFromMetadata(m breakglass.ScopeMetadata) client.ScopeMetadata {
 	auth := map[string]interface{}{
 		"approval":              m.Authorization.Approval,
 		"default_grant_hours":   m.Authorization.DefaultGrantHours,
-		"default_pending_hours": m.Authorization.DefaultPendingHours,
+		"default_request_hours": m.Authorization.DefaultRequestHours,
 	}
 	if m.Authorization.MinApprovers > 0 {
 		auth["min_approvers"] = m.Authorization.MinApprovers

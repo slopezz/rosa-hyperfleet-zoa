@@ -24,7 +24,7 @@ Emergency scoped `kubectl` / `aws` from the **boundary** only. Same patterns as 
 | Clock            | What it means                                                               | What you see                                                                            |
 | ---------------- | --------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
 | **Grant**        | How long lifecycle `status=active` stays valid (per scope, from approve)    | PS1 `grant~3h`; `grant_expires` / `GRANT_EXPIRES` in `get` / `requests` / `history`     |
-| **Bearer creds** | Kube **ServiceAccount token** and **STS** session lifetime (capped ~**1h**) | `kubectl` / `aws` stop working when creds expire **even if grant still has hours left** |
+| **Credentials** | Kube **ServiceAccount token** and **STS** session per activate (platform max in `pkg/breakglass/credential.go`) | `kubectl` / `aws` stop when creds expire **even if grant still has hours left**; activate fails with **HTTP 409 `grant_too_short`** if grant remaining is below cloud API minimum (kube 10m, aws 15m) |
 
 **Refresh:** run `zoa breakglass activate <same-request-id>` again before creds expire (while `status=active`, `approval=approved`, and before grant end). You do **not** need a new request. Lifecycle vs decision: [approval-workflow.md](../approval-workflow.md#break-glass-row-status-vs-approval-implemented).
 
@@ -36,7 +36,7 @@ Emergency scoped `kubectl` / `aws` from the **boundary** only. Same patterns as 
 | `aws`     | Break-glass only: with an aws grant, `AWS_SHARED_CREDENTIALS_FILE` → `~/.config/zoa/breakglass/aws-credentials` (`[default]`). No grant → file unset (do not use stock `aws` for task-role work in boundary). |
 | `zoa`     | **ECS task role only** (Lambda / TAs); ignores break-glass credential files.                                                                                                                                  |
 
-`PROMPT_COMMAND` sets/unsets env from `active` — the SRE never runs manual `unset`. No `AWS_PROFILE`. `AWS_PAGER` is empty. PS1 uses `|` between kube and aws; cred countdown uses `bearerExpiresAt` from `activate`.
+`PROMPT_COMMAND` sets/unsets env from `active` — the SRE never runs manual `unset`. No `AWS_PROFILE`. `AWS_PAGER` is empty. PS1 uses `|` between kube and aws; cred countdown uses `credentialExpiresAt` from `activate`.
 
 ## Jira (ROSAENG-69)
 

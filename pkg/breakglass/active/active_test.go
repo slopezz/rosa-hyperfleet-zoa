@@ -2,7 +2,6 @@ package active
 
 import (
 	"os"
-	"path/filepath"
 	"testing"
 )
 
@@ -45,28 +44,15 @@ func TestActivate_WhenSecondKubeUse_ItShouldReplaceKubeStanza(t *testing.T) {
 	}
 }
 
-func TestRead_WhenLegacySingleLine_ItShouldMigrateFromMeta(t *testing.T) {
+func TestRead_WhenActiveIsNotJSON_ItShouldReturnError(t *testing.T) {
 	home := t.TempDir()
-	dir := RequestDir(home, "550e8400-e29b-41d4-a716-446655440000")
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	meta := `{"request_id":"550e8400-e29b-41d4-a716-446655440000","scope":"kube-read","grant_expires_at":"2099-01-01T00:00:00Z"}`
-	if err := os.WriteFile(filepath.Join(dir, "meta.json"), []byte(meta), 0o600); err != nil {
+	if err := os.MkdirAll(ConfigDir(home), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(ActivePath(home), []byte("550e8400-e29b-41d4-a716-446655440000\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	a, err := Read(home)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if a.Kube == nil || a.Kube.Scope != "kube-read" {
-		t.Fatalf("migrate: %+v", a)
-	}
-	raw, _ := os.ReadFile(ActivePath(home))
-	if raw[0] != '{' {
-		t.Fatal("expected JSON active file after migrate")
+	if _, err := Read(home); err == nil {
+		t.Fatal("expected error for non-JSON active file")
 	}
 }

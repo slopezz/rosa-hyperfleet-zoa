@@ -17,8 +17,9 @@ func TestRenderBreakglassScopes_WhenTable_ItShouldPrintHeaderRow(t *testing.T) {
 			Type:        "read",
 			Description: "read-only",
 			Authorization: map[string]interface{}{
-				"approval":            "none",
-				"default_grant_hours": 4,
+				"approval":              "none",
+				"default_request_hours": 24,
+				"default_grant_hours":   4,
 			},
 		}},
 		Count: 1,
@@ -28,10 +29,12 @@ func TestRenderBreakglassScopes_WhenTable_ItShouldPrintHeaderRow(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
-	if !strings.Contains(out, "SCOPE") || !strings.Contains(out, "APPROVAL") || !strings.Contains(out, "GRANT_TTL") {
+	if !strings.Contains(out, "SCOPE") || !strings.Contains(out, "APPROVAL") ||
+		!strings.Contains(out, "REQUEST_TTL") || !strings.Contains(out, "GRANT_TTL") || !strings.Contains(out, "CREDENTIAL_TTL") {
 		t.Fatalf("missing headers: %q", out)
 	}
-	if !strings.Contains(out, "kube-read") || !strings.Contains(out, "none") || !strings.Contains(out, "4h") {
+	if !strings.Contains(out, "kube-read") || !strings.Contains(out, "none") ||
+		!strings.Contains(out, "24h") || !strings.Contains(out, "4h") || !strings.Contains(out, "1h") {
 		t.Fatalf("missing row: %q", out)
 	}
 }
@@ -62,5 +65,19 @@ func TestScopeCatalogGrantTTL_WhenHoursPresent_ItShouldFormatDuration(t *testing
 	s := client.ScopeMetadata{Authorization: map[string]interface{}{"default_grant_hours": float64(1)}}
 	if scopeCatalogGrantTTL(s) != "1h" {
 		t.Fatalf("got %q", scopeCatalogGrantTTL(s))
+	}
+}
+
+func TestScopeCatalogRequestTTL_WhenHoursPresent_ItShouldFormatDuration(t *testing.T) {
+	s := client.ScopeMetadata{Authorization: map[string]interface{}{"default_request_hours": float64(8)}}
+	if scopeCatalogRequestTTL(s) != "8h" {
+		t.Fatalf("got %q", scopeCatalogRequestTTL(s))
+	}
+}
+
+func TestScopeCatalogCredentialTTL_WhenPlaneSet_ItShouldUsePlatformMax(t *testing.T) {
+	s := client.ScopeMetadata{Plane: "kube"}
+	if scopeCatalogCredentialTTL(s) != "1h" {
+		t.Fatalf("got %q", scopeCatalogCredentialTTL(s))
 	}
 }

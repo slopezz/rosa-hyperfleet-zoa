@@ -42,7 +42,7 @@ func TestClientScopeFromMetadata_WhenApprovalSet_ItShouldMapAuthorization(t *tes
 		Authorization: breakglass.Authorization{
 			Approval:            "none",
 			DefaultGrantHours:   4,
-			DefaultPendingHours: 24,
+			DefaultRequestHours: 24,
 		},
 	}
 	out := ClientScopeFromMetadata(meta)

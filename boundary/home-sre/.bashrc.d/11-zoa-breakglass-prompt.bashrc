@@ -102,15 +102,15 @@ zoa_breakglass_apply_env() {
 zoa_breakglass_ps1_part() {
   local plane="$1"
   local active="$2"
-  local scope exp grant_left bearer_exp cred_left part
+  local scope exp grant_left credential_exp cred_left part
   scope="$(jq -r --arg p "${plane}" '.[$p].scope // empty' "${active}")"
   if [[ -z "${scope}" ]]; then
     return 0
   fi
   exp="$(jq -r --arg p "${plane}" '.[$p].grantExpiresAt // empty' "${active}")"
   grant_left="$(zoa_breakglass_time_left "${exp}")"
-  bearer_exp="$(jq -r --arg p "${plane}" '.[$p].bearerExpiresAt // empty' "${active}")"
-  cred_left="$(zoa_breakglass_time_left "${bearer_exp}")"
+  credential_exp="$(jq -r --arg p "${plane}" '.[$p].credentialExpiresAt // empty' "${active}")"
+  cred_left="$(zoa_breakglass_time_left "${credential_exp}")"
   part="${plane}=${scope}"
   if [[ -n "${grant_left}" ]]; then
     part="${part} grant${grant_left}"

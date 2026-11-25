@@ -35,7 +35,7 @@ func validateBreakglassActivateArtifacts(home, requestID, plane string, resp *cl
 	return nil
 }
 
-// breakglassCredExpireNote returns a short line for when bearer creds expire (kube ~1h cap; STS from API).
+// breakglassCredExpireNote returns a short line for when activate credentials expire (from API or platform max).
 func breakglassCredExpireNote(plane string, resp *client.BreakglassActivateResponse) string {
 	switch plane {
 	case breakglass.PlaneKube:
@@ -44,7 +44,7 @@ func breakglassCredExpireNote(plane string, resp *client.BreakglassActivateRespo
 				return formatBreakglassCredTTL(time.Until(t))
 			}
 		}
-		return "1h"
+		return breakglass.CredentialMaxTTLDisplay(plane)
 	case breakglass.PlaneAWS:
 		if resp.AWS != nil {
 			if raw, ok := resp.AWS["expiration"].(string); ok && raw != "" {
@@ -53,13 +53,13 @@ func breakglassCredExpireNote(plane string, resp *client.BreakglassActivateRespo
 				}
 			}
 		}
-		return "1h"
+		return breakglass.CredentialMaxTTLDisplay(plane)
 	default:
-		return "1h"
+		return breakglass.CredentialMaxTTLDisplay(plane)
 	}
 }
 
-func breakglassBearerExpiresAt(plane string, resp *client.BreakglassActivateResponse) string {
+func breakglassCredentialExpiresAt(plane string, resp *client.BreakglassActivateResponse) string {
 	switch plane {
 	case breakglass.PlaneKube:
 		return resp.KubeTokenExpiresAt
@@ -91,7 +91,7 @@ func formatBreakglassCredTTL(d time.Duration) string {
 	return fmt.Sprintf("%dh%dm", h, m)
 }
 
-// printBreakglassActivateHints explains grant vs bearer clocks (no manual export; shell wires env).
+// printBreakglassActivateHints explains grant vs credential clocks (no manual export; shell wires env).
 func printBreakglassActivateHints(w io.Writer, home, requestID, plane string, resp *client.BreakglassActivateResponse) {
 	_ = home
 	credTTL := breakglassCredExpireNote(plane, resp)

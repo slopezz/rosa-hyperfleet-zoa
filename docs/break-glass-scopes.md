@@ -40,7 +40,7 @@ func init() {
 			Authorization: Authorization{
 				Approval:            "none",
 				DefaultGrantHours:   4,
-				DefaultPendingHours: 24,
+				DefaultRequestHours: 24,
 			},
 			TargetTypes: []string{actions.TargetTypeRC, actions.TargetTypeMC},
 		},

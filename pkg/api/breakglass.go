@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -90,7 +91,7 @@ func (h *Handler) handleCreateBreakglassRequest(w http.ResponseWriter, r *http.R
 		return
 	}
 	now := time.Now()
-	requestExpires := now.Add(time.Duration(def.Metadata.Authorization.DefaultPendingHours) * time.Hour)
+	requestExpires := now.Add(time.Duration(def.Metadata.Authorization.DefaultRequestHours) * time.Hour)
 
 	taskID, _ := extractTaskIDFromSigner(signerARN)
 	req := &store.BreakglassRequest{
@@ -272,6 +273,11 @@ func (h *Handler) handleActivateBreakglassRequest(w http.ResponseWriter, r *http
 	def, scopeOK := breakglass.Get(req.Scope)
 	if scopeOK && h.executor != nil {
 		remaining := time.Until(mustParseRFC3339(req.GrantExpiresAt))
+		if _, err := breakglass.CredentialDurationForGrant(def.Metadata.Plane, remaining); err != nil {
+			if writeBreakglassGrantTooShort(w, err) {
+				return
+			}
+		}
 		switch def.Metadata.Plane {
 		case breakglass.PlaneKube:
 			cluster, err := h.executor.BreakglassKubeActivate(r.Context(), req.RequestID, req.Scope)
@@ -283,6 +289,9 @@ func (h *Handler) handleActivateBreakglassRequest(w http.ResponseWriter, r *http
 			resp["kube"] = cluster
 			token, exp, err := h.executor.IssueBreakglassKubeToken(r.Context(), req.RequestID, req.Scope, remaining)
 			if err != nil {
+				if writeBreakglassGrantTooShort(w, err) {
+					return
+				}
 				h.logger.Error("breakglass issue kube token", "error", err, "request_id", req.RequestID)
 				writeError(w, http.StatusInternalServerError, "provision_failed", "failed to issue break-glass kube token")
 				return
@@ -292,6 +301,9 @@ func (h *Handler) handleActivateBreakglassRequest(w http.ResponseWriter, r *http
 		case breakglass.PlaneAWS:
 			creds, err := h.executor.AssumeBreakglassRole(r.Context(), req.RequestID, req.Scope, remaining)
 			if err != nil {
+				if writeBreakglassGrantTooShort(w, err) {
+					return
+				}
 				h.logger.Error("breakglass activate aws", "error", err)
 				writeError(w, http.StatusInternalServerError, "provision_failed", "failed to provision break-glass AWS access")
 				return
@@ -320,6 +332,15 @@ func mustParseRFC3339(s string) time.Time {
 		return time.Now().Add(4 * time.Hour)
 	}
 	return t
+}
+
+func writeBreakglassGrantTooShort(w http.ResponseWriter, err error) bool {
+	var short *breakglass.GrantTooShortError
+	if errors.As(err, &short) {
+		writeError(w, http.StatusConflict, "grant_too_short", breakglass.ActivateGrantTooShortMessage(short.Plane, short.Remaining))
+		return true
+	}
+	return false
 }
 
 func extractTaskIDFromSigner(signerARN string) (string, bool) {

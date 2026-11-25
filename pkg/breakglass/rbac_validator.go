@@ -60,8 +60,8 @@ func validateAuthorization(meta ScopeMetadata) error {
 	if auth.DefaultGrantHours <= 0 {
 		return fmt.Errorf("scope %s: default_grant_hours must be > 0", meta.ID)
 	}
-	if auth.DefaultPendingHours <= 0 {
-		return fmt.Errorf("scope %s: default_pending_hours must be > 0", meta.ID)
+	if auth.DefaultRequestHours <= 0 {
+		return fmt.Errorf("scope %s: default_request_hours must be > 0", meta.ID)
 	}
 	if meta.Type == TypeElevated && auth.DefaultGrantHours > 2 {
 		return fmt.Errorf("scope %s: elevated default_grant_hours must be <= 2", meta.ID)

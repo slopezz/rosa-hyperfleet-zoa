@@ -126,14 +126,15 @@ Code path: `EnsureBreakglassKube` → `createBreakglassResourcesIdempotent` (`pk
 
 No S3 job, no async runner, and no per-activation K8s Job — credentials return in the **activate HTTP response** and are written locally by the CLI (`internal/cli/breakglass_activate.go`).
 
-## Two clocks (grant vs bearer)
+## Three clocks (request, grant, credential)
 
-Operators see both in PS1 (`grant~…` and credential countdown). Full UX table: [README — Two clocks](README.md#two-clocks-grant-vs-credentials).
+| Clock           | Source                                                          | Effect                                                                                          |
+| --------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| **Request TTL** | Scope `default_request_hours` → `request_expires_at`            | Pending request expires without decision                                                          |
+| **Grant**       | Scope `default_grant_hours` at approve → `grant_expires_at`     | After expiry, `activate` returns gone; reconciler sets `status=expired`                          |
+| **Credential**  | `pkg/breakglass/credential.go` max + `min(grant left, max)`     | `kubectl` / `aws` stop when creds expire **even if grant still valid**; **409** if grant left &lt; API min |
 
-| Clock      | Stored / computed                                                  | Effect                                                                  |
-| ---------- | ------------------------------------------------------------------ | ----------------------------------------------------------------------- |
-| **Grant**  | `grant_expires_at` on the DynamoDB row (from scope TTL at approve) | After expiry, `activate` returns gone; reconciler sets `status=expired` |
-| **Bearer** | Kube token `ExpirationSeconds`; STS `DurationSeconds`              | `kubectl` / `aws` fail when bearer ends **even if grant still valid**   |
+Operators see grant + cred in PS1 (`grant~…`, `cred~…`); `active` stores `credentialExpiresAt`. Catalog: `zoa breakglass describe` / `scopes` (request, grant, credential TTL). Full UX: [README — Two clocks](README.md#two-clocks-grant-vs-credentials).
 
 **Refresh:** `zoa breakglass activate <same-request-id>` again from the **same boundary task** while `status=active`, `approval=approved`, and before `grant_expires_at`. Re-activate replaces tokens and STS keys; it does not create a new request.
 

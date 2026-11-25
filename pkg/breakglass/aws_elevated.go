@@ -12,7 +12,7 @@ func init() {
 			Authorization: Authorization{
 				Approval:            "none",
 				DefaultGrantHours:   1,
-				DefaultPendingHours: 8,
+				DefaultRequestHours: 8,
 			},
 			AwsRoleKey: AwsRoleKeyElevated,
 			Capabilities: []string{
