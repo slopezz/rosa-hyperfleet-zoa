@@ -29,7 +29,7 @@ All six scopes use **`authorization.approval: none`** (synthetic approver `auto`
 | --------------- | ----- | ----------------- | ----------------------------------------------------------------------------------------------- |
 | `kube-read`     | kube  | RC, MC            | Composed RBAC in `kube_read.go` (platform addon API groups on RC; Hypershift/CAPI groups on MC) |
 | `kube-write`    | kube  | RC, MC            | No secrets / exec in v1 read paths; write scope separate                                        |
-| `kube-elevated` | kube  | RC, MC            | Shorter default grant hours; broader rules with explicit denies                                 |
+| `kube-elevated` | kube  | RC, MC            | Near-admin: write + platform mutate (no platform `*` delete), core `verbsMutateFull`, secrets read, exec |
 | `aws-read`      | aws   | RC, MC            | STS into Terraform-mapped read roles                                                            |
 | `aws-write`     | aws   | RC, MC            | Mutating allow-list IAM                                                                         |
 | `aws-elevated`  | aws   | RC, MC            | Elevated IAM; boundary task role denied ECS Exec for this path                                  |
@@ -623,7 +623,9 @@ Each scope file’s **`ScopeMetadata`** carries human **`capabilities` / `restri
 
 #### 5.8.3 Concrete RBAC (RC vs MC) and IAM policies (v1 draft for security review)
 
-**Source of truth:** RBAC lives in **`pkg/scopes`** (`kube_read_rc.go`, `kube_read_mc.go`, …) as `[]actions.RBACRule`, applied to **`zoa-bg-<requestId>`** ClusterRole (+ Binding). The **same** `KubeReadRules(targetType)` should be imported by TA **`get_resource`** (replacing `apiGroups: *`, `resources: *`). Only **`get_secret`** keeps `AllowSecretRead` + explicit `secrets` rules.
+> **Shipped source of truth:** `pkg/breakglass/` (`kube_read.go`, `kube_write.go`, `kube_elevated.go`, `kube_rbac.go`, `aws_*.go`). Operator-facing **`capabilities` / `restrictions`** and the summary table live in [../break-glass-scopes.md](../break-glass-scopes.md). The subsections below are a **security-review archive** — align new work with Go first, then refresh this appendix if needed.
+
+**Source of truth (archive note):** RBAC was originally sketched in **`pkg/scopes`** split files; shipped code uses **`pkg/breakglass`** as `[]actions.RBACRule` on **`zoa-bg-<requestId>`** ClusterRole (+ Binding). TA **`get_resource`** alignment with **`kube-read`** remains a follow-up where noted elsewhere.
 
 **Target selection:** `ZOA_TARGET_TYPE` / `TargetTypes` on the scope registry — same as TAs (`list_db_gvks` RC-only, `must_gather` both).
 

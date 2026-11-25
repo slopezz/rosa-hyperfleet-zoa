@@ -16,8 +16,11 @@ func init() {
 			},
 			AwsRoleKey: AwsRoleKeyElevated,
 			Capabilities: []string{
-				"PowerUserAccess in the session account",
+				"PowerUserAccess in the session account (e.g. EC2 terminate for stuck nodes on MC)",
 				"Immutability Deny: ZOA S3 artifacts, Dynamo rows/tables, ZOA Lambdas, boundary ECS Exec",
+			},
+			Restrictions: []string{
+				"IAM/org mutation and broad secrets/KMS paths remain denied (Terraform policy sidebar)",
 			},
 			IAMComposition: []string{
 				"Role: {cluster_id}-zoa-bg-aws-elevated",

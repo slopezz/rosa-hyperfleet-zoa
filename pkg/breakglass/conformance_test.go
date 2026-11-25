@@ -135,7 +135,9 @@ func TestScopeSourceFiles_WhenPresent_TheyShouldMatchCatalog(t *testing.T) {
 			continue
 		}
 		switch name {
-		case "types.go", "registry.go", "approval.go", "rbac_validator.go", "aws_keys.go":
+		case "types.go", "registry.go", "approval.go", "rbac_validator.go", "aws_keys.go",
+			"kube_rbac.go", "describe.go", "describe_target.go", "credential.go",
+			"aws_catalog.go":
 			continue
 		}
 		implStems[strings.TrimSuffix(name, ".go")] = true

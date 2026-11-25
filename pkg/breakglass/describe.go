@@ -41,10 +41,18 @@ func compositionLines(meta ScopeMetadata) []string {
 	case "kube-read":
 		return []string{"Full cluster read (get/list/watch)"}
 	case "kube-write":
-		return []string{"Includes all kube-read RBAC", "Adds surgical workload mutations"}
+		return []string{"Includes all kube-read RBAC", "Surgical workload mutate (see scope capabilities)"}
 	case "kube-elevated":
-		return []string{"Includes all kube-write RBAC", "Adds secret read and kubectl exec", "Default grant ≤ 2h"}
+		return []string{"Includes all kube-write RBAC", "Platform/core elevated delta, secrets read, pods/exec"}
 	default:
 		return nil
 	}
+}
+
+// EffectiveRBAC returns the rules materialized for a target (rc or mc).
+func EffectiveRBAC(def *Definition, targetType string) []actions.RBACRule {
+	if def == nil || def.RBAC == nil {
+		return nil
+	}
+	return def.RBAC(targetType)
 }

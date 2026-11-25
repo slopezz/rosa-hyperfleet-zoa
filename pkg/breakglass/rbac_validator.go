@@ -15,6 +15,16 @@ var rbacBindResources = []string{
 	"roles", "rolebindings", "clusterroles", "clusterrolebindings",
 }
 
+// elevatedForbiddenDeleteResources must not receive delete even in kube-elevated (read-only via omission + guard).
+var elevatedForbiddenDeleteResources = []string{
+	"customresourcedefinitions",
+	"namespaces",
+	"mutatingwebhookconfigurations",
+	"validatingwebhookconfigurations",
+	"validatingadmissionpolicies",
+	"validatingadmissionpolicybindings",
+}
+
 // ValidateScope checks metadata shape and kube RBAC policy for a registered scope.
 func ValidateScope(def *Definition) error {
 	if def == nil {
@@ -92,6 +102,11 @@ func validateKubeScope(def *Definition) error {
 		if err := validateScopeTypeRBAC(meta.Type, rules); err != nil {
 			return fmt.Errorf("scope %s (%s): %w", meta.ID, target, err)
 		}
+		if meta.Type == TypeElevated {
+			if err := validateElevatedRBAC(rules); err != nil {
+				return fmt.Errorf("scope %s (%s): %w", meta.ID, target, err)
+			}
+		}
 	}
 	return nil
 }
@@ -144,6 +159,23 @@ func validateSecretsPolicy(scopeType string, rule actions.RBACRule) error {
 	for _, verb := range rule.Verbs {
 		if writeVerbs[verb] {
 			return fmt.Errorf("secret write verbs are forbidden in break-glass")
+		}
+	}
+	return nil
+}
+
+func validateElevatedRBAC(rules []actions.RBACRule) error {
+	for _, rule := range rules {
+		if slices.Contains(rule.Resources, "*") && slices.Contains(rule.Verbs, "delete") {
+			return fmt.Errorf("elevated scope must not grant delete with resources *")
+		}
+		for _, res := range rule.Resources {
+			if !slices.Contains(elevatedForbiddenDeleteResources, res) {
+				continue
+			}
+			if slices.Contains(rule.Verbs, "delete") {
+				return fmt.Errorf("elevated scope must not grant delete on %s", res)
+			}
 		}
 	}
 	return nil

@@ -8,10 +8,10 @@ func init() {
 			ID:          "kube-write",
 			Plane:       PlaneKube,
 			Type:        TypeWrite,
-			Description: "Full kube-read plus surgical workload changes (patch/update; delete pods and jobs)",
+			Description: "Full kube-read plus workload mutate (controllers: create/patch/update; pods, configmaps, jobs: full mutate)",
 			Capabilities: []string{
 				"Includes all kube-read RBAC",
-				"Patch/update deployments, statefulsets, daemonsets, pods, configmaps; delete pods and jobs",
+				"Apps controllers: create/patch/update (no delete); full mutate on pods, configmaps, jobs",
 			},
 			Authorization: Authorization{
 				Approval:            "none",
@@ -19,31 +19,34 @@ func init() {
 				DefaultRequestHours: 24,
 			},
 			Restrictions: []string{
-				"No secrets, RBAC bind changes, or hosted cluster delete",
+				"No secrets, pods/exec, RBAC bind writes, or platform CR mutate (use kube-elevated)",
 			},
 			TargetTypes: []string{actions.TargetTypeRC, actions.TargetTypeMC},
 		},
-		RBAC: kubeReadPlusWriteRBAC,
+		RBAC: kubeWriteRBAC,
 	})
 }
 
-// kubeWriteMutationsRBAC is the write delta (no cluster-wide read).
+func kubeWriteRBAC(targetType string) []actions.RBACRule {
+	return append(kubeReadRBAC(targetType), kubeWriteMutationsRBAC(targetType)...)
+}
+
 func kubeWriteMutationsRBAC(string) []actions.RBACRule {
 	return []actions.RBACRule{
 		{
 			APIGroups: []string{"apps"},
 			Resources: []string{"deployments", "daemonsets", "statefulsets", "replicasets"},
-			Verbs:     []string{"get", "list", "patch", "update"},
+			Verbs:     verbsMutate,
 		},
 		{
 			APIGroups: []string{"batch"},
 			Resources: []string{"jobs"},
-			Verbs:     []string{"get", "list", "patch", "update", "delete"},
+			Verbs:     verbsMutateFull,
 		},
 		{
 			APIGroups: []string{""},
 			Resources: []string{"pods", "configmaps"},
-			Verbs:     []string{"get", "list", "patch", "update", "delete"},
+			Verbs:     verbsMutateFull,
 		},
 	}
 }

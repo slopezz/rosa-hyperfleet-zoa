@@ -5,7 +5,7 @@ Emergency scoped `kubectl` / `aws` from the **boundary** only. Same patterns as 
 | Document                                                       | Purpose                                                                                                        |
 | -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
 | **[Credential architecture](credential-architecture.md)**      | How activate provisions kube/AWS creds (diagrams; like TA [implementation](../architecture/implementation.md)) |
-| [Scope authoring guide](../break-glass-scopes.md)              | `pkg/breakglass/` catalog (like [trusted-actions.md](../trusted-actions.md))                                   |
+| [Scope authoring guide](../break-glass-scopes.md)              | `pkg/breakglass/` catalog — **capabilities/restrictions** + RBAC/IAM (like [trusted-actions.md](../trusted-actions.md)) |
 | [Approval workflow (TA + BG)](../approval-workflow.md)         | Approval policy (`none` today; gist/OPA planned)                                                               |
 | [API reference — break-glass](../api-reference.md#break-glass) | HTTP routes                                                                                                    |
 | [CLI reference — break-glass](../cli-reference.md#break-glass) | Operator commands                                                                                              |

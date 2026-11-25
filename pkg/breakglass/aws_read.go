@@ -16,7 +16,10 @@ func init() {
 			},
 			AwsRoleKey: AwsRoleKeyRead,
 			Capabilities: []string{
-				"Managed policy ReadOnlyAccess",
+				"Managed policy ReadOnlyAccess in the session account",
+			},
+			Restrictions: []string{
+				"No write or elevated IAM actions (use aws-write / aws-elevated)",
 			},
 			IAMComposition: []string{
 				"Role: {cluster_id}-zoa-bg-aws-read",

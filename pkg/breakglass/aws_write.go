@@ -16,7 +16,12 @@ func init() {
 			},
 			AwsRoleKey: AwsRoleKeyWrite,
 			Capabilities: []string{
-				"RC: EC2 start/stop/reboot; RDS RebootDBCluster; ElastiCache RebootCacheCluster",
+				"Includes ReadOnlyAccess (aws-read)",
+				"RC only: EC2 start/stop/reboot; RDS RebootDBCluster; ElastiCache RebootCacheCluster",
+			},
+			Restrictions: []string{
+				"MC target: same effective IAM as aws-read (no state-change mutations)",
+				"No elevated actions (EC2 terminate, PowerUser); use aws-elevated",
 			},
 			IAMComposition: []string{
 				"Role: {cluster_id}-zoa-bg-aws-write",
