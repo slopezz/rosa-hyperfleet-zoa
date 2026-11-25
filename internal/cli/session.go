@@ -364,7 +364,8 @@ listing other operators here. Use 'zoa session history' for fleet-wide audit.`,
 			}
 
 			query := url.Values{}
-			query.Set("scope", "mine")
+			query.Set("mine", "true")
+			query.Set("scope", "mine") // zoa-retrocompatibility-cleanup
 			if since != "" {
 				query.Set("since", since)
 			}

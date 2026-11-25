@@ -77,7 +77,7 @@ var _ = Describe("zoa runs", func() {
 			})
 
 			It("filters by scope (kube-api)", func() {
-				out, err := runZoa(tgt, "runs", "-o", "json", "--scope", "kube-api", "--since", "1h", "--limit", "10")
+				out, err := runZoa(tgt, "runs", "-o", "json", "--scope", "kube", "--since", "1h", "--limit", "10")
 				Expect(err).NotTo(HaveOccurred(), out)
 
 				jsonStr := extractJSON(out)
@@ -88,7 +88,7 @@ var _ = Describe("zoa runs", func() {
 				}
 				Expect(json.Unmarshal([]byte(jsonStr), &list)).To(Succeed(), out)
 				for _, e := range list.Items {
-					Expect(e.Scope).To(Equal("kube-api"))
+					Expect(e.Scope).To(Equal("kube"))
 				}
 			})
 

@@ -36,7 +36,7 @@ func printBreakglassRequestTable(global *GlobalOptions, list *client.BreakglassR
 		created := formatBreakglassTime(r.CreatedAt)
 		session := breakglassSessionDisplay(r.SessionID, wide)
 		requestID := r.RequestID
-		scope := r.Scope
+		scope := r.Name
 		target := output.Truncate(breakglassTargetCluster(r.TargetCluster), 25)
 		status := breakglassLifecycleStatus(r)
 		approval := breakglassWorkflowApproval(r)

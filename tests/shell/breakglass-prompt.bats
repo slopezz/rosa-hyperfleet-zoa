@@ -16,12 +16,12 @@ teardown() {
 {
   "kube": {
     "requestId": "11111111-1111-1111-1111-111111111111",
-    "scope": "kube-read",
+    "name": "kube-read",
     "grantExpiresAt": "2099-06-01T12:00:00Z"
   },
   "aws": {
     "requestId": "22222222-2222-2222-2222-222222222222",
-    "scope": "aws-write",
+    "name": "aws-write",
     "grantExpiresAt": "2099-06-01T14:00:00Z"
   }
 }
@@ -43,7 +43,7 @@ EOF
 {
   "kube": {
     "requestId": "11111111-1111-1111-1111-111111111111",
-    "scope": "kube-read",
+    "name": "kube-read",
     "grantExpiresAt": "2099-06-01T12:00:00Z",
     "credentialExpiresAt": "2099-06-01T11:58:00Z"
   }

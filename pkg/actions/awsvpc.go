@@ -23,7 +23,7 @@ type listVPCEndpoints struct{}
 func (l *listVPCEndpoints) Metadata() ActionMetadata {
 	return ActionMetadata{
 		Name:           "list_vpc_endpoints",
-		Scope:          "aws-api",
+		Scope:          "aws",
 		Type:           "read",
 		ExecutionMode:  "sync",
 		Description:    "List all VPC endpoints in the configured AWS region.",
@@ -86,7 +86,7 @@ type describeVPCEndpoint struct{}
 func (d *describeVPCEndpoint) Metadata() ActionMetadata {
 	return ActionMetadata{
 		Name:           "describe_vpc_endpoint",
-		Scope:          "aws-api",
+		Scope:          "aws",
 		Type:           "read",
 		ExecutionMode:  "sync",
 		Description:    "Describe a specific VPC endpoint by ID.",

@@ -28,8 +28,8 @@ zoa_actions_catalog_path() {
   echo "$(zoa_sre_home)/.claude/ZOA_ACTIONS.md"
 }
 
-zoa_breakglass_scopes_catalog_path() {
-  echo "$(zoa_sre_home)/.claude/ZOA_BREAKGLASS_SCOPES.md"
+zoa_breakglass_profiles_catalog_path() {
+  echo "$(zoa_sre_home)/.claude/ZOA_BREAKGLASS_PROFILES.md"
 }
 
 zoa_target_type() {
@@ -68,10 +68,10 @@ write_zoa_session_md() {
       echo "| Inactivity termination (no Exec activity) | $(zoa_boundary_format_idle_timeout "${ZOA_SESSION_IDLE_TIMEOUT_SECONDS}") |"
     fi
     echo ""
-    echo "**Target type \`${target_type}\`** matches **TYPE** in \`zoa targets\` — \`rc\` = Regional Cluster EKS (one per region); \`mc\` = Management Cluster EKS (HyperShift; may be several per region). kube-api TAs use this cluster; aws-api TAs use this cluster's AWS account/region."
+    echo "**Target type \`${target_type}\`** matches **TYPE** in \`zoa targets\` — \`rc\` = Regional Cluster EKS (one per region); \`mc\` = Management Cluster EKS (HyperShift; may be several per region). kube TAs use this cluster; aws TAs use this cluster's AWS account/region."
     echo ""
     echo "Trusted Actions catalog: \`$(zoa_actions_catalog_path)\` (offline render from embedded CLI registry; live API is authoritative when connected)."
-    echo "Break-glass scope catalog: \`$(zoa_breakglass_scopes_catalog_path)\` (offline; live: \`zoa breakglass describe <scope>\`)."
+    echo "Break-glass profile catalog: \`$(zoa_breakglass_profiles_catalog_path)\` (offline; live: \`zoa breakglass describe <name>\`)."
     echo "Live details: \`zoa describe <action>\` · Offline: \`zoa actions --offline\` · See CLAUDE.md"
   } > "$(zoa_session_md_path)"
 }
@@ -92,9 +92,9 @@ install_actions_catalog() {
   fi
 }
 
-install_breakglass_scopes_catalog() {
+install_breakglass_profiles_catalog() {
   local catalog_path target_type
-  catalog_path="$(zoa_breakglass_scopes_catalog_path)"
+  catalog_path="$(zoa_breakglass_profiles_catalog_path)"
   target_type="$(zoa_target_type)"
   mkdir --parents "$(zoa_sre_home)/.claude"
 
@@ -103,8 +103,8 @@ install_breakglass_scopes_catalog() {
     exit 1
   fi
 
-  if ! zoa breakglass scopes --offline -o markdown --target-type "${target_type}" >"${catalog_path}"; then
-    echo "FATAL: zoa breakglass scopes --offline -o markdown failed" >&2
+  if ! zoa breakglass profiles --offline -o markdown --target-type "${target_type}" >"${catalog_path}"; then
+    echo "FATAL: zoa breakglass profiles --offline -o markdown failed" >&2
     exit 1
   fi
 }
@@ -126,7 +126,7 @@ print_startup_banner() {
 main() {
   write_zoa_session_md
   install_actions_catalog
-  install_breakglass_scopes_catalog
+  install_breakglass_profiles_catalog
   require_ecs_exec_logging_bins
   print_startup_banner
   exec "$@"

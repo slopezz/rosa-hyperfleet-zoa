@@ -315,7 +315,7 @@ func TestTimeoutDispatched_WhenExecutionExceedsTimeout_ItShouldMarkTimedOut(t *t
 	execStore := &mockExecutionStore{
 		executions: []*store.Execution{
 			{
-				ID:             "exec-timeout",
+				ID: "exec-timeout",
 				Action:         "get-resource",
 				Status:         store.StatusDispatched,
 				TimeoutSeconds: 60,
@@ -347,7 +347,7 @@ func TestTimeoutDispatched_WhenExecutionWithinTimeout_ItShouldNotTransition(t *t
 	execStore := &mockExecutionStore{
 		executions: []*store.Execution{
 			{
-				ID:             "exec-recent",
+				ID: "exec-recent",
 				Action:         "get-resource",
 				Status:         store.StatusDispatched,
 				TimeoutSeconds: 120,
@@ -375,7 +375,7 @@ func TestPollAsyncJobs_WhenJobCompleted_ItShouldTransitionToSucceeded(t *testing
 	execStore := &mockExecutionStore{
 		executions: []*store.Execution{
 			{
-				ID:            "async-ok",
+				ID: "async-ok",
 				Action:        "get-resource",
 				Status:        store.StatusDispatched,
 				ExecutionMode: "async",
@@ -425,7 +425,7 @@ func TestPollAsyncJobs_WhenJobFailed_ItShouldTransitionToFailed(t *testing.T) {
 	execStore := &mockExecutionStore{
 		executions: []*store.Execution{
 			{
-				ID:            "async-fail",
+				ID: "async-fail",
 				Action:        "delete-pod",
 				Status:        store.StatusDispatched,
 				ExecutionMode: "async",
@@ -474,7 +474,7 @@ func TestPollAsyncJobs_WhenJobStillRunning_ItShouldNotTransition(t *testing.T) {
 	execStore := &mockExecutionStore{
 		executions: []*store.Execution{
 			{
-				ID:            "async-running",
+				ID: "async-running",
 				Action:        "delete-pod",
 				Status:        store.StatusDispatched,
 				ExecutionMode: "async",
@@ -522,7 +522,7 @@ func TestTimeoutDispatched_WhenAsyncWithinOverhead_ItShouldNotTimeout(t *testing
 	execStore := &mockExecutionStore{
 		executions: []*store.Execution{
 			{
-				ID:             "async-ok",
+				ID: "async-ok",
 				Action:         "get-resource",
 				Status:         store.StatusDispatched,
 				TimeoutSeconds: 30,
@@ -552,7 +552,7 @@ func TestTimeoutDispatched_WhenAsyncExceedsOverhead_ItShouldTimeout(t *testing.T
 	execStore := &mockExecutionStore{
 		executions: []*store.Execution{
 			{
-				ID:             "async-expired",
+				ID: "async-expired",
 				Action:         "get-resource",
 				Status:         store.StatusDispatched,
 				TimeoutSeconds: 30,
@@ -585,7 +585,7 @@ func TestTimeoutDispatched_WhenSyncExceedsTimeout_ItShouldNotAddOverhead(t *test
 	execStore := &mockExecutionStore{
 		executions: []*store.Execution{
 			{
-				ID:             "sync-expired",
+				ID: "sync-expired",
 				Action:         "get-resource",
 				Status:         store.StatusDispatched,
 				TimeoutSeconds: 30,
@@ -669,7 +669,7 @@ func TestPollAsyncJobs_WhenJobCompleted_ItShouldEnrichWithArtifactSizes(t *testi
 	execStore := &mockExecutionStore{
 		executions: []*store.Execution{
 			{
-				ID:            "async-with-artifacts",
+				ID: "async-with-artifacts",
 				Action:        "get-resource",
 				Status:        store.StatusDispatched,
 				ExecutionMode: "async",
@@ -744,7 +744,7 @@ func TestPollAsyncJobs_WhenJobCompletedWithTarGz_ItShouldDetectFormat(t *testing
 	execStore := &mockExecutionStore{
 		executions: []*store.Execution{
 			{
-				ID:            "async-tar",
+				ID: "async-tar",
 				Action:        "must-gather",
 				Status:        store.StatusDispatched,
 				ExecutionMode: "async",

@@ -23,7 +23,7 @@ var ErrGrantTooShortForCredential = errors.New("breakglass: grant remaining belo
 
 // GrantTooShortError details activate rejection when grant remaining is shorter than Min*CredentialSeconds.
 type GrantTooShortError struct {
-	Plane         string
+	Scope         string
 	Remaining     time.Duration
 	MinCredential time.Duration
 	MaxCredential time.Duration
@@ -33,7 +33,7 @@ func (e *GrantTooShortError) Error() string {
 	return fmt.Sprintf(
 		"remaining grant %s is less than minimum %s credential lifetime %s",
 		formatCredentialDuration(e.Remaining),
-		e.Plane,
+		e.Scope,
 		formatCredentialDuration(e.MinCredential),
 	)
 }
@@ -43,9 +43,9 @@ func (e *GrantTooShortError) Unwrap() error { return ErrGrantTooShortForCredenti
 // CredentialMaxSeconds returns the platform max credential lifetime for activate on the given plane.
 func CredentialMaxSeconds(plane string) int64 {
 	switch plane {
-	case PlaneAWS:
+	case ScopeAWS:
 		return AWSCredentialMaxSeconds
-	case PlaneKube:
+	case ScopeKube:
 		return KubeCredentialMaxSeconds
 	default:
 		return KubeCredentialMaxSeconds
@@ -55,9 +55,9 @@ func CredentialMaxSeconds(plane string) int64 {
 // CredentialMinSeconds returns the cloud API minimum credential lifetime for the plane.
 func CredentialMinSeconds(plane string) int64 {
 	switch plane {
-	case PlaneAWS:
+	case ScopeAWS:
 		return MinAWSCredentialSeconds
-	case PlaneKube:
+	case ScopeKube:
 		return MinKubeCredentialSeconds
 	default:
 		return MinKubeCredentialSeconds
@@ -78,7 +78,7 @@ func CredentialMaxTTLDisplay(plane string) string {
 func CredentialDurationForGrant(plane string, grantRemaining time.Duration) (time.Duration, error) {
 	if grantRemaining <= 0 {
 		return 0, &GrantTooShortError{
-			Plane:         plane,
+			Scope:         plane,
 			Remaining:     grantRemaining,
 			MinCredential: time.Duration(CredentialMinSeconds(plane)) * time.Second,
 			MaxCredential: CredentialMaxDuration(plane),
@@ -92,7 +92,7 @@ func CredentialDurationForGrant(plane string, grantRemaining time.Duration) (tim
 	min := CredentialMinSeconds(plane)
 	if secs < min {
 		return 0, &GrantTooShortError{
-			Plane:         plane,
+			Scope:         plane,
 			Remaining:     grantRemaining,
 			MinCredential: time.Duration(min) * time.Second,
 			MaxCredential: time.Duration(max) * time.Second,

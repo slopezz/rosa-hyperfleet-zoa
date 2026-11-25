@@ -55,7 +55,7 @@ func (m *mockClient) GetAction(ctx context.Context, name string) (*client.Action
 	return nil, fmt.Errorf("GetAction not mocked")
 }
 
-func (m *mockClient) ListActions(ctx context.Context) (*client.ActionList, error) {
+func (m *mockClient) ListActions(ctx context.Context, _ url.Values) (*client.ActionList, error) {
 	if m.listActionsFn != nil {
 		return m.listActionsFn(ctx)
 	}
@@ -129,12 +129,12 @@ func (m *mockClient) ListSessions(ctx context.Context, query url.Values) (*clien
 	return nil, fmt.Errorf("ListSessions not mocked")
 }
 
-func (m *mockClient) ListBreakglassScopes(context.Context) (*client.BreakglassScopeList, error) {
-	return nil, fmt.Errorf("ListBreakglassScopes not mocked")
+func (m *mockClient) ListBreakglassProfiles(context.Context, url.Values) (*client.BreakglassProfileList, error) {
+	return nil, fmt.Errorf("ListBreakglassProfiles not mocked")
 }
 
-func (m *mockClient) GetBreakglassScope(context.Context, string) (*client.ScopeMetadata, error) {
-	return nil, fmt.Errorf("GetBreakglassScope not mocked")
+func (m *mockClient) GetBreakglassProfile(context.Context, string) (*client.ProfileMetadata, error) {
+	return nil, fmt.Errorf("GetBreakglassProfile not mocked")
 }
 
 func (m *mockClient) CreateBreakglassRequest(ctx context.Context, scope, reason string) (*client.BreakglassRequest, error) {

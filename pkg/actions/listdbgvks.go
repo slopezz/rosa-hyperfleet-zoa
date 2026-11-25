@@ -22,7 +22,7 @@ const listGVKsQuery = `SELECT gvk, count(*) AS count ` +
 func (a *listDBGVKs) Metadata() ActionMetadata {
 	return ActionMetadata{
 		Name:          "list_db_gvks",
-		Scope:         "aws-api",
+		Scope:         "aws",
 		Type:          "read",
 		ExecutionMode: "sync",
 		Description:   "List the distinct resource types (GVKs) present in the seaplane-db, with object counts. Use to discover valid gvk values for get_db_resource.",

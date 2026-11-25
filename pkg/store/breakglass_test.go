@@ -28,7 +28,7 @@ func TestDynamoDBBreakglassStore_Create_WhenPending_ItShouldSetTTLAndTargetStatu
 	expires := time.Now().Add(24 * time.Hour).Format(time.RFC3339Nano)
 	req := &BreakglassRequest{
 		RequestID:        "req-1",
-		Scope:            "kube-read",
+		Name:             "kube-read",
 		Reason:           "incident",
 		Operator:         "alice",
 		TargetCluster:    "mc01",

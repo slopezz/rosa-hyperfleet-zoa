@@ -14,7 +14,7 @@ func TestPrintBreakglassRequestTable_WhenMine_ItShouldRenderRows(t *testing.T) {
 		Count: 1,
 		Items: []client.BreakglassRequest{{
 			RequestID:     "req-1",
-			Scope:         "kube-read",
+			Name:          "kube-read",
 			TargetCluster: "eph-regional",
 			Status:        "active",
 			Reason:        "ROSAENG-1",

@@ -8,9 +8,9 @@ import (
 
 func TestValidateScope_WhenReadScopeHasPatchVerb_ItShouldReject(t *testing.T) {
 	def := &Definition{
-		Metadata: ScopeMetadata{
-			ID:          "bad-read",
-			Plane:       PlaneKube,
+		Metadata: ProfileMetadata{
+			Name: "bad-read",
+			Scope: ScopeKube,
 			Type:        TypeRead,
 			Description: "test",
 			Authorization: Authorization{
@@ -32,9 +32,9 @@ func TestValidateScope_WhenReadScopeHasPatchVerb_ItShouldReject(t *testing.T) {
 
 func TestValidateScope_WhenWriteScopeListsSecrets_ItShouldReject(t *testing.T) {
 	def := &Definition{
-		Metadata: ScopeMetadata{
-			ID:          "bad-secrets",
-			Plane:       PlaneKube,
+		Metadata: ProfileMetadata{
+			Name: "bad-secrets",
+			Scope: ScopeKube,
 			Type:        TypeWrite,
 			Description: "test",
 			Authorization: Authorization{
@@ -56,9 +56,9 @@ func TestValidateScope_WhenWriteScopeListsSecrets_ItShouldReject(t *testing.T) {
 
 func TestValidateScope_WhenElevatedScopeListsSecretRead_ItShouldAllow(t *testing.T) {
 	def := &Definition{
-		Metadata: ScopeMetadata{
-			ID:          "elevated-secrets",
-			Plane:       PlaneKube,
+		Metadata: ProfileMetadata{
+			Name: "elevated-secrets",
+			Scope: ScopeKube,
 			Type:        TypeElevated,
 			Description: "test",
 			Authorization: Authorization{
@@ -90,9 +90,9 @@ func elevatedTestAuth() Authorization {
 
 func TestValidateScope_WhenElevatedGrantsDeleteWithStarResources_ItShouldReject(t *testing.T) {
 	def := &Definition{
-		Metadata: ScopeMetadata{
-			ID:            "bad-elevated-star",
-			Plane:         PlaneKube,
+		Metadata: ProfileMetadata{
+			Name: "bad-elevated-star",
+			Scope: ScopeKube,
 			Type:          TypeElevated,
 			Description:   "test",
 			Authorization: elevatedTestAuth(),
@@ -110,9 +110,9 @@ func TestValidateScope_WhenElevatedGrantsDeleteWithStarResources_ItShouldReject(
 
 func TestValidateScope_WhenElevatedGrantsDeleteOnNamespaces_ItShouldReject(t *testing.T) {
 	def := &Definition{
-		Metadata: ScopeMetadata{
-			ID:            "bad-elevated-ns",
-			Plane:         PlaneKube,
+		Metadata: ProfileMetadata{
+			Name: "bad-elevated-ns",
+			Scope: ScopeKube,
 			Type:          TypeElevated,
 			Description:   "test",
 			Authorization: elevatedTestAuth(),
@@ -133,9 +133,9 @@ func TestValidateScope_WhenElevatedGrantsDeleteOnNamespaces_ItShouldReject(t *te
 
 func TestValidateScope_WhenWriteGrantsPodsExec_ItShouldReject(t *testing.T) {
 	def := &Definition{
-		Metadata: ScopeMetadata{
-			ID:          "bad-exec",
-			Plane:       PlaneKube,
+		Metadata: ProfileMetadata{
+			Name: "bad-exec",
+			Scope: ScopeKube,
 			Type:        TypeWrite,
 			Description: "test",
 			Authorization: Authorization{
@@ -157,9 +157,9 @@ func TestValidateScope_WhenWriteGrantsPodsExec_ItShouldReject(t *testing.T) {
 
 func TestValidateScope_WhenElevatedGrantsSecretWrite_ItShouldReject(t *testing.T) {
 	def := &Definition{
-		Metadata: ScopeMetadata{
-			ID:            "bad-secret-write",
-			Plane:         PlaneKube,
+		Metadata: ProfileMetadata{
+			Name: "bad-secret-write",
+			Scope: ScopeKube,
 			Type:          TypeElevated,
 			Description:   "test",
 			Authorization: elevatedTestAuth(),
@@ -179,9 +179,9 @@ func TestValidateScope_WhenElevatedGrantsSecretWrite_ItShouldReject(t *testing.T
 
 func TestValidateScope_WhenKubeScopeMutatesClusterRoleBindings_ItShouldReject(t *testing.T) {
 	def := &Definition{
-		Metadata: ScopeMetadata{
-			ID:          "bad-bind",
-			Plane:       PlaneKube,
+		Metadata: ProfileMetadata{
+			Name: "bad-bind",
+			Scope: ScopeKube,
 			Type:        TypeWrite,
 			Description: "test",
 			Authorization: Authorization{

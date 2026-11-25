@@ -7,7 +7,7 @@ import (
 
 func TestEmitExecution_WhenTerminalStatus_ItShouldIncludeActionDimensions(t *testing.T) {
 	line := captureStdout(func() {
-		EmitExecution("mc01", "must_gather", "succeeded", "async", "kube-api", "read", 1200)
+		EmitExecution("mc01", "must_gather", "succeeded", "async", "kube", "read", 1200)
 	})
 
 	for _, dim := range []string{"Action", "Status", "Mode", "Scope", "Type", "must_gather", "succeeded"} {
@@ -25,7 +25,7 @@ func TestEmitExecution_WhenTerminalStatus_ItShouldIncludeActionDimensions(t *tes
 
 func TestEmitExecution_WhenNegativeDuration_ItShouldOmitDurationMetric(t *testing.T) {
 	line := captureStdout(func() {
-		EmitExecution("mc01", "get_resource", "failed", "sync", "kube-api", "read", -1)
+		EmitExecution("mc01", "get_resource", "failed", "sync", "kube", "read", -1)
 	})
 	if strings.Contains(line, "ExecutionDuration") {
 		t.Fatalf("did not expect ExecutionDuration: %s", line)

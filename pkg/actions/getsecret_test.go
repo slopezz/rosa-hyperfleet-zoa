@@ -236,7 +236,7 @@ func TestGetSecret(t *testing.T) {
 		if meta.Name != "get_secret" {
 			t.Fatalf("expected name get_secret, got %s", meta.Name)
 		}
-		if meta.Scope != "kube-api" {
+		if meta.Scope != "kube" {
 			t.Fatalf("expected scope kube-api, got %s", meta.Scope)
 		}
 		if meta.Type != "read" {

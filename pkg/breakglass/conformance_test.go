@@ -14,7 +14,7 @@ import (
 // (see docs/approval-workflow.md). When the workflow epic lands, extend validApprovals here.
 const shippedApproval = "none"
 
-var validPlanes = map[string]bool{PlaneKube: true, PlaneAWS: true}
+var validScopes = map[string]bool{ScopeKube: true, ScopeAWS: true}
 var validTypes = map[string]bool{TypeRead: true, TypeWrite: true, TypeElevated: true}
 
 func TestAllRegisteredScopes_Conformance(t *testing.T) {
@@ -26,9 +26,9 @@ func TestAllRegisteredScopes_Conformance(t *testing.T) {
 
 	for _, def := range defs {
 		meta := def.Metadata
-		t.Run(meta.ID, func(t *testing.T) {
-			if !validPlanes[meta.Plane] {
-				t.Errorf("plane must be kube or aws, got %q", meta.Plane)
+		t.Run(meta.Name, func(t *testing.T) {
+			if !validScopes[meta.Scope] {
+				t.Errorf("plane must be kube or aws, got %q", meta.Scope)
 			}
 			if !validTypes[meta.Type] {
 				t.Errorf("type must be read, write, or elevated, got %q", meta.Type)
@@ -65,8 +65,8 @@ func TestAllRegisteredScopes_HaveTestFile(t *testing.T) {
 
 	for _, def := range ListDefinitions() {
 		meta := def.Metadata
-		t.Run(meta.ID+"/has_test", func(t *testing.T) {
-			wantStem := strings.ReplaceAll(meta.ID, "-", "_")
+		t.Run(meta.Name+"/has_test", func(t *testing.T) {
+			wantStem := strings.ReplaceAll(meta.Name, "-", "_")
 			found := false
 			for _, tf := range testFiles {
 				base := filepath.Base(tf)
@@ -79,7 +79,7 @@ func TestAllRegisteredScopes_HaveTestFile(t *testing.T) {
 				}
 			}
 			if !found {
-				t.Errorf("scope %q expects pkg/breakglass/%s_test.go", meta.ID, wantStem)
+				t.Errorf("scope %q expects pkg/breakglass/%s_test.go", meta.Name, wantStem)
 			}
 		})
 	}
@@ -87,10 +87,10 @@ func TestAllRegisteredScopes_HaveTestFile(t *testing.T) {
 
 func TestKubeScopes_WhenRegistered_TheyShouldExposeRBACForRCAndMC(t *testing.T) {
 	for _, def := range ListDefinitions() {
-		if def.Metadata.Plane != PlaneKube {
+		if def.Metadata.Scope != ScopeKube {
 			continue
 		}
-		t.Run(def.Metadata.ID, func(t *testing.T) {
+		t.Run(def.Metadata.Name, func(t *testing.T) {
 			for _, target := range []string{actions.TargetTypeRC, actions.TargetTypeMC} {
 				if rules := def.RBAC(target); len(rules) == 0 {
 					t.Errorf("missing RBAC for target %s", target)
@@ -143,9 +143,9 @@ func TestScopeSourceFiles_WhenPresent_TheyShouldMatchCatalog(t *testing.T) {
 		implStems[strings.TrimSuffix(name, ".go")] = true
 	}
 	for _, def := range ListDefinitions() {
-		stem := strings.ReplaceAll(def.Metadata.ID, "-", "_")
+		stem := strings.ReplaceAll(def.Metadata.Name, "-", "_")
 		if !implStems[stem] {
-			t.Errorf("scope %q missing source file %s.go", def.Metadata.ID, stem)
+			t.Errorf("scope %q missing source file %s.go", def.Metadata.Name, stem)
 		}
 	}
 }

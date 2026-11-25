@@ -19,12 +19,12 @@ func TestGetExecution_WhenTerminalStatus_ItShouldReturnNilError(t *testing.T) {
 			}
 			dur := int64(1500)
 			return &client.Execution{
-				ID:            "exec-get-1",
+				ID: "exec-get-1",
 				Action:        "get_pods",
 				TargetCluster: "mc-useast1-1",
 				Status:        "succeeded",
 				ExecutionMode: "sync",
-				Scope:         "kube-api",
+				Scope:         "kube",
 				Type:          "read",
 				DurationMs:    &dur,
 			}, nil
@@ -48,7 +48,7 @@ func TestGetExecution_WhenIncludeOutput_ItShouldFetchOutput(t *testing.T) {
 				includeOnSecondCall = include
 			}
 			return &client.Execution{
-				ID:     "exec-get-2",
+				ID: "exec-get-2",
 				Status: "succeeded",
 				Output: client.FlexString(`[{"name":"pod-1"}]`),
 			}, nil
@@ -75,7 +75,7 @@ func TestGetExecution_WhenIncludeAll_ItShouldFetchOutputAndLogs(t *testing.T) {
 				includeOnSecondCall = include
 			}
 			return &client.Execution{
-				ID:     "exec-get-3",
+				ID: "exec-get-3",
 				Status: "succeeded",
 				Output: client.FlexString(`{}`),
 				Logs:   "some logs",
@@ -100,7 +100,7 @@ func TestGetExecution_WhenJSONFormat_ItShouldReturnNilError(t *testing.T) {
 	mock := &mockClient{
 		getExecutionFn: func(_ context.Context, _ string, _ string) (*client.Execution, error) {
 			return &client.Execution{
-				ID:     "exec-get-json",
+				ID: "exec-get-json",
 				Status: "succeeded",
 			}, nil
 		},

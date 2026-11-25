@@ -12,6 +12,7 @@ import (
 
 	"github.com/openshift-online/rosa-seaplane-zoa/internal/version"
 	"github.com/openshift-online/rosa-seaplane-zoa/pkg/breakglass"
+	"github.com/openshift-online/rosa-seaplane-zoa/pkg/catalog"
 	"github.com/openshift-online/rosa-seaplane-zoa/pkg/reason"
 	"github.com/openshift-online/rosa-seaplane-zoa/pkg/store"
 )
@@ -24,36 +25,49 @@ func (h *Handler) breakglassEnabled(w http.ResponseWriter) bool {
 	return false
 }
 
-func (h *Handler) handleListBreakglassScopes(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) handleListBreakglassProfiles(w http.ResponseWriter, r *http.Request) {
 	if !h.breakglassEnabled(w) {
 		return
 	}
+	q := r.URL.Query()
+	scopeFilter := strings.TrimSpace(q.Get("scope"))
+	typeFilter := strings.TrimSpace(q.Get("type"))
 	items := breakglass.List()
+	filtered := make([]breakglass.ProfileMetadata, 0, len(items))
+	for _, m := range items {
+		if !catalog.MatchCredentialScope(m.Scope, scopeFilter) {
+			continue
+		}
+		if !catalog.MatchPrivilegeType(m.Type, typeFilter) {
+			continue
+		}
+		filtered = append(filtered, m)
+	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"items": items,
-		"count": len(items),
+		"items": filtered,
+		"count": len(filtered),
 	})
 }
 
-func (h *Handler) handleDescribeBreakglassScope(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) handleDescribeBreakglassProfile(w http.ResponseWriter, r *http.Request) {
 	if !h.breakglassEnabled(w) {
 		return
 	}
-	scopeID := r.PathValue("scope")
-	def, ok := breakglass.Get(scopeID)
+	profileName := r.PathValue("name")
+	def, ok := breakglass.Get(profileName)
 	if !ok {
-		writeError(w, http.StatusNotFound, "not_found", "unknown break-glass scope")
+		writeError(w, http.StatusNotFound, "not_found", "unknown break-glass profile")
 		return
 	}
 	targetType := h.cfg.TargetType
 	if targetType == "" {
 		targetType = breakglass.DefaultDescribeTargetType(def.Metadata)
 	}
-	writeJSON(w, http.StatusOK, breakglass.DescribeScope(def, targetType))
+	writeJSON(w, http.StatusOK, breakglass.DescribeProfile(def, targetType))
 }
 
 type breakglassCreateRequest struct {
-	Scope  string `json:"scope"`
+	Name   string `json:"name"`
 	Reason string `json:"reason"`
 }
 
@@ -66,9 +80,9 @@ func (h *Handler) handleCreateBreakglassRequest(w http.ResponseWriter, r *http.R
 		writeError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body")
 		return
 	}
-	body.Scope = strings.TrimSpace(body.Scope)
-	if body.Scope == "" {
-		writeError(w, http.StatusBadRequest, "invalid_request", "scope is required")
+	body.Name = strings.TrimSpace(body.Name)
+	if body.Name == "" {
+		writeError(w, http.StatusBadRequest, "invalid_request", "name is required")
 		return
 	}
 	reasonValue, err := reason.Require(body.Reason)
@@ -80,9 +94,9 @@ func (h *Handler) handleCreateBreakglassRequest(w http.ResponseWriter, r *http.R
 		writeError(w, http.StatusBadRequest, code, err.Error())
 		return
 	}
-	def, ok := breakglass.Get(body.Scope)
+	def, ok := breakglass.Get(body.Name)
 	if !ok {
-		writeError(w, http.StatusNotFound, "not_found", "unknown break-glass scope")
+		writeError(w, http.StatusNotFound, "not_found", "unknown break-glass profile")
 		return
 	}
 	operator, signerARN, sessionID := h.resolveIdentity(r)
@@ -96,7 +110,7 @@ func (h *Handler) handleCreateBreakglassRequest(w http.ResponseWriter, r *http.R
 	taskID, _ := extractTaskIDFromSigner(signerARN)
 	req := &store.BreakglassRequest{
 		RequestID:        uuid.NewString(),
-		Scope:            body.Scope,
+		Name:             body.Name,
 		Reason:           reasonValue,
 		Operator:         operator,
 		SignerARN:        signerARN,
@@ -195,8 +209,9 @@ func (h *Handler) handleListBreakglassRequests(w http.ResponseWriter, r *http.Re
 		}
 	}
 
-	// scope=mine: self-service list (no audit). Any other scope (including omitted) = fleet history (audited), same as GET /sessions.
-	fleetView := q.Get("scope") != "mine"
+	// mine=true: self-service list (no audit). scope=mine accepted until zoa-retrocompatibility-cleanup.
+	mine := q.Get("mine") == "true" || q.Get("scope") == "mine" // zoa-retrocompatibility-cleanup
+	fleetView := !mine
 	if fleetView {
 		if v := q.Get("operator"); v != "" {
 			filter.Operator = &v
@@ -208,7 +223,7 @@ func (h *Handler) handleListBreakglassRequests(w http.ResponseWriter, r *http.Re
 			return
 		}
 		if q.Get("operator") != "" {
-			writeError(w, http.StatusBadRequest, "invalid_query", "operator filter is not allowed with scope=mine")
+			writeError(w, http.StatusBadRequest, "invalid_query", "operator filter is not allowed with mine=true")
 			return
 		}
 		filter.Operator = &operator
@@ -264,30 +279,30 @@ func (h *Handler) handleActivateBreakglassRequest(w http.ResponseWriter, r *http
 	resp := map[string]interface{}{
 		"id":               req.RequestID,
 		"request_id":       req.RequestID,
-		"scope":            req.Scope,
+		"name":             req.Name,
 		"target_cluster":   req.TargetCluster,
 		"grant_expires_at": req.GrantExpiresAt,
 		"status":           "ready",
 		"kind":             "breakglass",
 	}
-	def, scopeOK := breakglass.Get(req.Scope)
+	def, scopeOK := breakglass.Get(req.Name)
 	if scopeOK && h.executor != nil {
 		remaining := time.Until(mustParseRFC3339(req.GrantExpiresAt))
-		if _, err := breakglass.CredentialDurationForGrant(def.Metadata.Plane, remaining); err != nil {
+		if _, err := breakglass.CredentialDurationForGrant(def.Metadata.Scope, remaining); err != nil {
 			if writeBreakglassGrantTooShort(w, err) {
 				return
 			}
 		}
-		switch def.Metadata.Plane {
-		case breakglass.PlaneKube:
-			cluster, err := h.executor.BreakglassKubeActivate(r.Context(), req.RequestID, req.Scope)
+		switch def.Metadata.Scope {
+		case breakglass.ScopeKube:
+			cluster, err := h.executor.BreakglassKubeActivate(r.Context(), req.RequestID, req.Name)
 			if err != nil {
 				h.logger.Error("breakglass activate kube", "error", err)
 				writeError(w, http.StatusInternalServerError, "provision_failed", "failed to provision break-glass kube access")
 				return
 			}
 			resp["kube"] = cluster
-			token, exp, err := h.executor.IssueBreakglassKubeToken(r.Context(), req.RequestID, req.Scope, remaining)
+			token, exp, err := h.executor.IssueBreakglassKubeToken(r.Context(), req.RequestID, req.Name, remaining)
 			if err != nil {
 				if writeBreakglassGrantTooShort(w, err) {
 					return
@@ -298,8 +313,8 @@ func (h *Handler) handleActivateBreakglassRequest(w http.ResponseWriter, r *http
 			}
 			resp["kube_token_expires_at"] = exp.Format(time.RFC3339Nano)
 			resp["kube_token"] = token
-		case breakglass.PlaneAWS:
-			creds, err := h.executor.AssumeBreakglassRole(r.Context(), req.RequestID, req.Scope, remaining)
+		case breakglass.ScopeAWS:
+			creds, err := h.executor.AssumeBreakglassRole(r.Context(), req.RequestID, req.Name, remaining)
 			if err != nil {
 				if writeBreakglassGrantTooShort(w, err) {
 					return
@@ -323,7 +338,7 @@ func (h *Handler) handleActivateBreakglassRequest(w http.ResponseWriter, r *http
 		h.logger.Error("breakglass record activate", "error", err, "request_id", id)
 	}
 	writeJSON(w, http.StatusOK, resp)
-	h.recordAudit(r, http.StatusOK, AuditActionBreakglassActivate, id, withReason(req.Scope))
+	h.recordAudit(r, http.StatusOK, AuditActionBreakglassActivate, id, withReason(req.Name))
 }
 
 func mustParseRFC3339(s string) time.Time {
@@ -337,7 +352,7 @@ func mustParseRFC3339(s string) time.Time {
 func writeBreakglassGrantTooShort(w http.ResponseWriter, err error) bool {
 	var short *breakglass.GrantTooShortError
 	if errors.As(err, &short) {
-		writeError(w, http.StatusConflict, "grant_too_short", breakglass.ActivateGrantTooShortMessage(short.Plane, short.Remaining))
+		writeError(w, http.StatusConflict, "grant_too_short", breakglass.ActivateGrantTooShortMessage(short.Scope, short.Remaining))
 		return true
 	}
 	return false

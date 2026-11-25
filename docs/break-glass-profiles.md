@@ -1,10 +1,20 @@
-# Break-glass scopes — authoring guide
+# Break-glass profiles — authoring guide
 
-How to add or change **break-glass scope** definitions in Go (parallel to [Trusted Actions](trusted-actions.md)).
+How to add or change **break-glass profile** definitions in Go (parallel to [Trusted Actions](trusted-actions.md)).
+
+## Vocabulary
+
+| Concept | JSON / UX field | Example |
+| ------- | --------------- | ------- |
+| Catalog id | `name` | `kube-read` |
+| Credential surface | `scope` | `kube`, `aws` |
+| Privilege | `type` | `read`, `write`, `elevated` |
+
+CLI: `zoa breakglass profiles`, `zoa breakglass request --name <profile>`. API: `GET /api/v0/breakglass/profiles`, POST body `{ "name", "reason" }`.
 
 ## Overview
 
-Each scope is a `Definition` in `pkg/breakglass/`: metadata (id, plane, type, authorization, **capabilities**, **restrictions**) plus kube **RBAC** rules or an AWS **role key** for Terraform-mapped IAM.
+Each profile is a `Definition` in `pkg/breakglass/`: `ProfileMetadata` (`name`, `scope`, `type`, authorization, **capabilities**, **restrictions**) plus kube **RBAC** rules or an AWS **role key** for Terraform-mapped IAM.
 
 - Self-registers via `init()` into the global registry (like `pkg/actions`)
 - Snapshotted onto DynamoDB at request create (in-flight requests do not change when code deploys)

@@ -22,7 +22,7 @@ type listEKSClusters struct{}
 func (l *listEKSClusters) Metadata() ActionMetadata {
 	return ActionMetadata{
 		Name:           "list_eks_clusters",
-		Scope:          "aws-api",
+		Scope:          "aws",
 		Type:           "read",
 		ExecutionMode:  "sync",
 		Description:    "List all EKS clusters in the configured AWS region.",
@@ -83,7 +83,7 @@ type describeEKSCluster struct{}
 func (d *describeEKSCluster) Metadata() ActionMetadata {
 	return ActionMetadata{
 		Name:           "describe_eks_cluster",
-		Scope:          "aws-api",
+		Scope:          "aws",
 		Type:           "read",
 		ExecutionMode:  "sync",
 		Description:    "Describe a specific EKS cluster.",

@@ -40,12 +40,12 @@ func NormalizeRoute(method, path string) string {
 		return method + " /api/v0/trusted-actions"
 	case path == "/api/v0/audit":
 		return method + " /api/v0/audit"
-	case path == "/api/v0/breakglass/scopes":
-		return method + " /api/v0/breakglass/scopes"
+	case path == "/api/v0/breakglass/profiles":
+		return method + " /api/v0/breakglass/profiles"
 	case path == "/api/v0/breakglass/requests":
 		return method + " /api/v0/breakglass/requests"
-	case strings.HasPrefix(path, "/api/v0/breakglass/scopes/"):
-		return method + " /api/v0/breakglass/scopes/{scope}"
+	case strings.HasPrefix(path, "/api/v0/breakglass/profiles/"):
+		return method + " /api/v0/breakglass/profiles/{name}"
 	case strings.HasPrefix(path, "/api/v0/breakglass/requests/") && strings.HasSuffix(path, "/activate"):
 		return method + " /api/v0/breakglass/requests/{id}/activate"
 	case strings.HasPrefix(path, "/api/v0/breakglass/requests/"):

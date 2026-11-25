@@ -1,4 +1,4 @@
-package scopecatalog
+package profilecatalog
 
 import (
 	"testing"
@@ -17,7 +17,7 @@ func TestList_WhenTargetTypeRC_ItShouldReturnKubeScopes(t *testing.T) {
 	}
 	found := false
 	for _, s := range items {
-		if s.ID == "kube-read" {
+		if s.Name == "kube-read" {
 			found = true
 			break
 		}
@@ -35,9 +35,9 @@ func TestGet_WhenScopeMissing_ItShouldError(t *testing.T) {
 }
 
 func TestClientScopeFromMetadata_WhenApprovalSet_ItShouldMapAuthorization(t *testing.T) {
-	meta := breakglass.ScopeMetadata{
-		ID:    "kube-read",
-		Plane: breakglass.PlaneKube,
+	meta := breakglass.ProfileMetadata{
+		Name: "kube-read",
+		Scope: breakglass.ScopeKube,
 		Type:  breakglass.TypeRead,
 		Authorization: breakglass.Authorization{
 			Approval:            "none",

@@ -4,14 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"time"
 
+	"github.com/openshift-online/rosa-seaplane-zoa/pkg/catalog"
+
 	"github.com/spf13/cobra"
 
 	"github.com/openshift-online/rosa-seaplane-zoa/internal/cli/reason"
-	"github.com/openshift-online/rosa-seaplane-zoa/internal/cli/scopecatalog"
+	"github.com/openshift-online/rosa-seaplane-zoa/internal/cli/profilecatalog"
 	"github.com/openshift-online/rosa-seaplane-zoa/internal/client"
 	"github.com/openshift-online/rosa-seaplane-zoa/internal/output"
 	"github.com/openshift-online/rosa-seaplane-zoa/pkg/breakglass"
@@ -27,8 +30,8 @@ func newBreakglassCommand(global *GlobalOptions) *cobra.Command {
 Laptop approvers use: zoa approve <deployment>/<request-id> [--comment ...]`,
 	}
 	cmd.AddCommand(
-		newBreakglassScopesCommand(global),
-		newBreakglassDescribeScopeCommand(global),
+		newBreakglassProfilesCommand(global),
+		newBreakglassDescribeProfileCommand(global),
 		newBreakglassRequestCommand(global),
 		newBreakglassRequestsCommand(global),
 		newBreakglassHistoryCommand(global),
@@ -38,129 +41,154 @@ Laptop approvers use: zoa approve <deployment>/<request-id> [--comment ...]`,
 	return cmd
 }
 
-func newBreakglassScopesCommand(global *GlobalOptions) *cobra.Command {
+func newBreakglassProfilesCommand(global *GlobalOptions) *cobra.Command {
 	catalogOpts := &catalogOptions{}
+	var scopeFilter, typeFilter string
 	cmd := &cobra.Command{
-		Use:   "scopes",
-		Short: "List break-glass scope catalog",
-		Long: `List break-glass scopes. With --offline (or without ZOA_API_URL in the boundary), uses the
+		Use:     "profiles",
+		Aliases: []string{"scopes"}, // zoa-retrocompatibility-cleanup
+		Short:   "List break-glass profiles",
+		Long: `List break-glass profiles. With --offline (or without ZOA_API_URL in the boundary), uses the
 catalog embedded in this CLI build, filtered by --target-type or ZOA_TARGET_TYPE.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if global.OutputFormat == output.FormatMarkdown && !useScopeCatalogOffline(global, catalogOpts) {
+			if global.OutputFormat == output.FormatMarkdown && !useProfileCatalogOffline(global, catalogOpts) {
 				return fmt.Errorf("-o markdown requires --offline (embedded catalog from this CLI build)")
 			}
-			if useScopeCatalogOffline(global, catalogOpts) {
-				return listBreakglassScopesOffline(global, catalogOpts)
+			if useProfileCatalogOffline(global, catalogOpts) {
+				return listBreakglassProfilesOffline(global, catalogOpts, scopeFilter, typeFilter)
 			}
 			c, err := getClient(global)
 			if err != nil {
 				return err
 			}
-			list, err := c.ListBreakglassScopes(cmd.Context())
+			q := catalogFilterQuery(scopeFilter, typeFilter)
+			list, err := c.ListBreakglassProfiles(cmd.Context(), q)
 			if err != nil {
 				return err
 			}
-			return renderBreakglassScopes(global.OutputFormat, list)
+			return renderBreakglassProfiles(global.OutputFormat, list)
 		},
 	}
 	registerCatalogFlags(cmd, catalogOpts)
+	registerCatalogFilterFlags(cmd, &scopeFilter, &typeFilter)
 	return cmd
 }
 
-func newBreakglassDescribeScopeCommand(global *GlobalOptions) *cobra.Command {
+func newBreakglassDescribeProfileCommand(global *GlobalOptions) *cobra.Command {
 	catalogOpts := &catalogOptions{}
 	cmd := &cobra.Command{
-		Use:   "describe <scope>",
-		Short: "Describe a break-glass scope",
+		Use:   "describe <name>",
+		Short: "Describe a break-glass profile",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return describeBreakglassScope(cmd.Context(), global, catalogOpts, args[0])
+			return describeBreakglassProfile(cmd.Context(), global, catalogOpts, args[0])
 		},
 	}
 	registerCatalogFlags(cmd, catalogOpts)
 	return cmd
 }
 
-func useScopeCatalogOffline(global *GlobalOptions, catalogOpts *catalogOptions) bool {
+func useProfileCatalogOffline(global *GlobalOptions, catalogOpts *catalogOptions) bool {
 	return catalogOpts.offline || global.APIURL == ""
 }
 
-func listBreakglassScopesOffline(global *GlobalOptions, catalogOpts *catalogOptions) error {
-	printOfflineScopeCatalogNotice()
+func catalogFilterQuery(scopeFilter, typeFilter string) url.Values {
+	q := make(url.Values)
+	if scopeFilter != "" {
+		q.Set("scope", scopeFilter)
+	}
+	if typeFilter != "" {
+		q.Set("type", typeFilter)
+	}
+	return q
+}
+
+func listBreakglassProfilesOffline(global *GlobalOptions, catalogOpts *catalogOptions, scopeFilter, typeFilter string) error {
+	printOfflineProfileCatalogNotice()
 	targetType, err := resolveCatalogTargetType(catalogOpts)
 	if err != nil {
 		return err
 	}
 	if global.OutputFormat == output.FormatMarkdown {
-		body, err := scopecatalog.Markdown(targetType)
+		body, err := profilecatalog.Markdown(targetType)
 		if err != nil {
 			return err
 		}
 		fmt.Fprint(os.Stdout, body)
 		return nil
 	}
-	items, err := scopecatalog.List(targetType)
+	items, err := profilecatalog.List(targetType)
 	if err != nil {
 		return err
 	}
-	return renderBreakglassScopes(global.OutputFormat, &client.BreakglassScopeList{
-		Items: items,
-		Count: len(items),
+	filtered := items[:0]
+	for _, item := range items {
+		if !catalog.MatchCredentialScope(item.Scope, scopeFilter) {
+			continue
+		}
+		if !catalog.MatchPrivilegeType(item.Type, typeFilter) {
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+	return renderBreakglassProfiles(global.OutputFormat, &client.BreakglassProfileList{
+		Items: filtered,
+		Count: len(filtered),
 	})
 }
 
-func describeBreakglassScope(ctx context.Context, global *GlobalOptions, catalogOpts *catalogOptions, scopeID string) error {
-	if useScopeCatalogOffline(global, catalogOpts) {
-		printOfflineScopeCatalogNotice()
+func describeBreakglassProfile(ctx context.Context, global *GlobalOptions, catalogOpts *catalogOptions, profileName string) error {
+	if useProfileCatalogOffline(global, catalogOpts) {
+		printOfflineProfileCatalogNotice()
 		targetType, err := resolveCatalogTargetType(catalogOpts)
 		if err != nil {
 			return err
 		}
-		scope, err := scopecatalog.Get(targetType, scopeID)
+		scope, err := profilecatalog.Get(targetType, profileName)
 		if err != nil {
 			return err
 		}
 		if global.OutputFormat == output.FormatJSON {
 			return output.JSON(os.Stdout, scope)
 		}
-		printScopeMetadata(scope)
+		printProfileMetadata(scope)
 		return nil
 	}
 	c, err := getClient(global)
 	if err != nil {
 		return err
 	}
-	scope, err := c.GetBreakglassScope(ctx, scopeID)
+	scope, err := c.GetBreakglassProfile(ctx, profileName)
 	if err != nil {
 		return err
 	}
 	if global.OutputFormat == output.FormatJSON {
 		return output.JSON(os.Stdout, scope)
 	}
-	printScopeMetadata(scope)
+	printProfileMetadata(scope)
 	return nil
 }
 
-func printScopeMetadata(scope *client.ScopeMetadata) {
+func printProfileMetadata(scope *client.ProfileMetadata) {
 	if scope == nil {
 		return
 	}
-	fmt.Printf("Scope:       %s\n", scope.ID)
-	fmt.Printf("Plane:       %s\n", scope.Plane)
+	fmt.Printf("Name:        %s\n", scope.Name)
+	fmt.Printf("Scope:       %s\n", scope.Scope)
 	fmt.Printf("Type:        %s\n", scope.Type)
 	if scope.Authorization != nil {
 		if v, ok := scope.Authorization["approval"].(string); ok {
 			fmt.Printf("Approval:    %s\n", v)
 		}
 	}
-	if ttl := scopeCatalogRequestTTL(*scope); ttl != "" {
+	if ttl := profileCatalogRequestTTL(*scope); ttl != "" {
 		fmt.Printf("Request TTL: %s (decision must complete before request expires)\n", ttl)
 	}
-	if ttl := scopeCatalogGrantTTL(*scope); ttl != "" {
+	if ttl := profileCatalogGrantTTL(*scope); ttl != "" {
 		fmt.Printf("Grant TTL:   %s after approve\n", ttl)
 	}
-	if scope.Plane != "" {
-		fmt.Printf("Credential TTL: up to %s per activate (re-activate while grant valid)\n", breakglass.CredentialMaxTTLDisplay(scope.Plane))
+	if scope.Scope != "" {
+		fmt.Printf("Credential TTL: up to %s per activate (re-activate while grant valid)\n", breakglass.CredentialMaxTTLDisplay(scope.Scope))
 	}
 	fmt.Printf("Description: %s\n", scope.Description)
 	composition := scope.Composition
@@ -173,13 +201,13 @@ func printScopeMetadata(scope *client.ScopeMetadata) {
 	for _, r := range scope.Restrictions {
 		fmt.Printf("  ✗ %s\n", r)
 	}
-	if scope.Plane == breakglass.PlaneKube && len(scope.RBAC) > 0 {
+	if scope.Scope == breakglass.ScopeKube && len(scope.RBAC) > 0 {
 		fmt.Printf("\nEffective RBAC (target %s, %d rules):\n", scope.TargetType, len(scope.RBAC))
 		for i, rule := range scope.RBAC {
 			fmt.Printf("  [%d] apiGroups=%v resources=%v verbs=%v\n", i+1, rule.APIGroups, rule.Resources, rule.Verbs)
 		}
 	}
-	if scope.Plane == breakglass.PlaneAWS {
+	if scope.Scope == breakglass.ScopeAWS {
 		if scope.AwsRoleKey != "" {
 			fmt.Printf("\nAWS role key: %s\n", scope.AwsRoleKey)
 		}
@@ -187,37 +215,37 @@ func printScopeMetadata(scope *client.ScopeMetadata) {
 			fmt.Printf("  • %s\n", line)
 		}
 	}
-	fmt.Printf("\nExample: zoa breakglass request --scope %s --reason %s\n", scope.ID, reason.ExampleJiraIssue)
+	fmt.Printf("\nExample: zoa breakglass request --name %s --reason %s\n", scope.Name, reason.ExampleJiraIssue)
 }
 
-func scopeCatalogApproval(s client.ScopeMetadata) string {
-	return scopeCatalogAuthString(s, "approval")
+func profileCatalogApproval(s client.ProfileMetadata) string {
+	return profileCatalogAuthString(s, "approval")
 }
 
-func scopeCatalogRequestTTL(s client.ScopeMetadata) string {
-	h := scopeCatalogAuthInt(s, "default_request_hours")
+func profileCatalogRequestTTL(s client.ProfileMetadata) string {
+	h := profileCatalogAuthInt(s, "default_request_hours")
 	if h <= 0 {
 		return ""
 	}
 	return fmt.Sprintf("%dh", h)
 }
 
-func scopeCatalogGrantTTL(s client.ScopeMetadata) string {
-	h := scopeCatalogAuthInt(s, "default_grant_hours")
+func profileCatalogGrantTTL(s client.ProfileMetadata) string {
+	h := profileCatalogAuthInt(s, "default_grant_hours")
 	if h <= 0 {
 		return ""
 	}
 	return fmt.Sprintf("%dh", h)
 }
 
-func scopeCatalogCredentialTTL(s client.ScopeMetadata) string {
-	if s.Plane == "" {
+func profileCatalogCredentialTTL(s client.ProfileMetadata) string {
+	if s.Scope == "" {
 		return ""
 	}
-	return breakglass.CredentialMaxTTLDisplay(s.Plane)
+	return breakglass.CredentialMaxTTLDisplay(s.Scope)
 }
 
-func scopeCatalogAuthString(s client.ScopeMetadata, key string) string {
+func profileCatalogAuthString(s client.ProfileMetadata, key string) string {
 	if s.Authorization == nil {
 		return ""
 	}
@@ -231,7 +259,7 @@ func scopeCatalogAuthString(s client.ScopeMetadata, key string) string {
 	return fmt.Sprint(raw)
 }
 
-func scopeCatalogAuthInt(s client.ScopeMetadata, key string) int {
+func profileCatalogAuthInt(s client.ProfileMetadata, key string) int {
 	if s.Authorization == nil {
 		return 0
 	}
@@ -251,22 +279,22 @@ func scopeCatalogAuthInt(s client.ScopeMetadata, key string) int {
 	}
 }
 
-func renderBreakglassScopes(format output.Format, list *client.BreakglassScopeList) error {
+func renderBreakglassProfiles(format output.Format, list *client.BreakglassProfileList) error {
 	if list == nil {
-		list = &client.BreakglassScopeList{}
+		list = &client.BreakglassProfileList{}
 	}
 	if format == output.FormatJSON {
 		return output.JSON(os.Stdout, list)
 	}
 	tw := output.NewTable(os.Stdout)
-	fmt.Fprintf(tw, "SCOPE\tPLANE\tTYPE\tAPPROVAL\tREQUEST_TTL\tGRANT_TTL\tCREDENTIAL_TTL\tDESCRIPTION\n")
+	fmt.Fprintf(tw, "NAME\tSCOPE\tTYPE\tAPPROVAL\tREQUEST_TTL\tGRANT_TTL\tCREDENTIAL_TTL\tDESCRIPTION\n")
 	for _, s := range list.Items {
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			s.ID, s.Plane, s.Type,
-			output.Dash(scopeCatalogApproval(s)),
-			output.Dash(scopeCatalogRequestTTL(s)),
-			output.Dash(scopeCatalogGrantTTL(s)),
-			output.Dash(scopeCatalogCredentialTTL(s)),
+			s.Name, s.Scope, s.Type,
+			output.Dash(profileCatalogApproval(s)),
+			output.Dash(profileCatalogRequestTTL(s)),
+			output.Dash(profileCatalogGrantTTL(s)),
+			output.Dash(profileCatalogCredentialTTL(s)),
 			s.Description)
 	}
 	return tw.Flush()
@@ -274,7 +302,7 @@ func renderBreakglassScopes(format output.Format, list *client.BreakglassScopeLi
 
 func newBreakglassRequestCommand(global *GlobalOptions) *cobra.Command {
 	var (
-		scope        string
+		profileName  string
 		reasonFlag   string
 		wait         bool
 		waitTimeout  time.Duration
@@ -288,7 +316,7 @@ func newBreakglassRequestCommand(global *GlobalOptions) *cobra.Command {
 With --wait: stderr ack, poll with progress until active/denied/expired, then stdout metadata (like zoa get).
 --wait does not activate credentials — run zoa breakglass activate <id> yourself after approval.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			resp, err := createBreakglassRequest(cmd.Context(), global, scope, reasonFlag)
+			resp, err := createBreakglassRequest(cmd.Context(), global, profileName, reasonFlag)
 			if err != nil {
 				return err
 			}
@@ -322,13 +350,14 @@ With --wait: stderr ack, poll with progress until active/denied/expired, then st
 			return finishBreakglassWait(global, pollRes.req, pollRes.timedOut, pollRes.elapsed)
 		},
 	}
-	cmd.Flags().StringVar(&scope, "scope", "", "Break-glass scope id (required)")
+	cmd.Flags().StringVar(&profileName, "name", "", "Break-glass profile name (required)")
+	cmd.Flags().StringVar(&profileName, "scope", "", "Deprecated: use --name") // zoa-retrocompatibility-cleanup
 	cmd.Flags().StringVar(&reasonFlag, "reason", "",
 		fmt.Sprintf("Required; env %s (%s)", reason.EnvVar, reason.FormatHint))
 	cmd.Flags().BoolVar(&wait, "wait", false, "Wait for approval decision (does not activate)")
 	cmd.Flags().DurationVar(&waitTimeout, "wait-timeout", 5*time.Minute, "Max poll duration when --wait is active")
 	cmd.Flags().DurationVar(&pollInterval, "wait-poll-interval", 30*time.Second, "Poll frequency when --wait is active")
-	_ = cmd.MarkFlagRequired("scope")
+	_ = cmd.MarkFlagRequired("name")
 	return cmd
 }
 
@@ -383,7 +412,7 @@ Use 'zoa breakglass history' for fleet-wide audit view.`,
 				return err
 			}
 			list, err := c.ListBreakglassRequests(cmd.Context(), &client.BreakglassListParams{
-				Scope:        "mine",
+				Mine:         true,
 				Target:       target,
 				Since:        since,
 				Until:        until,
@@ -533,18 +562,18 @@ func activateBreakglass(ctx context.Context, global *GlobalOptions, requestID st
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	meta := map[string]string{"request_id": requestID, "scope": resp.Scope, "grant_expires_at": resp.GrantExpiresAt}
+	meta := map[string]string{"request_id": requestID, "name": resp.Name, "grant_expires_at": resp.GrantExpiresAt}
 	metaBytes, _ := json.Marshal(meta)
 	if err := os.WriteFile(filepath.Join(dir, "meta.json"), metaBytes, 0o600); err != nil {
 		return err
 	}
-	plane, err := active.PlaneForScope(resp.Scope)
+	plane, err := active.ScopeForProfile(resp.Name)
 	if err != nil {
 		return err
 	}
 	stanza := active.Stanza{
 		RequestID:           requestID,
-		Scope:               resp.Scope,
+		Name:                  resp.Name,
 		GrantExpiresAt:      resp.GrantExpiresAt,
 		CredentialExpiresAt: breakglassCredentialExpiresAt(plane, resp),
 	}
@@ -563,7 +592,7 @@ func activateBreakglass(ctx context.Context, global *GlobalOptions, requestID st
 		return err
 	}
 	progress := breakglassProgressWriter()
-	printBreakglassActivateDispatched(progress, requestID, resp.TargetCluster, resp.Scope)
+	printBreakglassActivateDispatched(progress, requestID, resp.TargetCluster, resp.Name)
 	printBreakglassActivateHints(progress, home, requestID, plane, resp)
 	if global.OutputFormat == output.FormatJSON {
 		id := resp.ID
@@ -573,7 +602,7 @@ func activateBreakglass(ctx context.Context, global *GlobalOptions, requestID st
 		safe := map[string]interface{}{
 			"id":             id,
 			"request_id":     requestID,
-			"scope":          resp.Scope,
+			"name":           resp.Name,
 			"target_cluster": resp.TargetCluster,
 			"status":         resp.Status,
 			"config_dir":     dir,

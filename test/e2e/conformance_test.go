@@ -87,10 +87,10 @@ var _ = Describe("e2e conformance", func() {
 			}
 			for ta, scope := range taScope {
 				if strings.Contains(content, ta) {
-					if scope == "kube-api" {
+					if scope == "kube" {
 						hasKubeAPISmoke = true
 					}
-					if scope == "aws-api" {
+					if scope == "aws" {
 						hasAWSAPISmoke = true
 					}
 				}

@@ -5,14 +5,14 @@ This document explains how **temporary** Kubernetes and AWS credentials are crea
 | Audience       | Read instead                                                                          |
 | -------------- | ------------------------------------------------------------------------------------- |
 | Operator       | [Break-glass README](README.md), [CLI break-glass](../cli-reference.md#break-glass)   |
-| Scope author   | [break-glass-scopes.md](../break-glass-scopes.md)                                     |
+| Profile author | [break-glass-profiles.md](../break-glass-profiles.md)                                 |
 | Design archive | [proposal.md](proposal.md) — **not** kept in sync; do not merge operator docs into it |
 
 **Planes:** Break-glass uses the same **API Lambda** (VPC, EKS + STS) as Trusted Actions. The caller is always the **boundary task role** over SigV4; the laptop never receives bearer credentials. Human **`operator`** on audit rows comes from the [identity bridge](../boundary/identity-bridge.md), same as TA dispatch.
 
 ## Lifecycle (request → approve → activate)
 
-Each grant is one **scope** (kube **or** aws per request). v1 scopes use `approval: none` so approve is automatic; peer approval is the same HTTP workflow as TAs ([approval workflow](../approval-workflow.md)).
+Each grant is one **profile** (`name`, credential **scope** kube **or** aws per request). v1 profiles use `approval: none` so approve is automatic; peer approval is the same HTTP workflow as TAs ([approval workflow](../approval-workflow.md)).
 
 ```mermaid
 sequenceDiagram

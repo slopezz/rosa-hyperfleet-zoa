@@ -16,14 +16,14 @@ import (
 func TestCreateResponse_WhenSerialized_ItShouldIncludeAllCLIExpectedFields(t *testing.T) {
 	durationMs := int64(123)
 	resp := createResponse{
-		ID:              "test-id",
+		ID: "test-id",
 		Action:          "get_resource",
 		RequestedAction: "rollout_restart",
 		TargetCluster:   "test-cluster",
 		Operator:        "test-operator",
 		Status:          "succeeded",
 		ExecutionMode:   "sync",
-		Scope:           "kube-api",
+		Scope:           "kube",
 		Type:            "read",
 		DryRun:          true,
 		Force:           true,
@@ -71,8 +71,8 @@ func TestCreateResponse_WhenSerialized_ItShouldIncludeAllCLIExpectedFields(t *te
 	if result["requested_action"] != "rollout_restart" {
 		t.Errorf("expected requested_action=%q, got %v", "rollout_restart", result["requested_action"])
 	}
-	if result["scope"] != "kube-api" {
-		t.Errorf("expected scope=%q, got %v", "kube-api", result["scope"])
+	if result["scope"] != "kube" {
+		t.Errorf("expected scope=%q, got %v", "kube", result["scope"])
 	}
 	if result["type"] != "read" {
 		t.Errorf("expected type=%q, got %v", "read", result["type"])
@@ -81,7 +81,7 @@ func TestCreateResponse_WhenSerialized_ItShouldIncludeAllCLIExpectedFields(t *te
 
 func TestCreateResponse_WhenSessionIDSet_ItShouldSerializeSessionID(t *testing.T) {
 	data, err := json.Marshal(createResponse{
-		ID:        "exec-1",
+		ID: "exec-1",
 		Action:    "get_resource",
 		Operator:  "slopezma",
 		SessionID: "sess-boundary-1",
@@ -101,7 +101,7 @@ func TestCreateResponse_WhenSessionIDSet_ItShouldSerializeSessionID(t *testing.T
 
 func TestCreateResponse_WhenSessionIDEmpty_ItShouldOmitFromJSON(t *testing.T) {
 	data, err := json.Marshal(createResponse{
-		ID:       "exec-1",
+		ID: "exec-1",
 		Action:   "get_resource",
 		Operator: "slopezma",
 		Status:   "succeeded",

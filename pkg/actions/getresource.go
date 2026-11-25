@@ -24,7 +24,7 @@ type getResource struct{}
 func (g *getResource) Metadata() ActionMetadata {
 	return ActionMetadata{
 		Name:           "get_resource",
-		Scope:          "kube-api",
+		Scope:          "kube",
 		Type:           "read",
 		ExecutionMode:  "sync",
 		Description:    "Get or list Kubernetes resources by type, namespace, name, or label/field selectors (including CRDs). Does not support Secrets — use get_secret instead (HCP namespace protection).",

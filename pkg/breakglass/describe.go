@@ -4,40 +4,40 @@ import (
 	"github.com/openshift-online/rosa-seaplane-zoa/pkg/actions"
 )
 
-// ScopeDescribe is the operator-facing scope detail (list endpoints omit rbac/composition).
-type ScopeDescribe struct {
-	ScopeMetadata
+// ProfileDescribe is the operator-facing scope detail (list endpoints omit rbac/composition).
+type ProfileDescribe struct {
+	ProfileMetadata
 	Composition    []string           `json:"composition,omitempty"`
 	IAMComposition []string           `json:"iam_composition,omitempty"`
 	RBAC           []actions.RBACRule `json:"rbac,omitempty"`
 	TargetType     string             `json:"target_type,omitempty"`
 }
 
-// DescribeScope builds catalog metadata plus effective RBAC or IAM notes for targetType (rc or mc).
-func DescribeScope(def *Definition, targetType string) ScopeDescribe {
+// DescribeProfile builds catalog metadata plus effective RBAC or IAM notes for targetType (rc or mc).
+func DescribeProfile(def *Definition, targetType string) ProfileDescribe {
 	if def == nil {
-		return ScopeDescribe{}
+		return ProfileDescribe{}
 	}
-	out := ScopeDescribe{
-		ScopeMetadata:  def.Metadata,
+	out := ProfileDescribe{
+		ProfileMetadata:  def.Metadata,
 		Composition:    compositionLines(def.Metadata),
 		IAMComposition: append([]string(nil), def.Metadata.IAMComposition...),
 		TargetType:     targetType,
 	}
-	if def.Metadata.Plane == PlaneAWS && targetType != "" {
-		out.IAMComposition = append(out.IAMComposition, awsScopeCatalogLines(def.Metadata.ID, targetType)...)
+	if def.Metadata.Scope == ScopeAWS && targetType != "" {
+		out.IAMComposition = append(out.IAMComposition, awsScopeCatalogLines(def.Metadata.Name, targetType)...)
 	}
-	if def.Metadata.Plane == PlaneKube && def.RBAC != nil && targetType != "" {
+	if def.Metadata.Scope == ScopeKube && def.RBAC != nil && targetType != "" {
 		out.RBAC = EffectiveRBAC(def, targetType)
 	}
 	return out
 }
 
-func compositionLines(meta ScopeMetadata) []string {
+func compositionLines(meta ProfileMetadata) []string {
 	if len(meta.Capabilities) > 0 {
 		return append([]string(nil), meta.Capabilities...)
 	}
-	switch meta.ID {
+	switch meta.Name {
 	case "kube-read":
 		return []string{"Full cluster read (get/list/watch)"}
 	case "kube-write":

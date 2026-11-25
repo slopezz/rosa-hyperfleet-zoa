@@ -180,7 +180,7 @@ func (e *Executor) ExecuteSync(ctx context.Context, executionID string, action a
 
 	var execParams *actions.ExecutionParams
 
-	if meta.Scope == "aws-api" {
+	if meta.Scope == "aws" {
 		var err error
 		execParams, err = e.buildAWSParams(ctx, executionID, params, meta, execLogger)
 		if err != nil {
@@ -244,7 +244,7 @@ func (e *Executor) ValidateAction(ctx context.Context, action actions.Action, pa
 	var execParams *actions.ExecutionParams
 	var err error
 
-	if meta.Scope == "aws-api" {
+	if meta.Scope == "aws" {
 		execParams, err = e.buildAWSParams(ctx, "pre-dispatch", params, meta, logger)
 		if err != nil {
 			return err
@@ -291,7 +291,7 @@ func (e *Executor) DispatchAsync(ctx context.Context, exec *store.Execution, act
 
 	// K8s RBAC only for kube-api TAs; AWS TAs get SA only (no Role/RoleBinding)
 	rbacForSA := meta.RBAC
-	if meta.Scope == "aws-api" {
+	if meta.Scope == "aws" {
 		rbacForSA = nil
 	}
 	if err := e.createResourcesIdempotent(ctx, exec.ID, saName, rbacForSA, exec.Params); err != nil {
@@ -305,7 +305,7 @@ func (e *Executor) DispatchAsync(ctx context.Context, exec *store.Execution, act
 	var stsOut *sts.AssumeRoleOutput
 	var err error
 
-	if meta.Scope == "aws-api" {
+	if meta.Scope == "aws" {
 		roleARN := e.awsReadRoleARN
 		if meta.Type == "write" {
 			roleARN = e.awsWriteRoleARN

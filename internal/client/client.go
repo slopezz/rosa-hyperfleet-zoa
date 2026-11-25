@@ -131,9 +131,13 @@ func (c *Client) GetAction(ctx context.Context, name string) (*Action, error) {
 	return &resp, nil
 }
 
-func (c *Client) ListActions(ctx context.Context) (*ActionList, error) {
+func (c *Client) ListActions(ctx context.Context, query url.Values) (*ActionList, error) {
+	path := "/trusted-actions"
+	if len(query) > 0 {
+		path += "?" + query.Encode()
+	}
 	var resp ActionList
-	if err := c.doV0(ctx, http.MethodGet, "/trusted-actions", nil, &resp); err != nil {
+	if err := c.doV0(ctx, http.MethodGet, path, nil, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil

@@ -4,9 +4,9 @@ import "github.com/openshift-online/rosa-seaplane-zoa/pkg/actions"
 
 func init() {
 	register(&Definition{
-		Metadata: ScopeMetadata{
-			ID:          "kube-write",
-			Plane:       PlaneKube,
+		Metadata: ProfileMetadata{
+			Name: "kube-write",
+			Scope: ScopeKube,
 			Type:        TypeWrite,
 			Description: "Full kube-read plus workload mutate (controllers: create/patch/update; pods, configmaps, jobs: full mutate)",
 			Capabilities: []string{

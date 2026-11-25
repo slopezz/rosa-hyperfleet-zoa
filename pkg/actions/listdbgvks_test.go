@@ -15,7 +15,7 @@ func TestListDBGVKs_Metadata_ItShouldBeAReadOnlyAWSAction(t *testing.T) {
 	if meta.Name != "list_db_gvks" {
 		t.Errorf("expected name list_db_gvks, got %q", meta.Name)
 	}
-	if meta.Scope != "aws-api" {
+	if meta.Scope != "aws" {
 		t.Errorf("expected scope aws-api, got %q", meta.Scope)
 	}
 	if meta.Type != "read" {

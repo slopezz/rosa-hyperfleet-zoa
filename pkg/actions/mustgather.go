@@ -120,7 +120,7 @@ type mustGather struct{}
 func (m *mustGather) Metadata() ActionMetadata {
 	return ActionMetadata{
 		Name:                          "must_gather",
-		Scope:                         "kube-api",
+		Scope:                         "kube",
 		Type:                          "read",
 		ExecutionMode:                 "async",
 		DisallowExecutionModeOverride: true,

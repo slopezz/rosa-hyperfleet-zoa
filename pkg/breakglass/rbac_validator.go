@@ -31,50 +31,50 @@ func ValidateScope(def *Definition) error {
 		return fmt.Errorf("nil scope definition")
 	}
 	meta := def.Metadata
-	if err := validateScopeMetadata(meta); err != nil {
+	if err := validateProfileMetadata(meta); err != nil {
 		return err
 	}
 	if err := validateAuthorization(meta); err != nil {
 		return err
 	}
-	switch meta.Plane {
-	case PlaneKube:
+	switch meta.Scope {
+	case ScopeKube:
 		return validateKubeScope(def)
-	case PlaneAWS:
+	case ScopeAWS:
 		return validateAWSScope(def)
 	default:
-		return fmt.Errorf("scope %s: plane must be %q or %q, got %q", meta.ID, PlaneKube, PlaneAWS, meta.Plane)
+		return fmt.Errorf("profile %s: scope must be %q or %q, got %q", meta.Name, ScopeKube, ScopeAWS, meta.Scope)
 	}
 }
 
-func validateScopeMetadata(meta ScopeMetadata) error {
-	if meta.ID == "" {
+func validateProfileMetadata(meta ProfileMetadata) error {
+	if meta.Name == "" {
 		return fmt.Errorf("scope id must not be empty")
 	}
 	if meta.Description == "" {
-		return fmt.Errorf("scope %s: description required", meta.ID)
+		return fmt.Errorf("scope %s: description required", meta.Name)
 	}
 	switch meta.Type {
 	case TypeRead, TypeWrite, TypeElevated:
 	default:
-		return fmt.Errorf("scope %s: type must be read, write, or elevated", meta.ID)
+		return fmt.Errorf("scope %s: type must be read, write, or elevated", meta.Name)
 	}
 	return nil
 }
 
-func validateAuthorization(meta ScopeMetadata) error {
+func validateAuthorization(meta ProfileMetadata) error {
 	auth := meta.Authorization
 	if auth.Approval == "" {
-		return fmt.Errorf("scope %s: authorization.approval required", meta.ID)
+		return fmt.Errorf("scope %s: authorization.approval required", meta.Name)
 	}
 	if auth.DefaultGrantHours <= 0 {
-		return fmt.Errorf("scope %s: default_grant_hours must be > 0", meta.ID)
+		return fmt.Errorf("scope %s: default_grant_hours must be > 0", meta.Name)
 	}
 	if auth.DefaultRequestHours <= 0 {
-		return fmt.Errorf("scope %s: default_request_hours must be > 0", meta.ID)
+		return fmt.Errorf("scope %s: default_request_hours must be > 0", meta.Name)
 	}
 	if meta.Type == TypeElevated && auth.DefaultGrantHours > 2 {
-		return fmt.Errorf("scope %s: elevated default_grant_hours must be <= 2", meta.ID)
+		return fmt.Errorf("scope %s: elevated default_grant_hours must be <= 2", meta.Name)
 	}
 	return nil
 }
@@ -82,29 +82,29 @@ func validateAuthorization(meta ScopeMetadata) error {
 func validateKubeScope(def *Definition) error {
 	meta := def.Metadata
 	if meta.AwsRoleKey != "" {
-		return fmt.Errorf("scope %s: kube scopes must not set aws_role_key", meta.ID)
+		return fmt.Errorf("scope %s: kube scopes must not set aws_role_key", meta.Name)
 	}
 	if def.RBAC == nil {
-		return fmt.Errorf("scope %s: kube scopes must declare RBAC", meta.ID)
+		return fmt.Errorf("scope %s: kube scopes must declare RBAC", meta.Name)
 	}
 	for _, target := range []string{actions.TargetTypeRC, actions.TargetTypeMC} {
 		rules := def.RBAC(target)
 		if len(rules) == 0 {
-			return fmt.Errorf("scope %s: no RBAC rules for target %s", meta.ID, target)
+			return fmt.Errorf("scope %s: no RBAC rules for target %s", meta.Name, target)
 		}
 		cfg := &actions.RBACConfig{Rules: rules}
 		if meta.Type == TypeElevated {
 			cfg.AllowSecretRead = true
 		}
 		if err := actions.ValidateRBACRules(cfg); err != nil {
-			return fmt.Errorf("scope %s (%s): %w", meta.ID, target, err)
+			return fmt.Errorf("scope %s (%s): %w", meta.Name, target, err)
 		}
 		if err := validateScopeTypeRBAC(meta.Type, rules); err != nil {
-			return fmt.Errorf("scope %s (%s): %w", meta.ID, target, err)
+			return fmt.Errorf("scope %s (%s): %w", meta.Name, target, err)
 		}
 		if meta.Type == TypeElevated {
 			if err := validateElevatedRBAC(rules); err != nil {
-				return fmt.Errorf("scope %s (%s): %w", meta.ID, target, err)
+				return fmt.Errorf("scope %s (%s): %w", meta.Name, target, err)
 			}
 		}
 	}
@@ -114,10 +114,10 @@ func validateKubeScope(def *Definition) error {
 func validateAWSScope(def *Definition) error {
 	meta := def.Metadata
 	if def.RBAC != nil {
-		return fmt.Errorf("scope %s: aws scopes must not declare RBAC in Go", meta.ID)
+		return fmt.Errorf("scope %s: aws scopes must not declare RBAC in Go", meta.Name)
 	}
 	if meta.AwsRoleKey == "" {
-		return fmt.Errorf("scope %s: aws scopes require aws_role_key", meta.ID)
+		return fmt.Errorf("scope %s: aws scopes require aws_role_key", meta.Name)
 	}
 	return nil
 }

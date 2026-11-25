@@ -164,7 +164,7 @@ func TestBuildAWSParams_WhenReadAction_ItShouldUseReadRole(t *testing.T) {
 		logger:          testLogger(),
 	}
 
-	meta := actions.ActionMetadata{Scope: "aws-api", Type: "read"}
+	meta := actions.ActionMetadata{Scope: "aws", Type: "read"}
 	params, err := e.buildAWSParams(context.Background(), "exec-1", map[string]string{}, meta, testLogger())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -196,7 +196,7 @@ func TestBuildAWSParams_WhenWriteAction_ItShouldUseWriteRole(t *testing.T) {
 		logger:          testLogger(),
 	}
 
-	meta := actions.ActionMetadata{Scope: "aws-api", Type: "write"}
+	meta := actions.ActionMetadata{Scope: "aws", Type: "write"}
 	_, err := e.buildAWSParams(context.Background(), "exec-2", map[string]string{}, meta, testLogger())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -222,7 +222,7 @@ func TestBuildAWSParams_WhenNoSTSClient_ItShouldReturnError(t *testing.T) {
 		logger:    testLogger(),
 	}
 
-	meta := actions.ActionMetadata{Scope: "aws-api", Type: "read"}
+	meta := actions.ActionMetadata{Scope: "aws", Type: "read"}
 	_, err := e.buildAWSParams(context.Background(), "exec-3", map[string]string{}, meta, testLogger())
 	if err == nil {
 		t.Fatal("expected error when STS client is nil")
@@ -237,7 +237,7 @@ func TestBuildAWSParams_WhenNoRoleConfigured_ItShouldReturnError(t *testing.T) {
 		logger:          testLogger(),
 	}
 
-	meta := actions.ActionMetadata{Scope: "aws-api", Type: "read"}
+	meta := actions.ActionMetadata{Scope: "aws", Type: "read"}
 	_, err := e.buildAWSParams(context.Background(), "exec-4", map[string]string{}, meta, testLogger())
 	if err == nil {
 		t.Fatal("expected error when role ARN is empty")
@@ -255,7 +255,7 @@ func TestBuildAWSParams_WhenSTSFails_ItShouldReturnError(t *testing.T) {
 		logger:          testLogger(),
 	}
 
-	meta := actions.ActionMetadata{Scope: "aws-api", Type: "read"}
+	meta := actions.ActionMetadata{Scope: "aws", Type: "read"}
 	_, err := e.buildAWSParams(context.Background(), "exec-5", map[string]string{}, meta, testLogger())
 	if err == nil {
 		t.Fatal("expected error when STS AssumeRole fails")

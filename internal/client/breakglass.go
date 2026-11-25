@@ -9,7 +9,7 @@ import (
 
 type BreakglassRequest struct {
 	RequestID        string   `json:"id"`
-	Scope            string   `json:"scope"`
+	Name             string   `json:"name"`
 	Reason           string   `json:"reason"`
 	Operator         string   `json:"operator"`
 	Status           string   `json:"status"`
@@ -32,30 +32,30 @@ type BreakglassRequest struct {
 	Kind             string   `json:"kind,omitempty"`
 }
 
-type BreakglassScopeList struct {
-	Items []ScopeMetadata `json:"items"`
-	Count int             `json:"count"`
+type BreakglassProfileList struct {
+	Items []ProfileMetadata `json:"items"`
+	Count int               `json:"count"`
 }
 
-type ScopeRBACRule struct {
+type ProfileRBACRule struct {
 	APIGroups []string `json:"api_groups"`
 	Resources []string `json:"resources"`
 	Verbs     []string `json:"verbs"`
 }
 
-type ScopeMetadata struct {
-	ID             string                 `json:"id"`
-	Plane          string                 `json:"plane"`
-	Type           string                 `json:"type"`
-	Description    string                 `json:"description"`
-	Authorization  map[string]interface{} `json:"authorization,omitempty"`
-	Capabilities   []string               `json:"capabilities,omitempty"`
-	Restrictions   []string               `json:"restrictions,omitempty"`
-	Composition    []string               `json:"composition,omitempty"`
-	IAMComposition []string               `json:"iam_composition,omitempty"`
-	RBAC           []ScopeRBACRule        `json:"rbac,omitempty"`
-	TargetType     string                 `json:"target_type,omitempty"`
-	AwsRoleKey     string                 `json:"aws_role_key,omitempty"`
+type ProfileMetadata struct {
+	Name            string                 `json:"name"`
+	Scope           string                 `json:"scope"`
+	Type            string                 `json:"type"`
+	Description     string                 `json:"description"`
+	Authorization   map[string]interface{} `json:"authorization,omitempty"`
+	Capabilities    []string               `json:"capabilities,omitempty"`
+	Restrictions    []string               `json:"restrictions,omitempty"`
+	Composition     []string               `json:"composition,omitempty"`
+	IAMComposition  []string               `json:"iam_composition,omitempty"`
+	RBAC            []ProfileRBACRule      `json:"rbac,omitempty"`
+	TargetType      string                 `json:"target_type,omitempty"`
+	AwsRoleKey      string                 `json:"aws_role_key,omitempty"`
 }
 
 type BreakglassRequestList struct {
@@ -66,7 +66,7 @@ type BreakglassRequestList struct {
 type BreakglassActivateResponse struct {
 	RequestID          string                 `json:"request_id"`
 	ID                 string                 `json:"id"`
-	Scope              string                 `json:"scope"`
+	Name               string                 `json:"name"`
 	TargetCluster      string                 `json:"target_cluster"`
 	Status             string                 `json:"status"`
 	GrantExpiresAt     string                 `json:"grant_expires_at"`
@@ -76,24 +76,28 @@ type BreakglassActivateResponse struct {
 	KubeToken          string                 `json:"kube_token,omitempty"`
 }
 
-func (c *Client) GetBreakglassScope(ctx context.Context, scopeID string) (*ScopeMetadata, error) {
-	var resp ScopeMetadata
-	if err := c.doV0(ctx, http.MethodGet, "/breakglass/scopes/"+url.PathEscape(scopeID), nil, &resp); err != nil {
+func (c *Client) GetBreakglassProfile(ctx context.Context, profileName string) (*ProfileMetadata, error) {
+	var resp ProfileMetadata
+	if err := c.doV0(ctx, http.MethodGet, "/breakglass/profiles/"+url.PathEscape(profileName), nil, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
 }
 
-func (c *Client) ListBreakglassScopes(ctx context.Context) (*BreakglassScopeList, error) {
-	var resp BreakglassScopeList
-	if err := c.doV0(ctx, http.MethodGet, "/breakglass/scopes", nil, &resp); err != nil {
+func (c *Client) ListBreakglassProfiles(ctx context.Context, query url.Values) (*BreakglassProfileList, error) {
+	path := "/breakglass/profiles"
+	if len(query) > 0 {
+		path += "?" + query.Encode()
+	}
+	var resp BreakglassProfileList
+	if err := c.doV0(ctx, http.MethodGet, path, nil, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
 }
 
-func (c *Client) CreateBreakglassRequest(ctx context.Context, scope, reason string) (*BreakglassRequest, error) {
-	body := map[string]string{"scope": scope, "reason": reason}
+func (c *Client) CreateBreakglassRequest(ctx context.Context, profileName, reason string) (*BreakglassRequest, error) {
+	body := map[string]string{"name": profileName, "reason": reason}
 	var resp BreakglassRequest
 	if err := c.doV0(ctx, http.MethodPost, "/breakglass/requests", body, &resp); err != nil {
 		return nil, err
@@ -110,8 +114,8 @@ func (c *Client) GetBreakglassRequest(ctx context.Context, id string) (*Breakgla
 }
 
 type BreakglassListParams struct {
-	Scope        string // "mine" for list; omit for history (cross-operator)
-	Target       string // optional; same as GET /trusted-actions/runs ?target=
+	Mine         bool
+	Target       string
 	Operator     string
 	Status       string
 	Approval     string
@@ -125,8 +129,8 @@ type BreakglassListParams struct {
 func (c *Client) ListBreakglassRequests(ctx context.Context, params *BreakglassListParams) (*BreakglassRequestList, error) {
 	q := url.Values{}
 	if params != nil {
-		if params.Scope != "" {
-			q.Set("scope", params.Scope)
+		if params.Mine {
+			q.Set("mine", "true")
 		}
 		if params.Target != "" {
 			q.Set("target", params.Target)

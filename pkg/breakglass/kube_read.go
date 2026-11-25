@@ -6,9 +6,9 @@ import (
 
 func init() {
 	register(&Definition{
-		Metadata: ScopeMetadata{
-			ID:          "kube-read",
-			Plane:       PlaneKube,
+		Metadata: ProfileMetadata{
+			Name: "kube-read",
+			Scope: ScopeKube,
 			Type:        TypeRead,
 			Description: "Read-only kubectl (get/list/watch); no secrets or exec",
 			Authorization: Authorization{

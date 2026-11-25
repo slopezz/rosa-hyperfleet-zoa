@@ -8,8 +8,8 @@ func TestAwsElevatedScope_WhenRegistered_ItShouldMatchCatalogContract(t *testing
 		t.Fatal("aws-elevated not registered")
 	}
 	meta := def.Metadata
-	if meta.Plane != PlaneAWS || meta.Type != TypeElevated {
-		t.Fatalf("unexpected plane/type: %s %s", meta.Plane, meta.Type)
+	if meta.Scope != ScopeAWS || meta.Type != TypeElevated {
+		t.Fatalf("unexpected plane/type: %s %s", meta.Scope, meta.Type)
 	}
 	if meta.AwsRoleKey != AwsRoleKeyElevated {
 		t.Fatalf("aws_role_key: want %q, got %q", AwsRoleKeyElevated, meta.AwsRoleKey)

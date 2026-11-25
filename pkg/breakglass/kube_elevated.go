@@ -4,9 +4,9 @@ import "github.com/openshift-online/rosa-seaplane-zoa/pkg/actions"
 
 func init() {
 	register(&Definition{
-		Metadata: ScopeMetadata{
-			ID:          "kube-elevated",
-			Plane:       PlaneKube,
+		Metadata: ProfileMetadata{
+			Name: "kube-elevated",
+			Scope: ScopeKube,
 			Type:        TypeElevated,
 			Description: "Near-admin kube: write plus platform/storage/node mutate, secrets read, and exec",
 			Capabilities: []string{

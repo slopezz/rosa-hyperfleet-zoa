@@ -17,7 +17,7 @@ func TestListActionsOffline_WhenTargetTypeRC_ItShouldWriteMarkdownWithoutAPI(t *
 	opts := &catalogOptions{offline: true, targetType: actions.TargetTypeRC}
 
 	stdout := captureStdout(t, func() {
-		if err := listActionsOffline(global, opts); err != nil {
+		if err := listActionsOffline(global, opts, "", ""); err != nil {
 			t.Fatalf("listActionsOffline: %v", err)
 		}
 	})
@@ -30,7 +30,7 @@ func TestListActionsOffline_WhenTargetTypeRC_ItShouldWriteMarkdownWithoutAPI(t *
 func TestListActionsOffline_WhenMarkdownWithoutOfflineFlag_ItShouldError(t *testing.T) {
 	global := &GlobalOptions{OutputFormat: output.FormatMarkdown}
 	opts := &catalogOptions{offline: false}
-	err := listActions(context.Background(), global, opts)
+	err := listActions(context.Background(), global, opts, "", "")
 	if err == nil || !strings.Contains(err.Error(), "--offline") {
 		t.Fatalf("expected markdown offline error, got %v", err)
 	}

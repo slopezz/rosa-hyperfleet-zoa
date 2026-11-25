@@ -15,7 +15,7 @@ import (
 // BreakglassRequest is a single DynamoDB item for break-glass lifecycle (request + grant).
 type BreakglassRequest struct {
 	RequestID        string            `json:"id" dynamodbav:"requestId"`
-	Scope            string            `json:"scope" dynamodbav:"scope"`
+	Name             string            `json:"name" dynamodbav:"name"`
 	Reason           string            `json:"reason" dynamodbav:"reason"`
 	Operator         string            `json:"operator" dynamodbav:"operator"`
 	SignerARN        string            `json:"signer_arn,omitempty" dynamodbav:"signerARN,omitempty"`

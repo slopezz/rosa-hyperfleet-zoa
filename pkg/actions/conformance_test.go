@@ -33,7 +33,7 @@ func TestAllRegisteredActions_Conformance(t *testing.T) {
 		t.Fatal("no actions registered — init() functions likely not running")
 	}
 
-	validScopes := map[string]bool{"kube-api": true, "aws-api": true}
+	validScopes := map[string]bool{"kube": true, "aws": true}
 	validTypes := map[string]bool{"read": true, "write": true}
 	validModes := map[string]bool{"sync": true, "async": true}
 	validApprovals := map[string]bool{"none": true, "auto": true, "manual": true}
@@ -48,7 +48,7 @@ func TestAllRegisteredActions_Conformance(t *testing.T) {
 				t.Error("Name must not be empty")
 			}
 			if !validScopes[meta.Scope] {
-				t.Errorf("Scope must be 'kube-api' or 'aws-api', got %q", meta.Scope)
+				t.Errorf("Scope must be 'kube' or 'aws', got %q", meta.Scope)
 			}
 			if !validTypes[meta.Type] {
 				t.Errorf("Type must be 'read' or 'write', got %q", meta.Type)
@@ -85,11 +85,11 @@ func TestAllRegisteredActions_Conformance(t *testing.T) {
 
 			// --- Scope-RBAC consistency ---
 
-			if meta.Scope == "kube-api" && meta.RBAC == nil {
-				t.Error("kube-api TAs must declare RBAC (even if empty rules) — " +
+			if meta.Scope == "kube" && meta.RBAC == nil {
+				t.Error("kube TAs must declare RBAC (even if empty rules) — " +
 					"this prevents runtime failures where the SA has no permissions")
 			}
-			if meta.Scope == "aws-api" && meta.RBAC != nil {
+			if meta.Scope == "aws" && meta.RBAC != nil {
 				t.Error("aws-api TAs must NOT declare RBAC — " +
 					"AWS TAs use STS AssumeRole, not K8s ServiceAccount RBAC")
 			}

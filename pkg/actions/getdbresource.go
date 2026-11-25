@@ -45,7 +45,7 @@ type getDBResource struct{}
 func (a *getDBResource) Metadata() ActionMetadata {
 	return ActionMetadata{
 		Name:          "get_db_resource",
-		Scope:         "aws-api",
+		Scope:         "aws",
 		Type:          "read",
 		ExecutionMode: "sync",
 		Description:   "Get or list Seaplane control-plane resources directly from the seaplane-db (Aurora PostgreSQL) by GVK, namespace, and name.",

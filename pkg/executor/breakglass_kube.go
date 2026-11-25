@@ -49,7 +49,7 @@ func (e *Executor) IssueBreakglassKubeToken(ctx context.Context, requestID, scop
 	if err != nil {
 		return "", time.Time{}, err
 	}
-	credTTL, err := breakglass.CredentialDurationForGrant(breakglass.PlaneKube, grantRemaining)
+	credTTL, err := breakglass.CredentialDurationForGrant(breakglass.ScopeKube, grantRemaining)
 	if err != nil {
 		return "", time.Time{}, err
 	}

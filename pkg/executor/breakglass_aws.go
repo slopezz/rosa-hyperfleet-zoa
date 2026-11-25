@@ -56,7 +56,7 @@ func (e *Executor) AssumeBreakglassRole(ctx context.Context, requestID, scopeID 
 	if err != nil {
 		return nil, err
 	}
-	credTTL, err := breakglass.CredentialDurationForGrant(breakglass.PlaneAWS, duration)
+	credTTL, err := breakglass.CredentialDurationForGrant(breakglass.ScopeAWS, duration)
 	if err != nil {
 		return nil, err
 	}

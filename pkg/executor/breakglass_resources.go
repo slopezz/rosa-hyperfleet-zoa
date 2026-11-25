@@ -31,7 +31,7 @@ func (e *Executor) EnsureBreakglassKube(ctx context.Context, requestID, scopeID 
 	if !ok || def.RBAC == nil {
 		return "", fmt.Errorf("unknown kube scope %q", scopeID)
 	}
-	if def.Metadata.Plane != breakglass.PlaneKube {
+	if def.Metadata.Scope != breakglass.ScopeKube {
 		return "", fmt.Errorf("scope %q is not a kube plane scope", scopeID)
 	}
 	if err := e.ensureNamespace(ctx); err != nil {

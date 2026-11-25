@@ -13,15 +13,15 @@ func TestListActions_WhenActionsExist_ItShouldReturnNilError(t *testing.T) {
 		listActionsFn: func(_ context.Context) (*client.ActionList, error) {
 			return &client.ActionList{
 				Items: []client.Action{
-					{Name: "get_pods", Scope: "kube-api", Type: "read", Description: "List pods"},
-					{Name: "rollout_restart", Scope: "kube-api", Type: "write", Description: "Restart deployment"},
+					{Name: "get_pods", Scope: "kube", Type: "read", Description: "List pods"},
+					{Name: "rollout_restart", Scope: "kube", Type: "write", Description: "Restart deployment"},
 				},
 			}, nil
 		},
 	}
 
 	global := newMockGlobalOpts(mock)
-	err := listActions(context.Background(), global, &catalogOptions{})
+	err := listActions(context.Background(), global, &catalogOptions{}, "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -32,7 +32,7 @@ func TestListActions_WhenJSONFormat_ItShouldReturnNilError(t *testing.T) {
 		listActionsFn: func(_ context.Context) (*client.ActionList, error) {
 			return &client.ActionList{
 				Items: []client.Action{
-					{Name: "get_pods", Scope: "kube-api", Type: "read"},
+					{Name: "get_pods", Scope: "kube", Type: "read"},
 				},
 			}, nil
 		},
@@ -40,7 +40,7 @@ func TestListActions_WhenJSONFormat_ItShouldReturnNilError(t *testing.T) {
 
 	global := newMockGlobalOpts(mock)
 	global.OutputFormat = output.FormatJSON
-	err := listActions(context.Background(), global, &catalogOptions{})
+	err := listActions(context.Background(), global, &catalogOptions{}, "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -54,7 +54,7 @@ func TestListActions_WhenClientReturnsError_ItShouldPropagateError(t *testing.T)
 	}
 
 	global := newMockGlobalOpts(mock)
-	err := listActions(context.Background(), global, &catalogOptions{})
+	err := listActions(context.Background(), global, &catalogOptions{}, "", "")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -68,7 +68,7 @@ func TestDescribeAction_WhenActionExists_ItShouldReturnNilError(t *testing.T) {
 			}
 			return &client.Action{
 				Name:          "get_pods",
-				Scope:         "kube-api",
+				Scope:         "kube",
 				Type:          "read",
 				Description:   "List pods in a namespace",
 				ExecutionMode: "sync",
@@ -92,7 +92,7 @@ func TestDescribeAction_WhenActionHasCooldown_ItShouldReturnNilError(t *testing.
 		getActionFn: func(_ context.Context, _ string) (*client.Action, error) {
 			return &client.Action{
 				Name:                 "delete_pod",
-				Scope:                "kube-api",
+				Scope:                "kube",
 				Type:                 "write",
 				Description:          "Delete a specific pod",
 				WriteCooldownSeconds: 60,

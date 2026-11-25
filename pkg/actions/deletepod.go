@@ -17,7 +17,7 @@ type deletePod struct{}
 func (d *deletePod) Metadata() ActionMetadata {
 	return ActionMetadata{
 		Name:                 "delete_pod",
-		Scope:                "kube-api",
+		Scope:                "kube",
 		Type:                 "write",
 		ExecutionMode:        "sync",
 		Description:          "Delete a pod and wait for it to terminate. Refuses to delete standalone pods without owner references.",

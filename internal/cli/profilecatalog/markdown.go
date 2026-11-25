@@ -1,5 +1,5 @@
-// Package scopecatalog (markdown.go) renders the boundary offline break-glass scope catalog.
-package scopecatalog
+// Package profilecatalog (markdown.go) renders the boundary offline break-glass scope catalog.
+package profilecatalog
 
 import (
 	"fmt"
@@ -28,7 +28,7 @@ func Markdown(targetType string) (string, error) {
 	b.WriteString("6. While break-glass is active, remind the operator to **file a follow-up Trusted Action** so the same ops do not need break-glass again. Suggest a concrete `zoa run …` command or a **new TA name** to implement.\n\n")
 
 	b.WriteString("## Operator workflow (three steps)\n\n")
-	b.WriteString("1. `zoa breakglass request --scope <id> --reason TICKET`\n")
+	b.WriteString("1. `zoa breakglass request --name <profile> --reason TICKET`\n")
 	b.WriteString("2. Peer (laptop): `zoa approve <deployment>/<request-id>`\n")
 	b.WriteString("3. Operator (boundary): `zoa breakglass activate <request-id>` — explicit; not automatic with `--wait`.\n\n")
 	b.WriteString("`request --wait` and `get --wait` only poll until **approved / rejected / expired**, then print next steps.\n\n")
@@ -40,15 +40,15 @@ func Markdown(targetType string) (string, error) {
 	}
 
 	for _, meta := range registered {
-		def, ok := breakglass.Get(meta.ID)
+		def, ok := breakglass.Get(meta.Name)
 		if !ok {
 			continue
 		}
-		desc := breakglass.DescribeScope(def, targetType)
+		desc := breakglass.DescribeProfile(def, targetType)
 		scope := ClientScopeFromDescribe(desc)
 
-		fmt.Fprintf(&b, "## %s\n\n", scope.ID)
-		fmt.Fprintf(&b, "- **Plane:** %s · **Type:** %s\n", scope.Plane, scope.Type)
+		fmt.Fprintf(&b, "## %s\n\n", scope.Name)
+		fmt.Fprintf(&b, "- **Plane:** %s · **Type:** %s\n", scope.Scope, scope.Type)
 		fmt.Fprintf(&b, "- **Approval (catalog default):** %v\n", scope.Authorization["approval"])
 		fmt.Fprintf(&b, "- %s\n\n", scope.Description)
 
@@ -70,14 +70,14 @@ func Markdown(targetType string) (string, error) {
 			b.WriteString("\n")
 		}
 
-		if scope.Plane == breakglass.PlaneKube && len(scope.RBAC) > 0 {
+		if scope.Scope == breakglass.ScopeKube && len(scope.RBAC) > 0 {
 			b.WriteString("**Effective RBAC (summary):**\n\n")
 			for i, rule := range scope.RBAC {
 				fmt.Fprintf(&b, "- rule %d: apiGroups=%v resources=%v verbs=%v\n", i+1, rule.APIGroups, rule.Resources, rule.Verbs)
 			}
 			b.WriteString("\n")
 		}
-		if scope.Plane == breakglass.PlaneAWS {
+		if scope.Scope == breakglass.ScopeAWS {
 			if scope.AwsRoleKey != "" {
 				fmt.Fprintf(&b, "- **AWS role key:** %s\n", scope.AwsRoleKey)
 			}
@@ -89,7 +89,7 @@ func Markdown(targetType string) (string, error) {
 			}
 		}
 
-		fmt.Fprintf(&b, "**Example request:** `zoa breakglass request --scope %s --reason %s`\n\n", scope.ID, reason.ExampleJiraIssue)
+		fmt.Fprintf(&b, "**Example request:** `zoa breakglass request --scope %s --reason %s`\n\n", scope.Name, reason.ExampleJiraIssue)
 	}
 
 	return b.String(), nil

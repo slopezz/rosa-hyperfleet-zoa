@@ -7,12 +7,12 @@ import (
 	"github.com/openshift-online/rosa-seaplane-zoa/pkg/actions"
 )
 
-func TestDescribeScope_WhenAwsWriteOnMc_ItShouldNoteEquivalentToRead(t *testing.T) {
+func TestDescribeProfile_WhenAwsWriteOnMc_ItShouldNoteEquivalentToRead(t *testing.T) {
 	def, ok := Get("aws-write")
 	if !ok {
 		t.Fatal("aws-write not registered")
 	}
-	desc := DescribeScope(def, actions.TargetTypeMC)
+	desc := DescribeProfile(def, actions.TargetTypeMC)
 	found := false
 	for _, line := range desc.IAMComposition {
 		if strings.Contains(line, "MC: ReadOnlyAccess only") {
@@ -24,12 +24,12 @@ func TestDescribeScope_WhenAwsWriteOnMc_ItShouldNoteEquivalentToRead(t *testing.
 	}
 }
 
-func TestDescribeScope_WhenAwsReadOnRc_ItShouldNotAppendTerraformPath(t *testing.T) {
+func TestDescribeProfile_WhenAwsReadOnRc_ItShouldNotAppendTerraformPath(t *testing.T) {
 	def, ok := Get("aws-read")
 	if !ok {
 		t.Fatal("aws-read not registered")
 	}
-	desc := DescribeScope(def, actions.TargetTypeRC)
+	desc := DescribeProfile(def, actions.TargetTypeRC)
 	for _, line := range desc.IAMComposition {
 		if strings.Contains(line, "breakglass_iam.tf") || strings.HasPrefix(line, "IAM:") {
 			t.Fatalf("unexpected IAM catalog line on RC aws-read: %q", line)

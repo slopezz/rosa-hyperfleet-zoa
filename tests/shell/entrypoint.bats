@@ -106,7 +106,7 @@ setup() {
   [[ "${output}" == *"Inactivity termination"* ]]
 }
 
-@test "install_breakglass_scopes_catalog renders markdown via zoa breakglass scopes --offline" {
+@test "install_breakglass_profiles_catalog renders markdown via zoa breakglass profiles --offline" {
   if [[ ! -x "${ZOA_BIN}" ]]; then
     skip "build zoa first: make build"
   fi
@@ -120,12 +120,12 @@ setup() {
     bash -c '
       rm -rf "${HOME}/.claude"
       source "$1"
-      install_breakglass_scopes_catalog
-      head -n 3 "$(zoa_breakglass_scopes_catalog_path)"
+      install_breakglass_profiles_catalog
+      head -n 3 "$(zoa_breakglass_profiles_catalog_path)"
     ' bash "${ENTRYPOINT}"
 
   [ "${status}" -eq 0 ]
-  [[ "${output}" == *"break-glass scope catalog"* ]]
+  [[ "${output}" == *"break-glass"* ]]
   [[ "${output}" == *"Target type"* ]]
 }
 

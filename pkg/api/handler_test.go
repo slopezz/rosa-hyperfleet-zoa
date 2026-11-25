@@ -113,7 +113,7 @@ func init() {
 	actions.Register(&testAction{
 		meta: actions.ActionMetadata{
 			Name:           "test-read",
-			Scope:          "kube-api",
+			Scope:          "kube",
 			Type:           "read",
 			ExecutionMode:  "sync",
 			TimeoutSeconds: 60,
@@ -126,7 +126,7 @@ func init() {
 	actions.Register(&testAction{
 		meta: actions.ActionMetadata{
 			Name:                 "test-write",
-			Scope:                "kube-api",
+			Scope:                "kube",
 			Type:                 "write",
 			ExecutionMode:        "sync",
 			TimeoutSeconds:       60,
@@ -141,7 +141,7 @@ func init() {
 	actions.Register(&testAction{
 		meta: actions.ActionMetadata{
 			Name:           "test-write-dryrun",
-			Scope:          "kube-api",
+			Scope:          "kube",
 			Type:           "read",
 			ExecutionMode:  "sync",
 			TimeoutSeconds: 60,
@@ -277,7 +277,7 @@ func TestHandleCreate_WhenWriteCooldown_ItShouldReturn429(t *testing.T) {
 	execStore := &mockExecStore{
 		recentByTarget: []*store.Execution{
 			{
-				ID:     "recent-exec",
+				ID: "recent-exec",
 				Action: "test-write",
 				Status: store.StatusSucceeded,
 				Params: map[string]string{"namespace": "default", "name": "pod-1"},
@@ -335,7 +335,7 @@ func TestHandleCreate_WhenDifferentParams_ItShouldNotTriggerCooldown(t *testing.
 	execStore := &mockExecStore{
 		recentByTarget: []*store.Execution{
 			{
-				ID:     "recent-exec",
+				ID: "recent-exec",
 				Action: "test-write",
 				Status: store.StatusSucceeded,
 				Params: map[string]string{"namespace": "default", "name": "pod-1"},
@@ -363,7 +363,7 @@ func TestHandleCreate_WhenDryRunRecent_ItShouldNotTriggerCooldown(t *testing.T) 
 	execStore := &mockExecStore{
 		recentByTarget: []*store.Execution{
 			{
-				ID:     "recent-exec",
+				ID: "recent-exec",
 				Action: "test-write",
 				Status: store.StatusSucceeded,
 				Params: map[string]string{"namespace": "default", "name": "pod-1"},
@@ -449,7 +449,7 @@ func TestHandleCreate_WhenCooldownRejected_ItShouldRecordAuditWith429(t *testing
 	execStore := &mockExecStore{
 		recentByTarget: []*store.Execution{
 			{
-				ID:     "recent-exec",
+				ID: "recent-exec",
 				Action: "test-write",
 				Status: store.StatusSucceeded,
 				Params: map[string]string{"namespace": "default", "name": "pod-1"},
@@ -841,7 +841,7 @@ func TestHandleGetExecution_WhenIncludeOutput_ItShouldEmbedS3Content(t *testing.
 	execStore := &mockExecStore{
 		executions: []*store.Execution{
 			{
-				ID:          "exec-001",
+				ID: "exec-001",
 				Action:      "get_resource",
 				Status:      store.StatusSucceeded,
 				DurationMs:  2000,
@@ -882,7 +882,7 @@ func TestHandleGetExecution_WhenIncludeLogs_ItShouldEmbedS3Logs(t *testing.T) {
 	execStore := &mockExecStore{
 		executions: []*store.Execution{
 			{
-				ID:       "exec-002",
+				ID: "exec-002",
 				Action:   "get_resource",
 				Status:   store.StatusFailed,
 				LogBytes: 100,
@@ -918,7 +918,7 @@ func TestHandleGetExecution_WhenIncludeAll_ItShouldEmbedBoth(t *testing.T) {
 	execStore := &mockExecStore{
 		executions: []*store.Execution{
 			{
-				ID:          "exec-003",
+				ID: "exec-003",
 				Action:      "get_resource",
 				Status:      store.StatusSucceeded,
 				OutputBytes: 10,
@@ -955,7 +955,7 @@ func TestHandleGetExecution_WhenPending_ItShouldNotFetchS3(t *testing.T) {
 	execStore := &mockExecStore{
 		executions: []*store.Execution{
 			{
-				ID:     "exec-004",
+				ID: "exec-004",
 				Action: "get_resource",
 				Status: store.StatusDispatched,
 			},
@@ -986,7 +986,7 @@ func TestHandleGetExecution_WhenTerminal_ItShouldIncludeDuration(t *testing.T) {
 	execStore := &mockExecStore{
 		executions: []*store.Execution{
 			{
-				ID:         "exec-005",
+				ID: "exec-005",
 				Action:     "get_resource",
 				Status:     store.StatusSucceeded,
 				DurationMs: 258, // sub-second execution
@@ -1223,7 +1223,7 @@ func TestHandleGetExecution_WhenTarGzWithoutManifest_ItShouldReturnDownloadHint(
 	execStore := &mockExecStore{
 		executions: []*store.Execution{
 			{
-				ID:           "exec-mg-002",
+				ID: "exec-mg-002",
 				Action:       "must_gather",
 				Status:       store.StatusSucceeded,
 				OutputFormat: "tar.gz",
@@ -1252,7 +1252,7 @@ func TestHandleGetExecution_WhenNoS3Client_ItShouldStillReturnMetadata(t *testin
 	execStore := &mockExecStore{
 		executions: []*store.Execution{
 			{
-				ID:     "exec-006",
+				ID: "exec-006",
 				Action: "get_resource",
 				Status: store.StatusSucceeded,
 			},

@@ -24,14 +24,14 @@ func SetTargetType(target string) {
 func register(def *Definition) {
 	mu.Lock()
 	defer mu.Unlock()
-	id := def.Metadata.ID
+	id := def.Metadata.Name
 	if _, exists := catalog[id]; exists {
 		panic(fmt.Sprintf("scope %q already registered", id))
 	}
 	catalog[id] = def
 }
 
-func allowedOnRuntimeTarget(meta ScopeMetadata) bool {
+func allowedOnRuntimeTarget(meta ProfileMetadata) bool {
 	target := runtimeTarget
 	if target == "" || len(meta.TargetTypes) == 0 {
 		return true
@@ -65,21 +65,21 @@ func ListDefinitions() []*Definition {
 			out = append(out, def)
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Metadata.ID < out[j].Metadata.ID })
+	sort.Slice(out, func(i, j int) bool { return out[i].Metadata.Name < out[j].Metadata.Name })
 	return out
 }
 
 // List returns registered scopes for this target type, sorted by id.
-func List() []ScopeMetadata {
+func List() []ProfileMetadata {
 	mu.RLock()
 	defer mu.RUnlock()
-	var out []ScopeMetadata
+	var out []ProfileMetadata
 	for _, def := range catalog {
 		if allowedOnRuntimeTarget(def.Metadata) {
 			out = append(out, def.Metadata)
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
 }
 

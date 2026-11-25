@@ -20,7 +20,7 @@ func TestGarbageCollect_WhenTerminalExecutionExists_ItShouldCleanAndMark(t *test
 	execStore := &mockExecutionStore{
 		executions: []*store.Execution{
 			{
-				ID:            "exec-gc-1",
+				ID: "exec-gc-1",
 				Action:        "get_pods",
 				Status:        store.StatusSucceeded,
 				TargetCluster: "test-cluster",
@@ -55,7 +55,7 @@ func TestGarbageCollect_WhenNoTerminalExecutions_ItShouldDoNothing(t *testing.T)
 	execStore := &mockExecutionStore{
 		executions: []*store.Execution{
 			{
-				ID:            "exec-running",
+				ID: "exec-running",
 				Action:        "get_pods",
 				Status:        store.StatusDispatched,
 				TargetCluster: "test-cluster",

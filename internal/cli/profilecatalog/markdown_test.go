@@ -1,4 +1,4 @@
-package scopecatalog
+package profilecatalog
 
 import (
 	"strings"

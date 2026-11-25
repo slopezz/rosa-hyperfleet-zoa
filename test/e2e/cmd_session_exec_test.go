@@ -42,7 +42,7 @@ test -n "${ZOA_SESSION_ID:-}"
 echo "$exec_json" | jq -e --arg op "${ZOA_OPERATOR}" --arg sid "${ZOA_SESSION_ID}" '
   .status == "succeeded"
   and .action == "get_resource"
-  and .scope == "kube-api"
+  and .scope == "kube"
   and (.operator | type == "string")
   and (.operator == $op)
   and (.session_id == $sid)
@@ -95,7 +95,7 @@ func assertBoundaryExecScriptOutput(scriptOut string) (executionID string, exec 
 		"expected zoa run -o json execution object in exec-script output:\n%s", scriptOut)
 	Expect(exec["status"]).To(Equal("succeeded"))
 	Expect(exec["action"]).To(Equal("get_resource"))
-	Expect(exec["scope"]).To(Equal("kube-api"))
+	Expect(exec["scope"]).To(Equal("kube"))
 
 	out, ok := exec["output"].([]interface{})
 	Expect(ok).To(BeTrue(), "execution output should be a node list array, got: %T", exec["output"])

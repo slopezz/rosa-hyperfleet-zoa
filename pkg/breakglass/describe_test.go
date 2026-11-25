@@ -6,12 +6,12 @@ import (
 	"github.com/openshift-online/rosa-seaplane-zoa/pkg/actions"
 )
 
-func TestDescribeScope_WhenKubeWrite_ItShouldIncludeEffectiveRBAC(t *testing.T) {
+func TestDescribeProfile_WhenKubeWrite_ItShouldIncludeEffectiveRBAC(t *testing.T) {
 	def, ok := Get("kube-write")
 	if !ok {
 		t.Fatal("kube-write not registered")
 	}
-	desc := DescribeScope(def, actions.TargetTypeMC)
+	desc := DescribeProfile(def, actions.TargetTypeMC)
 	if len(desc.RBAC) == 0 {
 		t.Fatal("expected rbac rules on describe")
 	}
@@ -20,12 +20,12 @@ func TestDescribeScope_WhenKubeWrite_ItShouldIncludeEffectiveRBAC(t *testing.T) 
 	}
 }
 
-func TestDescribeScope_WhenAwsRead_ItShouldIncludeIAMComposition(t *testing.T) {
+func TestDescribeProfile_WhenAwsRead_ItShouldIncludeIAMComposition(t *testing.T) {
 	def, ok := Get("aws-read")
 	if !ok {
 		t.Fatal("aws-read not registered")
 	}
-	desc := DescribeScope(def, "")
+	desc := DescribeProfile(def, "")
 	if len(desc.IAMComposition) == 0 {
 		t.Fatal("expected iam_composition")
 	}

@@ -17,7 +17,7 @@ func TestShowLogs_WhenLogsAvailable_ItShouldReturnNilError(t *testing.T) {
 				t.Errorf("expected include 'logs', got %q", include)
 			}
 			return &client.Execution{
-				ID:     "exec-123",
+				ID: "exec-123",
 				Status: "succeeded",
 				Logs:   "2024-01-01T00:00:00Z INFO starting action\n",
 			}, nil
@@ -35,7 +35,7 @@ func TestShowLogs_WhenNoLogsAvailable_ItShouldReturnNilError(t *testing.T) {
 	mock := &mockClient{
 		getExecutionFn: func(_ context.Context, _ string, _ string) (*client.Execution, error) {
 			return &client.Execution{
-				ID:     "exec-456",
+				ID: "exec-456",
 				Status: "succeeded",
 				Logs:   "",
 			}, nil

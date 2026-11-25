@@ -12,10 +12,10 @@ import (
 	"github.com/openshift-online/rosa-seaplane-zoa/pkg/breakglass"
 )
 
-// Stanza is one active grant on a plane (kube or aws).
+// Stanza is one active grant on a credential surface (kube or aws).
 type Stanza struct {
 	RequestID           string `json:"requestId"`
-	Scope               string `json:"scope"`
+	Name                string `json:"name"`
 	GrantExpiresAt      string `json:"grantExpiresAt"`
 	CredentialExpiresAt string `json:"credentialExpiresAt,omitempty"`
 }
@@ -41,16 +41,16 @@ func AWSCredentialsPath(home string) string {
 	return filepath.Join(ConfigDir(home), "aws-credentials")
 }
 
-// PlaneForScope resolves kube vs aws from the scope catalog.
-func PlaneForScope(scopeID string) (string, error) {
+// ScopeForProfile resolves kube vs aws from the scope catalog.
+func ScopeForProfile(scopeID string) (string, error) {
 	if def, ok := breakglass.Get(scopeID); ok {
-		return def.Metadata.Plane, nil
+		return def.Metadata.Scope, nil
 	}
 	switch {
 	case strings.HasPrefix(scopeID, "aws-"):
-		return breakglass.PlaneAWS, nil
+		return breakglass.ScopeAWS, nil
 	case strings.HasPrefix(scopeID, "kube-"):
-		return breakglass.PlaneKube, nil
+		return breakglass.ScopeKube, nil
 	default:
 		return "", fmt.Errorf("active: unknown scope %q", scopeID)
 	}
@@ -100,7 +100,7 @@ func Write(home string, a *Active) error {
 // Activate merges one stanza for the scope's plane (replaces prior grant on that plane).
 // At most one active kube and one active aws grant; e.g. kube-write replaces kube-read in active + PS1.
 func Activate(home string, stanza Stanza) error {
-	plane, err := PlaneForScope(stanza.Scope)
+	plane, err := ScopeForProfile(stanza.Name)
 	if err != nil {
 		return err
 	}
@@ -109,9 +109,9 @@ func Activate(home string, stanza Stanza) error {
 		return err
 	}
 	switch plane {
-	case breakglass.PlaneKube:
+	case breakglass.ScopeKube:
 		a.Kube = &stanza
-	case breakglass.PlaneAWS:
+	case breakglass.ScopeAWS:
 		a.AWS = &stanza
 	default:
 		return fmt.Errorf("active: unsupported plane %q", plane)

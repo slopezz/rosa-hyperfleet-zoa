@@ -259,7 +259,7 @@ func (s *DynamoDBExecutionStore) listByStatus(ctx context.Context, accountID str
 			conditions = append(conditions, expression.Name("type").Equal(expression.Value(*filter.Type)))
 		}
 		if filter.Scope != nil {
-			conditions = append(conditions, expression.Name("scope").Equal(expression.Value(*filter.Scope)))
+			conditions = append(conditions, executionScopeCondition(*filter.Scope))
 		}
 		if filter.Operator != nil {
 			conditions = append(conditions, expression.Name("operator").Contains(*filter.Operator))
@@ -310,7 +310,7 @@ func (s *DynamoDBExecutionStore) applyFilterConditions(builder expression.Builde
 		conditions = append(conditions, expression.Name("type").Equal(expression.Value(*filter.Type)))
 	}
 	if filter.Scope != nil {
-		conditions = append(conditions, expression.Name("scope").Equal(expression.Value(*filter.Scope)))
+		conditions = append(conditions, executionScopeCondition(*filter.Scope))
 	}
 	if filter.Operator != nil {
 		conditions = append(conditions, expression.Name("operator").Contains(*filter.Operator))

@@ -127,7 +127,7 @@ var _ = Describe("zoa run flags", func() {
 
 				// Verify correct values for a read TA
 				Expect(raw["action"]).To(Equal("get_resource"))
-				Expect(raw["scope"]).To(Equal("kube-api"))
+				Expect(raw["scope"]).To(Equal("kube"))
 				Expect(raw["type"]).To(Equal("read"))
 				Expect(raw["status"]).To(Equal("succeeded"))
 				Expect(raw["execution_mode"]).To(Equal("sync"))

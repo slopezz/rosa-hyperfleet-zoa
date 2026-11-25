@@ -14,7 +14,7 @@ func TestPrintBreakglassRequestDispatched_WhenComplete_ItShouldMatchSessionStyle
 	req := &client.BreakglassRequest{
 		RequestID:     "abc-def",
 		TargetCluster: "eph-1fcc5750-regional",
-		Scope:         "kube-read",
+		Name:          "kube-read",
 	}
 	var buf bytes.Buffer
 	printBreakglassRequestDispatched(&buf, req)
@@ -45,7 +45,7 @@ func TestRenderBreakglassRequest_WhenApproved_ItShouldPrintActivateHintOnStderr(
 	req := &client.BreakglassRequest{
 		RequestID:      "abc",
 		Status:         "active",
-		Scope:          "kube-read",
+		Name:           "kube-read",
 		TargetCluster:  "eph-regional",
 		GrantExpiresAt: "2030-01-01T00:00:00Z",
 	}
@@ -83,7 +83,7 @@ func TestRenderBreakglassGetHuman_WhenApproved_ItShouldPrintStdoutMetadata(t *te
 	req := &client.BreakglassRequest{
 		RequestID:     "abc",
 		Status:        "active",
-		Scope:         "kube-read",
+		Name:          "kube-read",
 		TargetCluster: "eph-regional",
 	}
 	var buf bytes.Buffer

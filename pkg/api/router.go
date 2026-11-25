@@ -15,6 +15,8 @@ import (
 
 	"github.com/openshift-online/rosa-seaplane-zoa/internal/version"
 	"github.com/openshift-online/rosa-seaplane-zoa/pkg/actions"
+	"github.com/openshift-online/rosa-seaplane-zoa/pkg/breakglass"
+	"github.com/openshift-online/rosa-seaplane-zoa/pkg/catalog"
 	"github.com/openshift-online/rosa-seaplane-zoa/pkg/config"
 	"github.com/openshift-online/rosa-seaplane-zoa/pkg/executor"
 	"github.com/openshift-online/rosa-seaplane-zoa/pkg/metrics"
@@ -161,8 +163,8 @@ func (h *Handler) registerRoutes() {
 	h.mux.HandleFunc("GET "+PathTrustedActions, h.handleListActions)
 
 	// Break-glass (register scopes before /{scope} patterns if extended)
-	h.mux.HandleFunc("GET "+PathBreakglassScopes, h.handleListBreakglassScopes)
-	h.mux.HandleFunc("GET "+PathBreakglassScopes+"/{scope}", h.handleDescribeBreakglassScope)
+	h.mux.HandleFunc("GET "+PathBreakglassProfiles, h.handleListBreakglassProfiles)
+	h.mux.HandleFunc("GET "+PathBreakglassProfiles+"/{name}", h.handleDescribeBreakglassProfile)
 	h.mux.HandleFunc("POST "+PathBreakglassRequests, h.handleCreateBreakglassRequest)
 	h.mux.HandleFunc("GET "+PathBreakglassRequests+"/{id}", h.handleGetBreakglassRequest)
 	h.mux.HandleFunc("GET "+PathBreakglassRequests, h.handleListBreakglassRequests)
@@ -375,13 +377,27 @@ func (h *Handler) handleDescribeAction(w http.ResponseWriter, _ *http.Request, a
 	writeJSON(w, http.StatusOK, action.Metadata())
 }
 
-func (h *Handler) handleListActions(w http.ResponseWriter, _ *http.Request) {
-	allActions := actions.List()
+func (h *Handler) handleListActions(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	scopeFilter := strings.TrimSpace(q.Get("scope"))
+	typeFilter := strings.TrimSpace(q.Get("type"))
+	if typeFilter == breakglass.TypeElevated {
+		writeError(w, http.StatusBadRequest, "invalid_query", "elevated is not a trusted-action type")
+		return
+	}
+	allActions := actions.ListCatalog()
 	metas := make([]interface{}, 0, len(allActions))
 	for _, a := range allActions {
-		metas = append(metas, a.Metadata())
+		meta := a.Metadata()
+		if !catalog.MatchCredentialScope(meta.Scope, scopeFilter) {
+			continue
+		}
+		if !catalog.MatchPrivilegeType(meta.Type, typeFilter) {
+			continue
+		}
+		metas = append(metas, meta)
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"items": metas})
+	writeJSON(w, http.StatusOK, map[string]interface{}{"items": metas, "count": len(metas)})
 }
 
 func (h *Handler) handleAudit(w http.ResponseWriter, r *http.Request) {

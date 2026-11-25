@@ -15,7 +15,7 @@ type APIClient interface {
 	GetExecution(ctx context.Context, id string, include string) (*client.Execution, error)
 	ListExecutions(ctx context.Context, query url.Values) (*client.ExecutionList, error)
 	GetAction(ctx context.Context, name string) (*client.Action, error)
-	ListActions(ctx context.Context) (*client.ActionList, error)
+	ListActions(ctx context.Context, query url.Values) (*client.ActionList, error)
 	ListAudit(ctx context.Context, query url.Values) (*client.AuditList, error)
 	ServerVersion(ctx context.Context) (*client.ServerVersionInfo, error)
 	RawGet(ctx context.Context, path string) (*http.Response, error)
@@ -29,9 +29,9 @@ type APIClient interface {
 	SessionExecAttached(ctx context.Context, sessionID, execSessionID string) error
 	ListSessions(ctx context.Context, query url.Values) (*client.SessionList, error)
 
-	ListBreakglassScopes(ctx context.Context) (*client.BreakglassScopeList, error)
-	GetBreakglassScope(ctx context.Context, scopeID string) (*client.ScopeMetadata, error)
-	CreateBreakglassRequest(ctx context.Context, scope, reason string) (*client.BreakglassRequest, error)
+	ListBreakglassProfiles(ctx context.Context, query url.Values) (*client.BreakglassProfileList, error)
+	GetBreakglassProfile(ctx context.Context, profileName string) (*client.ProfileMetadata, error)
+	CreateBreakglassRequest(ctx context.Context, profileName, reason string) (*client.BreakglassRequest, error)
 	GetBreakglassRequest(ctx context.Context, id string) (*client.BreakglassRequest, error)
 	ListBreakglassRequests(ctx context.Context, params *client.BreakglassListParams) (*client.BreakglassRequestList, error)
 	ActivateBreakglass(ctx context.Context, id string) (*client.BreakglassActivateResponse, error)

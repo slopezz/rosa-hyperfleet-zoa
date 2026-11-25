@@ -15,17 +15,17 @@ import (
 func validateBreakglassActivateArtifacts(home, requestID, plane string, resp *client.BreakglassActivateResponse) error {
 	dir := active.RequestDir(home, requestID)
 	switch plane {
-	case breakglass.PlaneKube:
+	case breakglass.ScopeKube:
 		if resp.KubeToken == "" {
-			return fmt.Errorf("activate: API returned no kube token for scope %q", resp.Scope)
+			return fmt.Errorf("activate: API returned no kube token for scope %q", resp.Name)
 		}
 		kcfg := filepath.Join(dir, "kubeconfig")
 		if _, err := os.Stat(kcfg); err != nil {
 			return fmt.Errorf("activate: kubeconfig not written at %s", kcfg)
 		}
-	case breakglass.PlaneAWS:
+	case breakglass.ScopeAWS:
 		if resp.AWS == nil || fmt.Sprint(resp.AWS["access_key_id"]) == "" {
-			return fmt.Errorf("activate: API returned no AWS credentials for scope %q (check BREAKGLASS_AWS_*_ROLE_ARN on API Lambda)", resp.Scope)
+			return fmt.Errorf("activate: API returned no AWS credentials for scope %q (check BREAKGLASS_AWS_*_ROLE_ARN on API Lambda)", resp.Name)
 		}
 		creds := active.AWSCredentialsPath(home)
 		if _, err := os.Stat(creds); err != nil {
@@ -38,14 +38,14 @@ func validateBreakglassActivateArtifacts(home, requestID, plane string, resp *cl
 // breakglassCredExpireNote returns a short line for when activate credentials expire (from API or platform max).
 func breakglassCredExpireNote(plane string, resp *client.BreakglassActivateResponse) string {
 	switch plane {
-	case breakglass.PlaneKube:
+	case breakglass.ScopeKube:
 		if resp.KubeTokenExpiresAt != "" {
 			if t, err := time.Parse(time.RFC3339Nano, resp.KubeTokenExpiresAt); err == nil {
 				return formatBreakglassCredTTL(time.Until(t))
 			}
 		}
 		return breakglass.CredentialMaxTTLDisplay(plane)
-	case breakglass.PlaneAWS:
+	case breakglass.ScopeAWS:
 		if resp.AWS != nil {
 			if raw, ok := resp.AWS["expiration"].(string); ok && raw != "" {
 				if t, err := time.Parse(time.RFC3339Nano, raw); err == nil {
@@ -61,9 +61,9 @@ func breakglassCredExpireNote(plane string, resp *client.BreakglassActivateRespo
 
 func breakglassCredentialExpiresAt(plane string, resp *client.BreakglassActivateResponse) string {
 	switch plane {
-	case breakglass.PlaneKube:
+	case breakglass.ScopeKube:
 		return resp.KubeTokenExpiresAt
-	case breakglass.PlaneAWS:
+	case breakglass.ScopeAWS:
 		if resp.AWS != nil {
 			if raw, ok := resp.AWS["expiration"].(string); ok {
 				return raw

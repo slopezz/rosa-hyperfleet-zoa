@@ -97,7 +97,7 @@ func TestClientDispatch(t *testing.T) {
 
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(DispatchResponse{
-				ID:        "exec-123",
+				ID: "exec-123",
 				Status:    "dispatched",
 				SessionID: "sess-bridge-1",
 			})
@@ -252,7 +252,7 @@ func TestClientGetAction(t *testing.T) {
 				t.Errorf("unexpected path: %s", r.URL.Path)
 			}
 			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(Action{Name: "get_pods", Scope: "kube-api", Type: "read"})
+			_ = json.NewEncoder(w).Encode(Action{Name: "get_pods", Scope: "kube", Type: "read"})
 		}))
 		defer server.Close()
 
@@ -281,7 +281,7 @@ func TestClientListActions(t *testing.T) {
 		defer server.Close()
 
 		c := &Client{baseURL: server.URL, region: "us-east-1", credentials: staticCredentials{}, httpClient: http.DefaultClient}
-		list, err := c.ListActions(context.Background())
+		list, err := c.ListActions(context.Background(), nil)
 		if err != nil {
 			t.Fatalf("ListActions() error = %v", err)
 		}
@@ -451,7 +451,7 @@ func TestClientDo_WhenLambdaRuntimeError_ItShouldReturnLambdaError(t *testing.T)
 	defer server.Close()
 
 	c := &Client{baseURL: server.URL, region: "us-east-1", credentials: staticCredentials{}, httpClient: http.DefaultClient}
-	_, err := c.ListActions(context.Background())
+	_, err := c.ListActions(context.Background(), nil)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -475,7 +475,7 @@ func TestClientDo_WhenGenericHTTPError_ItShouldReturnFormattedError(t *testing.T
 	defer server.Close()
 
 	c := &Client{baseURL: server.URL, region: "us-east-1", credentials: staticCredentials{}, httpClient: http.DefaultClient}
-	_, err := c.ListActions(context.Background())
+	_, err := c.ListActions(context.Background(), nil)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -551,7 +551,7 @@ func TestClientDo_WhenHeadersSet_ItShouldNotSendIdentityHeaders(t *testing.T) {
 		accountID:   "999888",
 		operator:    "arn:aws:iam::999888:user/sre",
 	}
-	_, err := c.ListActions(context.Background())
+	_, err := c.ListActions(context.Background(), nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

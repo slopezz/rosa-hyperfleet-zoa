@@ -8,12 +8,14 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/openshift-online/rosa-seaplane-zoa/internal/cli/actioncatalog"
+	"github.com/openshift-online/rosa-seaplane-zoa/pkg/catalog"
 	"github.com/openshift-online/rosa-seaplane-zoa/internal/cli/parambind"
 	"github.com/openshift-online/rosa-seaplane-zoa/internal/output"
 )
 
 func newActionsCommand(global *GlobalOptions) *cobra.Command {
 	catalogOpts := &catalogOptions{}
+	var scopeFilter, typeFilter string
 
 	cmd := &cobra.Command{
 		Use:     "actions [action]",
@@ -50,10 +52,11 @@ Offline output includes a notice on stderr; the live API is the source of truth 
 			if len(args) == 1 {
 				return describeAction(cmd.Context(), global, catalogOpts, args[0])
 			}
-			return listActions(cmd.Context(), global, catalogOpts)
+			return listActions(cmd.Context(), global, catalogOpts, scopeFilter, typeFilter)
 		},
 	}
 	registerCatalogFlags(cmd, catalogOpts)
+	registerCatalogFilterFlags(cmd, &scopeFilter, &typeFilter)
 	return cmd
 }
 
@@ -93,23 +96,24 @@ By default, calls the ZOA API. With --offline, reads embedded registry metadata 
 	return cmd
 }
 
-func listActions(ctx context.Context, global *GlobalOptions, catalogOpts *catalogOptions) error {
+func listActions(ctx context.Context, global *GlobalOptions, catalogOpts *catalogOptions, scopeFilter, typeFilter string) error {
 	if global.OutputFormat == output.FormatMarkdown && !catalogOpts.offline {
 		return fmt.Errorf("-o markdown requires --offline (embedded catalog from this CLI build)")
 	}
 	if catalogOpts.offline {
-		return listActionsOffline(global, catalogOpts)
+		return listActionsOffline(global, catalogOpts, scopeFilter, typeFilter)
 	}
-	return listActionsOnline(ctx, global)
+	return listActionsOnline(ctx, global, scopeFilter, typeFilter)
 }
 
-func listActionsOnline(ctx context.Context, global *GlobalOptions) error {
+func listActionsOnline(ctx context.Context, global *GlobalOptions, scopeFilter, typeFilter string) error {
 	c, err := getClient(global)
 	if err != nil {
 		return err
 	}
 
-	list, err := c.ListActions(ctx)
+	q := catalogFilterQuery(scopeFilter, typeFilter)
+	list, err := c.ListActions(ctx, q)
 	if err != nil {
 		return err
 	}
@@ -126,7 +130,7 @@ func listActionsOnline(ctx context.Context, global *GlobalOptions) error {
 	return tw.Flush()
 }
 
-func listActionsOffline(global *GlobalOptions, catalogOpts *catalogOptions) error {
+func listActionsOffline(global *GlobalOptions, catalogOpts *catalogOptions, scopeFilter, typeFilter string) error {
 	printOfflineCatalogNotice()
 	targetType, err := resolveCatalogTargetType(catalogOpts)
 	if err != nil {
@@ -145,6 +149,17 @@ func listActionsOffline(global *GlobalOptions, catalogOpts *catalogOptions) erro
 	if err != nil {
 		return err
 	}
+	filtered := items[:0]
+	for _, a := range items {
+		if !catalog.MatchCredentialScope(a.Scope, scopeFilter) {
+			continue
+		}
+		if !catalog.MatchPrivilegeType(a.Type, typeFilter) {
+			continue
+		}
+		filtered = append(filtered, a)
+	}
+	items = filtered
 
 	if global.OutputFormat == output.FormatJSON {
 		return output.JSON(os.Stdout, map[string]any{"items": items})

@@ -7,7 +7,7 @@ import (
 )
 
 func TestCredentialDurationForGrant_WhenGrantAboveMin_ItShouldCapAtMax(t *testing.T) {
-	got, err := CredentialDurationForGrant(PlaneKube, 2*time.Hour)
+	got, err := CredentialDurationForGrant(ScopeKube, 2*time.Hour)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -17,7 +17,7 @@ func TestCredentialDurationForGrant_WhenGrantAboveMin_ItShouldCapAtMax(t *testin
 }
 
 func TestCredentialDurationForGrant_WhenGrantBetweenMinAndMax_ItShouldUseRemaining(t *testing.T) {
-	got, err := CredentialDurationForGrant(PlaneKube, 30*time.Minute)
+	got, err := CredentialDurationForGrant(ScopeKube, 30*time.Minute)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -27,7 +27,7 @@ func TestCredentialDurationForGrant_WhenGrantBetweenMinAndMax_ItShouldUseRemaini
 }
 
 func TestCredentialDurationForGrant_WhenGrantBelowKubeMin_ItShouldReturnGrantTooShort(t *testing.T) {
-	_, err := CredentialDurationForGrant(PlaneKube, 8*time.Minute)
+	_, err := CredentialDurationForGrant(ScopeKube, 8*time.Minute)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -35,8 +35,8 @@ func TestCredentialDurationForGrant_WhenGrantBelowKubeMin_ItShouldReturnGrantToo
 	if !errors.As(err, &short) {
 		t.Fatalf("expected *GrantTooShortError, got %T: %v", err, err)
 	}
-	if short.Plane != PlaneKube {
-		t.Fatalf("plane = %q", short.Plane)
+	if short.Scope != ScopeKube {
+		t.Fatalf("plane = %q", short.Scope)
 	}
 	if !errors.Is(err, ErrGrantTooShortForCredential) {
 		t.Fatalf("expected ErrGrantTooShortForCredential in chain")
@@ -44,7 +44,7 @@ func TestCredentialDurationForGrant_WhenGrantBelowKubeMin_ItShouldReturnGrantToo
 }
 
 func TestCredentialDurationForGrant_WhenGrantBelowAWSMin_ItShouldReturnGrantTooShort(t *testing.T) {
-	_, err := CredentialDurationForGrant(PlaneAWS, 12*time.Minute)
+	_, err := CredentialDurationForGrant(ScopeAWS, 12*time.Minute)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -52,13 +52,13 @@ func TestCredentialDurationForGrant_WhenGrantBelowAWSMin_ItShouldReturnGrantTooS
 	if !errors.As(err, &short) {
 		t.Fatalf("expected *GrantTooShortError, got %T", err)
 	}
-	if short.Plane != PlaneAWS {
-		t.Fatalf("plane = %q", short.Plane)
+	if short.Scope != ScopeAWS {
+		t.Fatalf("plane = %q", short.Scope)
 	}
 }
 
 func TestCredentialDurationForGrant_WhenGrantExactlyAWSMin_ItShouldSucceed(t *testing.T) {
-	got, err := CredentialDurationForGrant(PlaneAWS, 15*time.Minute)
+	got, err := CredentialDurationForGrant(ScopeAWS, 15*time.Minute)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

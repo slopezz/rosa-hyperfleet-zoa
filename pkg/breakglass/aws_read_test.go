@@ -8,8 +8,8 @@ func TestAwsReadScope_WhenRegistered_ItShouldMatchCatalogContract(t *testing.T) 
 		t.Fatal("aws-read not registered")
 	}
 	meta := def.Metadata
-	if meta.Plane != PlaneAWS || meta.Type != TypeRead {
-		t.Fatalf("unexpected plane/type: %s %s", meta.Plane, meta.Type)
+	if meta.Scope != ScopeAWS || meta.Type != TypeRead {
+		t.Fatalf("unexpected plane/type: %s %s", meta.Scope, meta.Type)
 	}
 	if meta.AwsRoleKey != AwsRoleKeyRead {
 		t.Fatalf("aws_role_key: want %q, got %q", AwsRoleKeyRead, meta.AwsRoleKey)

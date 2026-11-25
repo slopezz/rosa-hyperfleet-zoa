@@ -392,8 +392,8 @@ func (h *AccessHandler) handleSessionList(w http.ResponseWriter, r *http.Request
 		filter.Target = &v
 	}
 
-	// scope=mine: `zoa session list` — caller's sessions only; no cross-operator listing.
-	if q.Get("scope") == "mine" {
+	// mine=true (and scope=mine until zoa-retrocompatibility-cleanup): caller's sessions only.
+	if q.Get("mine") == "true" || q.Get("scope") == "mine" { // zoa-retrocompatibility-cleanup
 		if q.Get("operator") != "" {
 			writeError(w, http.StatusBadRequest, "invalid_query", "operator filter is not allowed with scope=mine")
 			return

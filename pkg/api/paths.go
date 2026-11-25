@@ -17,7 +17,7 @@ const (
 // Break-glass routes (HANDLER_MODE=api).
 const (
 	PathBreakglass         = V0Prefix + "/breakglass"
-	PathBreakglassScopes   = PathBreakglass + "/scopes"
+	PathBreakglassProfiles   = PathBreakglass + "/profiles"
 	PathBreakglassRequests = PathBreakglass + "/requests"
 )
 

@@ -13,7 +13,7 @@ import (
 func TestWriteBreakglassGrantTooShort_WhenRemainingBelowKubeMin_ItShouldReturn409(t *testing.T) {
 	w := httptest.NewRecorder()
 	err := &breakglass.GrantTooShortError{
-		Plane:         breakglass.PlaneKube,
+		Scope:         breakglass.ScopeKube,
 		Remaining:     2 * time.Minute,
 		MinCredential: 10 * time.Minute,
 	}

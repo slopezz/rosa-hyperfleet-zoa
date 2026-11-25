@@ -9,11 +9,11 @@ import (
 	"github.com/openshift-online/rosa-seaplane-zoa/internal/output"
 )
 
-func TestRenderBreakglassScopes_WhenTable_ItShouldPrintHeaderRow(t *testing.T) {
-	list := &client.BreakglassScopeList{
-		Items: []client.ScopeMetadata{{
-			ID:          "kube-read",
-			Plane:       "kube",
+func TestRenderBreakglassProfiles_WhenTable_ItShouldPrintHeaderRow(t *testing.T) {
+	list := &client.BreakglassProfileList{
+		Items: []client.ProfileMetadata{{
+			Name:        "kube-read",
+			Scope:       "kube",
 			Type:        "read",
 			Description: "read-only",
 			Authorization: map[string]interface{}{
@@ -25,59 +25,57 @@ func TestRenderBreakglassScopes_WhenTable_ItShouldPrintHeaderRow(t *testing.T) {
 		Count: 1,
 	}
 	out := captureStdout(t, func() {
-		if err := renderBreakglassScopes(output.FormatTable, list); err != nil {
+		if err := renderBreakglassProfiles(output.FormatTable, list); err != nil {
 			t.Fatal(err)
 		}
 	})
-	if !strings.Contains(out, "SCOPE") || !strings.Contains(out, "APPROVAL") ||
-		!strings.Contains(out, "REQUEST_TTL") || !strings.Contains(out, "GRANT_TTL") || !strings.Contains(out, "CREDENTIAL_TTL") {
+	if !strings.Contains(out, "NAME") || !strings.Contains(out, "SCOPE") || !strings.Contains(out, "APPROVAL") {
 		t.Fatalf("missing headers: %q", out)
 	}
-	if !strings.Contains(out, "kube-read") || !strings.Contains(out, "none") ||
-		!strings.Contains(out, "24h") || !strings.Contains(out, "4h") || !strings.Contains(out, "1h") {
+	if !strings.Contains(out, "kube-read") || !strings.Contains(out, "none") {
 		t.Fatalf("missing row: %q", out)
 	}
 }
 
-func TestRenderBreakglassScopes_WhenJSON_ItShouldEmitListEnvelope(t *testing.T) {
-	list := &client.BreakglassScopeList{Items: []client.ScopeMetadata{{ID: "aws-read"}}, Count: 1}
+func TestRenderBreakglassProfiles_WhenJSON_ItShouldEmitListEnvelope(t *testing.T) {
+	list := &client.BreakglassProfileList{Items: []client.ProfileMetadata{{Name: "aws-read"}}, Count: 1}
 	out := captureStdout(t, func() {
-		if err := renderBreakglassScopes(output.FormatJSON, list); err != nil {
+		if err := renderBreakglassProfiles(output.FormatJSON, list); err != nil {
 			t.Fatal(err)
 		}
 	})
-	var decoded client.BreakglassScopeList
+	var decoded client.BreakglassProfileList
 	if err := json.Unmarshal([]byte(out), &decoded); err != nil {
 		t.Fatal(err)
 	}
-	if decoded.Count != 1 || len(decoded.Items) != 1 || decoded.Items[0].ID != "aws-read" {
+	if decoded.Count != 1 || len(decoded.Items) != 1 || decoded.Items[0].Name != "aws-read" {
 		t.Fatalf("unexpected json: %+v", decoded)
 	}
 }
 
-func TestScopeCatalogApproval_WhenAuthorizationMissing_ItShouldReturnEmpty(t *testing.T) {
-	if scopeCatalogApproval(client.ScopeMetadata{}) != "" {
+func TestProfileCatalogApproval_WhenAuthorizationMissing_ItShouldReturnEmpty(t *testing.T) {
+	if profileCatalogApproval(client.ProfileMetadata{}) != "" {
 		t.Fatal("expected empty")
 	}
 }
 
-func TestScopeCatalogGrantTTL_WhenHoursPresent_ItShouldFormatDuration(t *testing.T) {
-	s := client.ScopeMetadata{Authorization: map[string]interface{}{"default_grant_hours": float64(1)}}
-	if scopeCatalogGrantTTL(s) != "1h" {
-		t.Fatalf("got %q", scopeCatalogGrantTTL(s))
+func TestProfileCatalogGrantTTL_WhenHoursPresent_ItShouldFormatDuration(t *testing.T) {
+	s := client.ProfileMetadata{Authorization: map[string]interface{}{"default_grant_hours": float64(1)}}
+	if profileCatalogGrantTTL(s) != "1h" {
+		t.Fatalf("got %q", profileCatalogGrantTTL(s))
 	}
 }
 
-func TestScopeCatalogRequestTTL_WhenHoursPresent_ItShouldFormatDuration(t *testing.T) {
-	s := client.ScopeMetadata{Authorization: map[string]interface{}{"default_request_hours": float64(8)}}
-	if scopeCatalogRequestTTL(s) != "8h" {
-		t.Fatalf("got %q", scopeCatalogRequestTTL(s))
+func TestProfileCatalogRequestTTL_WhenHoursPresent_ItShouldFormatDuration(t *testing.T) {
+	s := client.ProfileMetadata{Authorization: map[string]interface{}{"default_request_hours": float64(8)}}
+	if profileCatalogRequestTTL(s) != "8h" {
+		t.Fatalf("got %q", profileCatalogRequestTTL(s))
 	}
 }
 
-func TestScopeCatalogCredentialTTL_WhenPlaneSet_ItShouldUsePlatformMax(t *testing.T) {
-	s := client.ScopeMetadata{Plane: "kube"}
-	if scopeCatalogCredentialTTL(s) != "1h" {
-		t.Fatalf("got %q", scopeCatalogCredentialTTL(s))
+func TestProfileCatalogCredentialTTL_WhenScopeSet_ItShouldUsePlatformMax(t *testing.T) {
+	s := client.ProfileMetadata{Scope: "kube"}
+	if profileCatalogCredentialTTL(s) != "1h" {
+		t.Fatalf("got %q", profileCatalogCredentialTTL(s))
 	}
 }

@@ -1,6 +1,6 @@
 # ZOA Break-Glass — Feature Proposal
 
-> **Design archive + implementation snapshot.** Long-form background for reviews; **not** the day-to-day operator source of truth and **not** updated when operator docs change. For what ships, use [README.md](README.md), [credential-architecture.md](credential-architecture.md), [approval-workflow.md](../approval-workflow.md), [break-glass-scopes.md](../break-glass-scopes.md), and [cli-reference.md](../cli-reference.md#break-glass). Sections below §0 may still say `connect` / `use` — those names were renamed to **`activate`** in v1.
+> **Design archive + implementation snapshot.** Long-form background for reviews; **not** the day-to-day operator source of truth and **not** updated when operator docs change. For what ships, use [README.md](README.md), [credential-architecture.md](credential-architecture.md), [approval-workflow.md](../approval-workflow.md), [break-glass-profiles.md](../break-glass-profiles.md), and [cli-reference.md](../cli-reference.md#break-glass). §0 tracks shipped API/CLI vocabulary (`name`, `profiles`, `mine=true`); older sections may still say `scopes`, `scope=` on requests, or `connect` / `use` — **`activate`** is the v1 operator verb.
 
 **Status:** v1 shipped on `feat/zoa-breakglass` (ephemeral validation ongoing); workflow epic items still open  
 **Audience:** Engineering, security, SRE  
@@ -14,37 +14,38 @@
 
 | Step        | Where                                                                                         | Command / action                                          |
 | ----------- | --------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| 1. Request  | Boundary                                                                                      | `zoa breakglass request --scope <id> --reason <Jira\|PD>` |
-| 2. Approve  | Laptop when peer workflow is required; **auto** when catalog `approval: none` (all v1 scopes) | `zoa approve <deployment>/<request-id>`                   |
+| 1. Request  | Boundary                                                                                      | `zoa breakglass request --name <profile> --reason <Jira\|PD>` |
+| 2. Approve  | Laptop when peer workflow is required; **auto** when catalog `approval: none` (all v1 profiles) | `zoa approve <deployment>/<request-id>`                   |
 | 3. Activate | Boundary — **same ECS task** that created the request                                         | `zoa breakglass activate <request-id>`                    |
 
 - **`--wait` on `request` or `get`** polls until `approved`, `rejected`, or `expired` (stderr progress like `zoa run --wait`); it **never** calls activate.
 - After activate: stock **`kubectl`** / **`aws`**; PS1 shows **`grant~Nh cred≤1h`** (two clocks — see [README](README.md#two-clocks-grant-vs-credentials)); **`zoa breakglass activate <same-id>`** ~hourly refreshes bearer creds while grant valid.
 
-### 0.2 Scope catalog (v1)
+### 0.2 Profile catalog (v1)
 
-All six scopes use **`authorization.approval: none`** (synthetic approver `auto` via `ApproveBreakglassOnCreateWhenNoPeerWorkflow`). Reason is still required (`--reason`, `ZOA_REASON`).
+All six profiles use **`authorization.approval: none`** (synthetic approver `auto` via `ApproveBreakglassOnCreateWhenNoPeerWorkflow`). Reason is still required (`--reason`, `ZOA_REASON`). Catalog id is **`name`**; credential surface is **`scope`** (`kube` / `aws`); privilege is **`type`**.
 
-| Scope           | Plane | Targets (typical) | Notes                                                                                           |
-| --------------- | ----- | ----------------- | ----------------------------------------------------------------------------------------------- |
-| `kube-read`     | kube  | RC, MC            | Composed RBAC in `kube_read.go` (platform addon API groups on RC; Hypershift/CAPI groups on MC) |
-| `kube-write`    | kube  | RC, MC            | No secrets / exec in v1 read paths; write scope separate                                        |
-| `kube-elevated` | kube  | RC, MC            | Near-admin: write + platform mutate (no platform `*` delete), core `verbsMutateFull`, secrets read, exec |
-| `aws-read`      | aws   | RC, MC            | STS into Terraform-mapped read roles                                                            |
-| `aws-write`     | aws   | RC, MC            | Mutating allow-list IAM                                                                         |
-| `aws-elevated`  | aws   | RC, MC            | Elevated IAM; boundary task role denied ECS Exec for this path                                  |
+| name            | scope | type      | Targets (typical) | Notes                                                                                           |
+| --------------- | ----- | --------- | ----------------- | ----------------------------------------------------------------------------------------------- |
+| `kube-read`     | kube  | read      | RC, MC            | Composed RBAC in `kube_read.go` (platform addon API groups on RC; Hypershift/CAPI groups on MC) |
+| `kube-write`    | kube  | write     | RC, MC            | No secrets / exec in v1 read paths; write profile separate                                      |
+| `kube-elevated` | kube  | elevated  | RC, MC            | Near-admin: write + platform mutate (no platform `*` delete), core `verbsMutateFull`, secrets read, exec |
+| `aws-read`      | aws   | read      | RC, MC            | STS into Terraform-mapped read roles                                                            |
+| `aws-write`     | aws   | write     | RC, MC            | Mutating allow-list IAM                                                                         |
+| `aws-elevated`  | aws   | elevated  | RC, MC            | Elevated IAM; boundary task role denied ECS Exec for this path                                  |
 
-`zoa breakglass describe <scope>` mirrors `GET /api/v0/breakglass/scopes/{scope}` (composition bullets + effective RBAC or IAM notes).
+`zoa breakglass describe <name>` mirrors `GET /api/v0/breakglass/profiles/{name}` (composition bullets + effective RBAC or IAM notes).
 
 ### 0.3 HTTP API (`HANDLER_MODE=api`)
 
 | Method | Path                                        | Purpose                              |
 | ------ | ------------------------------------------- | ------------------------------------ |
-| `GET`  | `/api/v0/breakglass/scopes`                 | List scopes                          |
-| `GET`  | `/api/v0/breakglass/scopes/{scope}`         | Describe scope                       |
-| `POST` | `/api/v0/breakglass/requests`               | Create request                       |
+| `GET`  | `/api/v0/breakglass/profiles`               | List profiles (`?scope=`, `?type=`)    |
+| `GET`  | `/api/v0/breakglass/profiles/{name}`        | Describe profile                     |
+| `POST` | `/api/v0/breakglass/requests`               | Create request (`name`, `reason`)    |
 | `GET`  | `/api/v0/breakglass/requests/{id}`          | Get request                          |
-| `GET`  | `/api/v0/breakglass/requests`               | List (operator-scoped)               |
+| `GET`  | `/api/v0/breakglass/requests?mine=true`     | List own requests (not audited)      |
+| `GET`  | `/api/v0/breakglass/requests`               | Cross-operator history (audited)     |
 | `POST` | `/api/v0/breakglass/requests/{id}/activate` | Lazy provision + credential material |
 
 Laptop approve/reject: shared `POST /api/v0/approve/{id}` and `/reject/{id}` on **Access** (`deployment/<uuid>`); handler looks up break-glass before executions.
@@ -623,7 +624,7 @@ Each scope file’s **`ScopeMetadata`** carries human **`capabilities` / `restri
 
 #### 5.8.3 Concrete RBAC (RC vs MC) and IAM policies (v1 draft for security review)
 
-> **Shipped source of truth:** `pkg/breakglass/` (`kube_read.go`, `kube_write.go`, `kube_elevated.go`, `kube_rbac.go`, `aws_*.go`). Operator-facing **`capabilities` / `restrictions`** and the summary table live in [../break-glass-scopes.md](../break-glass-scopes.md). The subsections below are a **security-review archive** — align new work with Go first, then refresh this appendix if needed.
+> **Shipped source of truth:** `pkg/breakglass/` (`kube_read.go`, `kube_write.go`, `kube_elevated.go`, `kube_rbac.go`, `aws_*.go`). Operator-facing **`capabilities` / `restrictions`** and the summary table live in [../break-glass-profiles.md](../break-glass-profiles.md). The subsections below are a **security-review archive** — align new work with Go first, then refresh this appendix if needed.
 
 **Source of truth (archive note):** RBAC was originally sketched in **`pkg/scopes`** split files; shipped code uses **`pkg/breakglass`** as `[]actions.RBACRule` on **`zoa-bg-<requestId>`** ClusterRole (+ Binding). TA **`get_resource`** alignment with **`kube-read`** remains a follow-up where noted elsewhere.
 

@@ -8,7 +8,7 @@ You are running inside a **ZOA Boundary** container: a time-boxed, audited ECS F
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | `/home/sre/.claude/ZOA_SESSION.md` | Session ID, operator, deployment, target, API URL                                                       |
 | `/home/sre/.claude/ZOA_ACTIONS.md` | **Baked TA catalog** for this deployment target (`rc` or `mc`); use `zoa describe` for live API details |
-| `/home/sre/.claude/ZOA_BREAKGLASS_SCOPES.md` | **Baked break-glass scope catalog** (RBAC/IAM per scope); use `zoa breakglass describe` when connected |
+| `/home/sre/.claude/ZOA_BREAKGLASS_PROFILES.md` | **Baked break-glass profile catalog** (`name`, `scope` kube\|aws, `type`); use `zoa breakglass describe <name>` when connected |
 | This `CLAUDE.md`                   | **Agent essentials** table, rules, RC/MC platform, observability, control plane, ZOA execution          |
 
 The shell prompt is two lines: **`sessionId:<deployment>/<uuid>`** (audit handle — copy for `zoa session terminate`) and **`operator@zoa:deployment/target`**. Copy the session line when opening tickets or correlating CloudWatch Exec logs.
@@ -44,12 +44,12 @@ This is **ROSA Seaplane**: **Amazon EKS** clusters running platform software —
 
 **Management Cluster (MC)** — **one or more per region** per environment. EKS runs HyperShift; customer **hosted control planes** live in `cluster-*` namespaces on the MC you are attached to.
 
-**Trusted Action scopes:**
+**Trusted Action scopes** (credential surface; catalog field **`scope`**):
 
-- **`kube-api`** — Kubernetes API of **the EKS cluster for this session** (the RC or MC named in `ZOA_TARGET`). Workloads are pods/deployments/etc. inside that cluster.
-- **`aws-api`** — AWS APIs in the **same AWS account and region** as that cluster’s infrastructure (e.g. `list_eks_clusters`, `describe_vpc_endpoint`). Not the customer’s worker account; the account where this RC or MC EKS cluster is deployed.
+- **`kube`** — Kubernetes API of **the EKS cluster for this session** (the RC or MC named in `ZOA_TARGET`). Workloads are pods/deployments/etc. inside that cluster.
+- **`aws`** — AWS APIs in the **same AWS account and region** as that cluster’s infrastructure (e.g. `list_eks_clusters`, `describe_vpc_endpoint`). Not the customer’s worker account; the account where this RC or MC EKS cluster is deployed.
 
-The **EKS managed control plane** (AWS-owned) does not appear as pods. To inspect the cluster as AWS infrastructure, use **`describe_eks_cluster`** (with the cluster name from discovery or ops docs), not `get_resource --resource pods` in a fictional “apiserver” namespace.
+The **EKS managed control plane** (AWS-owned) does not appear as pods. To inspect the cluster as AWS infrastructure, use **`describe_eks_cluster`** (with the cluster name from discovery or ops docs), not `get_resource --resource pods` in a fictional “apiserver” namespace. Stored TA run rows may still show legacy `kube-api` / `aws-api`; filters accept `kube` / `aws`.
 
 ## Platform workloads (what runs on RC vs MC)
 
@@ -71,7 +71,7 @@ Seaplane ships platform software with **Argo CD** on each EKS cluster. Chart dir
 | **`cert-manager`**, **`external-secrets`**, **`aws-load-balancer-controller`** | TLS, secrets sync, ALB/NLB integration (when enabled)                                                            |
 | **`alerting-rules`**, **`thanos-operator`**                                    | PrometheusRule bundles; Thanos operator helpers on RC                                                            |
 
-**Not in-cluster:** Tekton/pipeline infra, RDS (**seaplane-db**), API Gateway, ZOA **Lambda** (API/worker/access), and **ZOA Boundary** (this ECS task) live in **AWS** — use **`aws-api`** TAs or AWS console patterns, not namespace search.
+**Not in-cluster:** Tekton/pipeline infra, RDS (**seaplane-db**), API Gateway, ZOA **Lambda** (API/worker/access), and **ZOA Boundary** (this ECS task) live in **AWS** — use **`aws`** scope TAs or AWS console patterns, not namespace search.
 
 ### Management Cluster (MC) — typical namespaces
 
@@ -144,8 +144,8 @@ Three layers — know which to inspect before guessing namespaces:
 
 | Layer                 | Where it runs                                                                              | Typical symptoms                                      | Discovery / TAs                                                                                                    |
 | --------------------- | ------------------------------------------------------------------------------------------ | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| **Regional platform** | RC EKS + AWS in region                                                                     | API errors, rate limits, authz, regional provisioning | **`platform-api`** ns; **`aws-api`** for API Gateway / ALB / Valkey (ElastiCache) if exposed                       |
-| **Fleet state**       | RC **`seaplane`** operator + **RDS** (`seaplane-db`) + **DynamoDB** (desires, auth tables) | Cluster/NodePool stuck, placement, MC assignment      | Operator pods on RC; **`aws-api`** RDS/DynamoDB describe/list TAs when enabled                                     |
+| **Regional platform** | RC EKS + AWS in region                                                                     | API errors, rate limits, authz, regional provisioning | **`platform-api`** ns; **`aws`** TAs for API Gateway / ALB / Valkey (ElastiCache) if exposed                       |
+| **Fleet state**       | RC **`seaplane`** operator + **RDS** (`seaplane-db`) + **DynamoDB** (desires, auth tables) | Cluster/NodePool stuck, placement, MC assignment      | Operator pods on RC; **`aws`** RDS/DynamoDB describe/list TAs when enabled                                     |
 | **MC apply + HCP**    | MC **`kube-applier`** + **`hypershift`** + **`cluster-*`**                                 | Desire not applied on MC; HCP pod failures            | **`kube-applier`** / **`hypershift`** ns; HCP in **`cluster-<id>`** (platform TAs; **`get_secret`** blocked there) |
 
 **RC vs MC boundary session:** You see **one** EKS cluster at a time. RC issues need an **RC** session (`ZOA_TARGET_TYPE=rc`); MC / HCP issues need an **MC** session. Cross-cluster questions (e.g. “MC metrics in Grafana”) often need **MC** kube discovery **and** understanding that consolidation happens on **RC** observability (see above).
@@ -156,8 +156,8 @@ You are **not** calling the Kubernetes API directly from the shell for TAs:
 
 1. **`zoa run`** → SigV4 to **`ZOA_API_URL`** (API Lambda in this VPC); identity comes from the IAM authorizer on the signed request.
 2. API resolves the **human operator** via DynamoDB (**identity bridge**: ECS **task id** → session row → `operator` / session id). **`ZOA_OPERATOR` env is for the prompt and `ZOA_SESSION.md` only** — audit uses the bridge.
-3. **kube-api** TAs: Lambda creates **ephemeral SA + RBAC**, **impersonates** it against **this session’s EKS cluster** (RC or MC), uploads output to **S3**, cleans up RBAC.
-4. **aws-api** TAs: Lambda **AssumeRole** into scoped roles in **this cluster’s AWS account/region**.
+3. **`kube`** TAs: Lambda creates **ephemeral SA + RBAC**, **impersonates** it against **this session’s EKS cluster** (RC or MC), uploads output to **S3**, cleans up RBAC.
+4. **`aws`** TAs: Lambda **AssumeRole** into scoped roles in **this cluster’s AWS account/region**.
 
 Per-VPC **Worker Lambda** handles async jobs, reconciler, and GC — not your interactive **`zoa run`** path unless the action is async.
 
@@ -202,7 +202,7 @@ Session **deadline** and **inactivity termination** (idle reaper) are in **`ZOA_
 
 ## ZOA CLI (inside the boundary)
 
-`ZOA_API_URL` is already set for **this VPC**. The action catalog in **`ZOA_ACTIONS.md`** reflects **only what this API exposes** (RC vs MC may differ — e.g. some `aws-api` TAs only on MC).
+`ZOA_API_URL` is already set for **this VPC**. The action catalog in **`ZOA_ACTIONS.md`** reflects **only what this API exposes** (RC vs MC may differ — e.g. some `aws` TAs only on MC).
 
 You do **not** need `zoa deployments`, `zoa targets`, or `zoa session *` here — those are for starting/joining sessions from a laptop.
 
@@ -216,9 +216,9 @@ You do **not** need `zoa deployments`, `zoa targets`, or `zoa session *` here �
 | **`zoa output` / `zoa logs` / `zoa download`** | Re-fetch or save artifacts from S3.                                                                                                  |
 | **`zoa audit`**                                | ZOA API audit trail (broader than TAs alone).                                                                                        |
 | **`zoa version`**                              | Client and API version.                                                                                                              |
-| **`zoa breakglass scopes`**                    | Scope catalog (`ZOA_BREAKGLASS_SCOPES.md` offline).                                                                                  |
-| **`zoa breakglass describe <scope>`**          | RBAC / IAM composition for one scope.                                                                                                |
-| **`zoa breakglass request --scope … --reason`** | Start approval workflow (does not elevate).                                                                                          |
+| **`zoa breakglass profiles`**                    | Profile catalog (`ZOA_BREAKGLASS_PROFILES.md` offline; alias `scopes` until cleanup).                                               |
+| **`zoa breakglass describe <name>`**           | RBAC / IAM composition for one profile (`kube-read`, …).                                                                             |
+| **`zoa breakglass request --name … --reason`** | Start approval workflow (does not elevate); `--scope` is a deprecated alias for `--name`.                                            |
 | **`zoa breakglass get <id> [--wait]`**         | Status; `--wait` until approved/rejected/expired (**no auto-activate**).                                                             |
 | **`zoa breakglass activate <id>`**             | Operator explicitly arms creds (only this task that created the request).                                                            |
 
@@ -226,21 +226,21 @@ Use **`-o json`** and **`jq`** for scripting.
 
 ## Break-glass (last resort)
 
-Read **`ZOA_BREAKGLASS_SCOPES.md`** before discussing break-glass with the operator.
+Read **`ZOA_BREAKGLASS_PROFILES.md`** before discussing break-glass with the operator.
 
 ### Mandatory agent behavior
 
-1. **Never propose break-glass as the first step.** Exhaust **Trusted Actions** in **`ZOA_ACTIONS.md`** first (`get_resource`, `describe_*`, `must_gather`, `aws-api` TAs, etc.).
+1. **Never propose break-glass as the first step.** Exhaust **Trusted Actions** in **`ZOA_ACTIONS.md`** first (`get_resource`, `describe_*`, `must_gather`, `aws` TAs, etc.).
 2. Break-glass is for **urgent gaps** where TAs cannot do the job (missing action, unsupported API, incident time pressure) — and only when the **operator agrees**.
-3. **Minimum scope:** start at **`kube-read` / `aws-read`**; escalate to **write**, then **elevated** only when the scope RBAC in the catalog requires it (e.g. Secret data → **`kube-elevated`**).
-4. Use **`zoa breakglass describe <scope>`** or the offline catalog to justify the smallest scope.
+3. **Minimum profile:** start at **`kube-read` / `aws-read`**; escalate **type** to **write**, then **elevated**, only when catalog RBAC requires it (e.g. Secret data → **`kube-elevated`**).
+4. Use **`zoa breakglass describe <name>`** or the offline catalog to justify the smallest profile.
 5. **Do not run `activate` for the operator** unless they explicitly ask. You may suggest commands; activation is their deliberate step.
 6. **During / after** break-glass use, propose a **follow-up Trusted Action** (new action or flag) so the same work never needs break-glass again. Name a concrete command to add (mirror patterns in **`ZOA_ACTIONS.md`**: read vs write, `--dry-run`, cooldown).
 7. **Do not use break-glass** to bypass TA safety (`get_secret` on HCP, cooldown, dry-run) without operator and security awareness.
 
 ### Operator workflow (three steps)
 
-1. **`zoa breakglass request --scope <id> --reason TICKET`** — creates the request; may be `pending` or `approved` depending on catalog approval policy (v1: auto-approve when `approval: none`).
+1. **`zoa breakglass request --name <profile> --reason TICKET`** — creates the request; may be `pending` or `approved` depending on catalog approval policy (v1: auto-approve when `approval: none`).
 2. **Peer (laptop):** **`zoa approve <deployment>/<request-id>`** when approval is required.
 3. **Operator (this boundary):** **`zoa breakglass activate <request-id>`** — credentials and prompt change only after this command.
 
@@ -248,7 +248,7 @@ Read **`ZOA_BREAKGLASS_SCOPES.md`** before discussing break-glass with the opera
 
 ### After break-glass
 
-Help the operator document what they did and what TA to implement. Example follow-up text: “Implement `zoa run &lt;name&gt;` with scope kube-api, type read, params …” aligned with existing actions.
+Help the operator document what they did and what TA to implement. Example follow-up text: “Implement `zoa run &lt;action&gt;` with scope kube, type read, params …” aligned with existing actions.
 
 ### Suggesting a TA during a session
 

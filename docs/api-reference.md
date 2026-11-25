@@ -75,18 +75,18 @@ Served by the Access Lambda (`HANDLER_MODE=access`) in the RC account (no VPC at
 
 ### Break-glass (API Lambda — boundary)
 
-Requires `BREAKGLASS_TABLE` on the target API Lambda. Identity and task-binding match TA dispatch. Scopes declare **`authorization.approval`**; v1 is **`none`** for all scopes → create runs `ApproveBreakglassRequest` with approver `auto` (see [approval-workflow.md](approval-workflow.md)). Scope catalog `GET` routes are not audited; fleet `scope=fleet` list is (`breakglass_history`).
+Requires `BREAKGLASS_TABLE` on the target API Lambda. Identity and task-binding match TA dispatch. Profiles declare **`authorization.approval`**; v1 is **`none`** for all profiles → create runs `ApproveBreakglassRequest` with approver `auto` (see [approval-workflow.md](approval-workflow.md)). Profile catalog `GET` routes are not audited; cross-operator request list is (`breakglass_history`).
 
 | Method | Path                                       | Description                                      |
 | ------ | ------------------------------------------ | ------------------------------------------------ |
-| `GET`  | `/api/v0/breakglass/scopes`                | List scopes for this target type                 |
-| `GET`  | `/api/v0/breakglass/scopes/{scope}`        | Describe one scope                               |
-| `POST` | `/api/v0/breakglass/requests`              | Create request (`scope`, `reason`)               |
+| `GET`  | `/api/v0/breakglass/profiles`              | List profiles (`?scope=kube\|aws`, `?type=read\|write\|elevated`) |
+| `GET`  | `/api/v0/breakglass/profiles/{name}`       | Describe one profile (`kube-read`, …)            |
+| `POST` | `/api/v0/breakglass/requests`              | Create request JSON: `name`, `reason`            |
 | `GET`  | `/api/v0/breakglass/requests`              | List requests (optional `?target=`; default all targets in table, like TA runs) |
 | `GET`  | `/api/v0/breakglass/requests/{id}`         | Get request                                      |
 | `POST` | `/api/v0/breakglass/requests/{id}/activate` | Provision access and return credentials (task-bound) |
-| `GET`  | `/api/v0/breakglass/requests?scope=mine`   | Your requests only (not audited)                   |
-| `GET`  | `/api/v0/breakglass/requests` (no scope=mine) | Cross-operator history (audited `breakglass_history`) |
+| `GET`  | `/api/v0/breakglass/requests?mine=true`    | Your requests only (not audited); `scope=mine` accepted until cleanup |
+| `GET`  | `/api/v0/breakglass/requests` (no `mine=true`) | Cross-operator history (audited `breakglass_history`) |
 
 ### Approval
 
@@ -160,9 +160,10 @@ List sessions. Used by both `zoa session list` (own sessions) and `zoa session h
 
 | Param      | Type   | Description                                                              |
 | ---------- | ------ | ------------------------------------------------------------------------ |
-| `scope`    | string | `mine` for own sessions only (default: all operators)                    |
+| `mine`     | string | `true` for own sessions only (`zoa session list` also sends `scope=mine` until cleanup) |
+| `scope`    | string | Legacy: `mine` same as `mine=true` for sessions                          |
 | `status`   | string | Filter by session status (`active`, `terminated`, `failed`, `creating`)  |
-| `operator` | string | Filter by operator (not allowed with `scope=mine`)                       |
+| `operator` | string | Filter by operator (not allowed with `mine=true` / `scope=mine`)         |
 | `target`   | string | Filter by target cluster                                                 |
 | `since`    | string | Start of time window (duration: `1h`, `7d`; date: `2026-08-25`; RFC3339) |
 | `until`    | string | End of time window (same formats as `since`; default: now)               |
@@ -442,7 +443,7 @@ Get execution details.
   "target_cluster": "regional",
   "status": "succeeded",
   "execution_mode": "sync",
-  "scope": "kube-api",
+  "scope": "kube",
   "type": "read",
   "dry_run": false,
   "reason": "ROSAENG-1234",
@@ -503,6 +504,13 @@ Used by `zoa logs <id>`.
 
 List all registered Trusted Actions.
 
+### Query Parameters
+
+| Param   | Type   | Description                                      |
+| ------- | ------ | ------------------------------------------------ |
+| `scope` | string | Credential surface: `kube`, `aws` (also matches legacy stored `kube-api` / `aws-api` on runs only) |
+| `type`  | string | Privilege: `read`, `write` (`elevated` rejected for TA) |
+
 ### Response
 
 ```json
@@ -510,7 +518,7 @@ List all registered Trusted Actions.
   "items": [
     {
       "name": "get_resource",
-      "scope": "kube-api",
+      "scope": "kube",
       "type": "read",
       "execution_mode": "sync",
       "description": "Get or list Kubernetes resources..."
@@ -530,7 +538,7 @@ Describe a specific TA including parameters, RBAC, and metadata.
 ```json
 {
   "name": "get_resource",
-  "scope": "kube-api",
+  "scope": "kube",
   "type": "read",
   "execution_mode": "sync",
   "description": "Get or list Kubernetes resources...",

@@ -193,7 +193,7 @@ func TestMockExecutionStore_Create(t *testing.T) {
 	ctx := context.Background()
 
 	exec := &Execution{
-		ID:        "test-1",
+		ID: "test-1",
 		Action:    "get-pods",
 		AccountID: "acct-1",
 		Status:    StatusDispatched,
@@ -214,7 +214,7 @@ func TestMockExecutionStore_Get(t *testing.T) {
 	ctx := context.Background()
 
 	exec := &Execution{
-		ID:        "test-2",
+		ID: "test-2",
 		Action:    "get-pods",
 		AccountID: "acct-1",
 		Status:    StatusDispatched,
@@ -248,7 +248,7 @@ func TestMockExecutionStore_TransitionStatus(t *testing.T) {
 	ctx := context.Background()
 
 	exec := &Execution{
-		ID:        "test-3",
+		ID: "test-3",
 		Action:    "restart-pod",
 		AccountID: "acct-1",
 		Status:    StatusDispatched,

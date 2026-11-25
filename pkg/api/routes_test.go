@@ -55,8 +55,8 @@ func TestHandleDescribeAction_WhenActionExists_ItShouldReturnMetadata(t *testing
 	if resp["name"] != "test-read" {
 		t.Errorf("expected name=test-read, got %v", resp["name"])
 	}
-	if resp["scope"] != "kube-api" {
-		t.Errorf("expected scope=kube-api, got %v", resp["scope"])
+	if resp["scope"] != "kube" {
+		t.Errorf("expected scope=kube, got %v", resp["scope"])
 	}
 }
 
@@ -263,7 +263,7 @@ func TestHandleListExecutions_WhenFiltersProvided_ItShouldPassFilterToStore(t *t
 	execStore := &filterCapturingExecStore{}
 	h := testHandler(execStore)
 
-	rr := doRequest(h, "GET", "/api/v0/trusted-actions/runs?status=failed&type=write&scope=kube-api&execution_mode=async&action=rollout_restart&since=1h&limit=10", nil, defaultHeaders())
+	rr := doRequest(h, "GET", "/api/v0/trusted-actions/runs?status=failed&type=write&scope=kube&execution_mode=async&action=rollout_restart&since=1h&limit=10", nil, defaultHeaders())
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
@@ -279,8 +279,8 @@ func TestHandleListExecutions_WhenFiltersProvided_ItShouldPassFilterToStore(t *t
 	if f.Type == nil || *f.Type != "write" {
 		t.Errorf("expected type=write, got %v", f.Type)
 	}
-	if f.Scope == nil || *f.Scope != "kube-api" {
-		t.Errorf("expected scope=kube-api, got %v", f.Scope)
+	if f.Scope == nil || *f.Scope != "kube" {
+		t.Errorf("expected scope=kube, got %v", f.Scope)
 	}
 	if f.ExecutionMode == nil || *f.ExecutionMode != "async" {
 		t.Errorf("expected execution_mode=async, got %v", f.ExecutionMode)

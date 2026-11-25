@@ -3,15 +3,15 @@ package breakglass
 import "github.com/openshift-online/rosa-seaplane-zoa/pkg/actions"
 
 const (
-	PlaneKube = "kube"
-	PlaneAWS  = "aws"
+	ScopeKube = "kube"
+	ScopeAWS  = "aws"
 
 	TypeRead     = "read"
 	TypeWrite    = "write"
 	TypeElevated = "elevated"
 )
 
-// Authorization mirrors scope approval workflow defaults (snapshotted on create).
+// Authorization mirrors profile approval workflow defaults (snapshotted on create).
 type Authorization struct {
 	Approval            string `json:"approval"`
 	DefaultGrantHours   int    `json:"default_grant_hours"`
@@ -21,13 +21,13 @@ type Authorization struct {
 	PageOnRequest       bool   `json:"page_on_request,omitempty"`
 }
 
-// ScopeMetadata is returned by list/describe APIs.
-type ScopeMetadata struct {
-	ID             string        `json:"id"`
-	Plane          string        `json:"plane"`
+// ProfileMetadata is returned by list/describe profile APIs.
+type ProfileMetadata struct {
+	Name           string        `json:"name"`
+	Scope          string        `json:"scope"`
 	Type           string        `json:"type"`
 	Description    string        `json:"description"`
-	Authorization  Authorization `json:"authorization"`
+	Authorization  Authorization   `json:"authorization"`
 	Capabilities   []string      `json:"capabilities,omitempty"`
 	Restrictions   []string      `json:"restrictions,omitempty"`
 	TargetTypes    []string      `json:"target_types,omitempty"`
@@ -35,8 +35,8 @@ type ScopeMetadata struct {
 	IAMComposition []string      `json:"iam_composition,omitempty"`
 }
 
-// Definition compiles RBAC / AWS wiring for a scope.
+// Definition compiles RBAC / AWS wiring for a break-glass profile.
 type Definition struct {
-	Metadata ScopeMetadata
+	Metadata ProfileMetadata
 	RBAC     func(targetType string) []actions.RBACRule
 }

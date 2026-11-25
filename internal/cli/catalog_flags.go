@@ -7,7 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/openshift-online/rosa-seaplane-zoa/internal/cli/actioncatalog"
-	"github.com/openshift-online/rosa-seaplane-zoa/internal/cli/scopecatalog"
+	"github.com/openshift-online/rosa-seaplane-zoa/internal/cli/profilecatalog"
 	"github.com/openshift-online/rosa-seaplane-zoa/internal/cli/targettype"
 )
 
@@ -44,8 +44,13 @@ func printOfflineCatalogNotice() {
 	fmt.Fprintln(os.Stderr, actioncatalog.OfflineNotice)
 }
 
+func printOfflineProfileCatalogNotice() {
+	fmt.Fprintln(os.Stderr, profilecatalog.OfflineNotice)
+}
+
+// printOfflineScopeCatalogNotice is deprecated; use printOfflineProfileCatalogNotice.
 func printOfflineScopeCatalogNotice() {
-	fmt.Fprintln(os.Stderr, scopecatalog.OfflineNotice)
+	printOfflineProfileCatalogNotice()
 }
 
 func resolveCatalogTargetType(opts *catalogOptions) (string, error) {

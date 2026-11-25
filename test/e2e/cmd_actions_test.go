@@ -98,7 +98,7 @@ var _ = Describe("zoa describe", func() {
 				}
 				Expect(json.Unmarshal([]byte(jsonStr), &action)).To(Succeed(), out)
 				Expect(action.Name).To(Equal("list_eks_clusters"))
-				Expect(action.Scope).To(Equal("aws-api"))
+				Expect(action.Scope).To(Equal("aws"))
 			})
 
 			It("rejects an unknown action name", func() {
