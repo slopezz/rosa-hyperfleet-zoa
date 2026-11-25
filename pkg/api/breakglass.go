@@ -156,8 +156,12 @@ func (h *Handler) handleListBreakglassRequests(w http.ResponseWriter, r *http.Re
 	}
 	q := r.URL.Query()
 	filter := &store.BreakglassFilter{
-		Target: &h.cfg.TargetCluster,
-		Limit:  50,
+		Limit: 50,
+	}
+	// Same as GET /trusted-actions/runs: optional target filter; default lists all
+	// targets in the deployment table (RC + MC rows share BREAKGLASS_TABLE).
+	if v := q.Get("target"); v != "" {
+		filter.Target = &v
 	}
 	if v := q.Get("status"); v != "" && v != "all" {
 		s := store.Status(v)

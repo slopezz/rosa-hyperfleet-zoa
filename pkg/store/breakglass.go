@@ -242,7 +242,7 @@ func (s *DynamoDBBreakglassStore) MarkCleaned(ctx context.Context, requestID str
 	return nil
 }
 
-// ListAll queries date-bucket-index with optional filters (operator omitted = all operators on target).
+// ListAll queries date-bucket-index with optional filters (operator omitted = all operators; target omitted = all targets in table).
 func (s *DynamoDBBreakglassStore) ListAll(ctx context.Context, filter *BreakglassFilter) ([]*BreakglassRequest, error) {
 	operator := ""
 	if filter != nil && filter.Operator != nil {

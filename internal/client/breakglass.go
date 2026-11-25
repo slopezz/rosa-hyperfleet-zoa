@@ -110,7 +110,8 @@ func (c *Client) GetBreakglassRequest(ctx context.Context, id string) (*Breakgla
 }
 
 type BreakglassListParams struct {
-	Scope        string // "mine" (default) or "fleet" for cross-operator history
+	Scope        string // "mine" for list; omit for history (cross-operator)
+	Target       string // optional; same as GET /trusted-actions/runs ?target=
 	Operator     string
 	Status       string
 	Approval     string
@@ -126,6 +127,9 @@ func (c *Client) ListBreakglassRequests(ctx context.Context, params *BreakglassL
 	if params != nil {
 		if params.Scope != "" {
 			q.Set("scope", params.Scope)
+		}
+		if params.Target != "" {
+			q.Set("target", params.Target)
 		}
 		if params.Operator != "" {
 			q.Set("operator", params.Operator)

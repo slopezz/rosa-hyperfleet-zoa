@@ -343,13 +343,15 @@ func isTerminalBreakglassStatus(status string) bool {
 }
 
 func newBreakglassRequestsCommand(global *GlobalOptions) *cobra.Command {
-	var since, until, status, approval, decidedBy, decidedSince string
+	var since, until, status, approval, decidedBy, decidedSince, target string
 	var limit int
 	cmd := &cobra.Command{
 		Use:     "requests",
 		Short:   "List your break-glass requests",
 		Aliases: []string{"list"},
-		Long: `List your requests on this target (scope=mine). Not audited.
+		Long: `List your requests on this deployment (scope=mine). Not audited.
+
+Lists RC and MC targets in the shared break-glass table unless --target is set (same as zoa runs).
 
 Use 'zoa breakglass history' for fleet-wide audit view.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -359,6 +361,7 @@ Use 'zoa breakglass history' for fleet-wide audit view.`,
 			}
 			list, err := c.ListBreakglassRequests(cmd.Context(), &client.BreakglassListParams{
 				Scope:        "mine",
+				Target:       target,
 				Since:        since,
 				Until:        until,
 				Status:       status,
@@ -373,6 +376,7 @@ Use 'zoa breakglass history' for fleet-wide audit view.`,
 			return printBreakglassRequestTable(global, list, false)
 		},
 	}
+	cmd.Flags().StringVarP(&target, "target", "t", "", "Filter by target cluster (default: all targets in deployment)")
 	cmd.Flags().StringVar(&since, "since", "24h", "Start of time window (duration: 1h, 7d; date: 2026-08-25; RFC3339)")
 	cmd.Flags().StringVar(&until, "until", "", "End of time window (same formats as --since; default: now)")
 	cmd.Flags().StringVar(&status, "status", "", "Filter by lifecycle status (pending, active, expired, denied)")
@@ -384,20 +388,21 @@ Use 'zoa breakglass history' for fleet-wide audit view.`,
 }
 
 func newBreakglassHistoryCommand(global *GlobalOptions) *cobra.Command {
-	var since, until, operator, status, approval, decidedBy, decidedSince string
+	var since, until, operator, status, approval, decidedBy, decidedSince, target string
 	var limit int
 	cmd := &cobra.Command{
 		Use:   "history",
 		Short: "Break-glass requests across all operators",
-		Long: `Fleet-wide break-glass history on this target (RC or MC). Audited on the API (like zoa session history).
+		Long: `Fleet-wide break-glass history on this deployment (RC + MC). Audited on the API (like zoa session history).
 
-Does not pass scope=mine — same pattern as session history vs session list.`,
+Optional --target filters one cluster (same as zoa runs). Does not pass scope=mine.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			c, err := getClient(global)
 			if err != nil {
 				return err
 			}
 			list, err := c.ListBreakglassRequests(cmd.Context(), &client.BreakglassListParams{
+				Target:       target,
 				Operator:     operator,
 				Status:       status,
 				Approval:     approval,
@@ -413,6 +418,7 @@ Does not pass scope=mine — same pattern as session history vs session list.`,
 			return printBreakglassRequestTable(global, list, true)
 		},
 	}
+	cmd.Flags().StringVarP(&target, "target", "t", "", "Filter by target cluster (default: all targets in deployment)")
 	cmd.Flags().StringVar(&since, "since", "24h", "Start of time window (duration: 1h, 7d; date: 2026-08-25; RFC3339)")
 	cmd.Flags().StringVar(&until, "until", "", "End of time window (same formats as --since; default: now)")
 	cmd.Flags().StringVar(&operator, "operator", "", "Filter by operator")

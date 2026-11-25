@@ -82,7 +82,7 @@ Requires `BREAKGLASS_TABLE` on the target API Lambda. Identity and task-binding 
 | `GET`  | `/api/v0/breakglass/scopes`                | List scopes for this target type                 |
 | `GET`  | `/api/v0/breakglass/scopes/{scope}`        | Describe one scope                               |
 | `POST` | `/api/v0/breakglass/requests`              | Create request (`scope`, `reason`)               |
-| `GET`  | `/api/v0/breakglass/requests`              | List requests for the authenticated operator     |
+| `GET`  | `/api/v0/breakglass/requests`              | List requests (optional `?target=`; default all targets in table, like TA runs) |
 | `GET`  | `/api/v0/breakglass/requests/{id}`         | Get request                                      |
 | `POST` | `/api/v0/breakglass/requests/{id}/activate` | Provision access and return credentials (task-bound) |
 | `GET`  | `/api/v0/breakglass/requests?scope=mine`   | Your requests only (not audited)                   |
