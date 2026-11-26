@@ -97,21 +97,52 @@ func FormatCatalogMarkdown(p *client.ProfileMetadata, targetTypes []string) stri
 	if len(targetTypes) > 0 {
 		fmt.Fprintf(&b, "- **Also on:** %s\n", strings.Join(targetTypes, ", "))
 	}
-	fmt.Fprintf(&b, "- %s\n\n", p.Description)
+	fmt.Fprintf(&b, "- %s\n", p.Description)
+	if ttl := requestTTLDescribe(p); ttl != "" {
+		fmt.Fprintf(&b, "- **Request TTL:** %s (decision must complete before request expires)\n", ttl)
+	}
+	if ttl := grantTTLDescribe(p); ttl != "" {
+		fmt.Fprintf(&b, "- **Grant TTL:** %s after approve\n", ttl)
+	}
+	if p.Scope != "" {
+		fmt.Fprintf(&b, "- **Credential TTL:** up to %s per `zoa breakglass activate` (re-activate while grant valid)\n", breakglass.CredentialMaxTTLDisplay(p.Scope))
+	}
+	b.WriteString("\n")
 
-	for _, c := range p.Capabilities {
-		fmt.Fprintf(&b, "- %s\n", c)
+	if len(p.Capabilities) > 0 {
+		b.WriteString("**Capabilities:**\n\n")
+		for _, c := range p.Capabilities {
+			fmt.Fprintf(&b, "- %s\n", c)
+		}
+		b.WriteString("\n")
 	}
-	for _, r := range p.Restrictions {
-		fmt.Fprintf(&b, "- ✗ %s\n", r)
-	}
-	if len(p.Capabilities) > 0 || len(p.Restrictions) > 0 {
+	if len(p.Restrictions) > 0 {
+		b.WriteString("**Restrictions:**\n\n")
+		for _, r := range p.Restrictions {
+			fmt.Fprintf(&b, "- ✗ %s\n", r)
+		}
 		b.WriteString("\n")
 	}
 
-	if p.Scope == breakglass.ScopeKube {
-		fmt.Fprintf(&b, "- **RBAC detail:** `zoa breakglass describe %s` (full rules for this profile).\n\n", p.Name)
+	target := p.TargetType
+	if target == "" {
+		target = actions.TargetTypeRC
 	}
+	if p.Scope == breakglass.ScopeKube && len(p.RBAC) > 0 {
+		fmt.Fprintf(&b, "**RBAC** (target `%s`, %d rules):\n\n", target, len(p.RBAC))
+		for i, rule := range p.RBAC {
+			fmt.Fprintf(&b, "%d. `apiGroups=%v` `resources=%v` `verbs=%v`\n", i+1, rule.APIGroups, rule.Resources, rule.Verbs)
+		}
+		b.WriteString("\n")
+	}
+	if p.Scope == breakglass.ScopeAWS && len(p.IAMComposition) > 0 {
+		b.WriteString("**IAM:**\n\n")
+		for _, line := range p.IAMComposition {
+			fmt.Fprintf(&b, "- %s\n", line)
+		}
+		b.WriteString("\n")
+	}
+
 	if len(p.Examples) > 0 {
 		b.WriteString("**Examples:**\n\n")
 		for _, ex := range p.Examples {

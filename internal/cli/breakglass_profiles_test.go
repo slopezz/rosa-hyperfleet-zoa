@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -50,5 +51,17 @@ func TestRenderBreakglassProfiles_WhenJSON_ItShouldEmitListEnvelope(t *testing.T
 	}
 	if decoded.Count != 1 || len(decoded.Items) != 1 || decoded.Items[0].Name != "aws_read" {
 		t.Fatalf("unexpected json: %+v", decoded)
+	}
+}
+
+func TestDescribeBreakglassProfile_WhenMarkdown_ItShouldRejectCatalogOnly(t *testing.T) {
+	global := &GlobalOptions{OutputFormat: output.FormatMarkdown}
+	opts := &catalogOptions{offline: true, targetType: "rc"}
+	err := describeBreakglassProfile(context.Background(), global, opts, "kube_read")
+	if err == nil || !strings.Contains(err.Error(), "-o markdown is only for the offline catalog") {
+		t.Fatalf("expected catalog-only markdown error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "profiles --offline -o markdown") {
+		t.Fatalf("expected break-glass catalog hint, got %v", err)
 	}
 }

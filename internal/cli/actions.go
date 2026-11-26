@@ -174,6 +174,9 @@ func listActionsOffline(global *GlobalOptions, catalogOpts *catalogOptions, scop
 }
 
 func describeAction(ctx context.Context, global *GlobalOptions, catalogOpts *catalogOptions, name string) error {
+	if global.OutputFormat == output.FormatMarkdown {
+		return errMarkdownCatalogOnly("zoa actions --offline -o markdown")
+	}
 	if catalogOpts.offline {
 		return describeActionOffline(global, catalogOpts, name)
 	}
@@ -201,9 +204,6 @@ func describeActionOnline(ctx context.Context, global *GlobalOptions, name strin
 }
 
 func describeActionOffline(global *GlobalOptions, catalogOpts *catalogOptions, name string) error {
-	if global.OutputFormat == output.FormatMarkdown {
-		return fmt.Errorf("--offline describe does not support -o markdown; use `zoa actions --offline -o markdown` for the full catalog")
-	}
 	printOfflineCatalogNotice()
 	targetType, err := resolveCatalogTargetType(catalogOpts)
 	if err != nil {

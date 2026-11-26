@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/openshift-online/rosa-seaplane-zoa/internal/cli/parambind"
 	"github.com/openshift-online/rosa-seaplane-zoa/pkg/breakglass"
 )
 
@@ -24,6 +25,17 @@ func Markdown(targetType string) (string, error) {
 	b.WriteString("- Escalate minimally: `kube_read` / `aws_read` → `*-write` → `*-elevated` only when needed.\n")
 	b.WriteString("- Operator runs **`zoa breakglass activate`** themselves after approve (never auto with `--wait`).\n")
 	b.WriteString("- Peer approve from laptop: `zoa approve <deployment>/<request-id>` when workflow requires it.\n\n")
+
+	b.WriteString("## Break-glass request flags\n\n")
+	b.WriteString("These apply to every `zoa breakglass request` (same as `zoa breakglass describe <profile>`).\n\n")
+	for _, m := range parambind.RequestModifiers() {
+		req := ""
+		if m.Required {
+			req = " **(required)**"
+		}
+		fmt.Fprintf(&b, "- `%s` — %s%s\n", m.Flags, m.Description, req)
+	}
+	b.WriteString("\n")
 
 	registered := breakglass.List()
 	if len(registered) == 0 {

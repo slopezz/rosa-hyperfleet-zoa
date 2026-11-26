@@ -51,3 +51,9 @@ func printOfflineProfileCatalogNotice() {
 func resolveCatalogTargetType(opts *catalogOptions) (string, error) {
 	return targettype.Resolve(opts.targetType)
 }
+
+// errMarkdownCatalogOnly is returned when describe (or similar) is invoked with -o markdown.
+// Markdown output is only for offline catalog commands (actions/profiles --offline -o markdown).
+func errMarkdownCatalogOnly(offlineCatalogCmd string) error {
+	return fmt.Errorf("-o markdown is only for the offline catalog; use `%s`", offlineCatalogCmd)
+}

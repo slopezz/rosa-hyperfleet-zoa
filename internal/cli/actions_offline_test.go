@@ -36,6 +36,18 @@ func TestListActionsOffline_WhenMarkdownWithoutOfflineFlag_ItShouldError(t *test
 	}
 }
 
+func TestDescribeAction_WhenMarkdown_ItShouldRejectCatalogOnly(t *testing.T) {
+	global := &GlobalOptions{OutputFormat: output.FormatMarkdown}
+	opts := &catalogOptions{offline: true, targetType: targettype.RC}
+	err := describeAction(context.Background(), global, opts, "get_resource")
+	if err == nil || !strings.Contains(err.Error(), "-o markdown is only for the offline catalog") {
+		t.Fatalf("expected catalog-only markdown error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "actions --offline -o markdown") {
+		t.Fatalf("expected TA catalog hint, got %v", err)
+	}
+}
+
 func TestDescribeActionOffline_WhenActionExists_ItShouldNotCallAPI(t *testing.T) {
 	global := &GlobalOptions{OutputFormat: output.FormatJSON}
 	opts := &catalogOptions{offline: true, targetType: targettype.RC}

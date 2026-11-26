@@ -126,6 +126,9 @@ func listBreakglassProfilesOffline(global *GlobalOptions, catalogOpts *catalogOp
 }
 
 func describeBreakglassProfile(ctx context.Context, global *GlobalOptions, catalogOpts *catalogOptions, profileName string) error {
+	if global.OutputFormat == output.FormatMarkdown {
+		return errMarkdownCatalogOnly("zoa breakglass profiles --offline -o markdown")
+	}
 	if useProfileCatalogOffline(global, catalogOpts) {
 		printOfflineProfileCatalogNotice()
 		targetType, err := resolveCatalogTargetType(catalogOpts)

@@ -56,6 +56,17 @@ func Markdown(targetType string) (string, error) {
 	b.WriteString("- **`kube`** TAs talk to **this session's EKS cluster** (RC or MC). **`aws`** TAs talk to **that cluster's AWS account/region**.\n")
 	b.WriteString("- Clusters are **EKS**, not in-cluster OpenShift control planes — discover namespaces with `get_resource --resource namespaces` before guessing.\n\n")
 
+	b.WriteString("## Global `zoa run` flags\n\n")
+	b.WriteString("These apply to every `zoa run` (same as `zoa describe <action>`).\n\n")
+	for _, m := range parambind.RunModifiers() {
+		req := ""
+		if m.Required {
+			req = " **(required)**"
+		}
+		fmt.Fprintf(&b, "- `%s` — %s%s\n", m.Flags, m.Description, req)
+	}
+	b.WriteString("\n")
+
 	list := actions.List()
 	if len(list) == 0 {
 		b.WriteString("_No actions registered for this target type._\n")
@@ -66,9 +77,23 @@ func Markdown(targetType string) (string, error) {
 		meta := a.Metadata()
 		targets := strings.Join(meta.TargetTypes, ", ")
 		fmt.Fprintf(&b, "## %s\n\n", meta.Name)
-		fmt.Fprintf(&b, "- **Scope:** %s · **Type:** %s · **Mode:** %s\n", meta.Scope, meta.Type, meta.ExecutionMode)
+		fmt.Fprintf(&b, "- **Scope:** %s · **Type:** %s · **Mode:** %s", meta.Scope, meta.Type, meta.ExecutionMode)
+		if meta.Authorization.Approval != "" {
+			fmt.Fprintf(&b, " · **Approval:** %s", meta.Authorization.Approval)
+		}
+		b.WriteString("\n")
 		fmt.Fprintf(&b, "- **Also on:** %s\n", targets)
-		fmt.Fprintf(&b, "- %s\n\n", meta.Description)
+		fmt.Fprintf(&b, "- %s\n", meta.Description)
+		if meta.TimeoutSeconds > 0 {
+			fmt.Fprintf(&b, "- **Timeout:** %ds\n", meta.TimeoutSeconds)
+		}
+		if meta.WriteCooldownSeconds > 0 {
+			fmt.Fprintf(&b, "- **Cooldown:** %ds between writes\n", meta.WriteCooldownSeconds)
+		}
+		if meta.DryRunAction != "" {
+			fmt.Fprintf(&b, "- **Dry-run:** `%s`\n", meta.DryRunAction)
+		}
+		b.WriteString("\n")
 
 		if len(meta.Examples) > 0 {
 			b.WriteString("**Examples:**\n\n")
