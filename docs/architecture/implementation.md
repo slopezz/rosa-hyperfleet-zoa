@@ -194,9 +194,11 @@ All K8s resource creation retries with exponential backoff (up to 5 attempts) fo
 
 ### `pkg/scheduler` — Scheduled Work
 
-- **Reconciler** (1m): Polls for dispatched async executions, checks K8s Job status, transitions to succeeded/failed
-- **GC** (5m): Finds orphaned K8s resources in `zoa-jobs` by label, cross-references DynamoDB, deletes stale resources
-- **Reaper** (5m): Boundary session deadline, stale creating, and idle enforcement (`pkg/scheduler/reaper.go`); see [session reaper](../boundary/session-reaper.md)
+Full route and phase reference: **[Worker routes](worker-routes.md)** (reconciler / gc / reaper / execute, TA + break-glass + sessions).
+
+- **Reconciler** (1m): `dispatchApproved`, async poll, timeouts, TA GC, break-glass hygiene (`breakglass_gc.go`)
+- **GC** (5m): TA + break-glass cleanup catch-up (`RunGC`)
+- **Reaper** (5m): Boundary sessions — see [session reaper](../boundary/session-reaper.md)
 
 ### `pkg/api/access.go` — Access Lambda HTTP API
 

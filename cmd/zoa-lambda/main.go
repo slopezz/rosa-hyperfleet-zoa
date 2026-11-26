@@ -210,7 +210,7 @@ func main() {
 		reconciler := scheduler.NewReconciler(execStore, kubeClient, lambdaClient, exec, cfg, logger)
 		if cfg.BreakglassEnabled() {
 			bgStore := store.NewBreakglassStore(dynamoClient, cfg.BreakglassTable, cfg.DynamoDBTTLDays)
-			reconciler.SetBreakglassReconciler(scheduler.NewBreakglassReconciler(bgStore, exec, cfg.TargetCluster, logger))
+			reconciler.SetBreakglassStore(bgStore)
 			logger.Info("break-glass worker expiry enabled", "breakglassTable", cfg.BreakglassTable)
 		}
 

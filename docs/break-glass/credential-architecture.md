@@ -128,11 +128,11 @@ No S3 job, no async runner, and no per-activation K8s Job — credentials return
 
 ## Three clocks (request, grant, credential)
 
-| Clock           | Source                                                          | Effect                                                                                          |
-| --------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| **Request TTL** | Profile `default_request_hours` → `request_expires_at`          | Pending request expires without decision                                                          |
-| **Grant**       | Profile `default_grant_hours` at approve → `grant_expires_at`   | After expiry, `activate` returns gone; reconciler sets `status=expired`                          |
-| **Credential**  | `pkg/breakglass/credential.go` max + `min(grant left, max)`     | `kubectl` / `aws` stop when creds expire **even if grant still valid**; **409** if grant left &lt; API min |
+| Clock           | Source                                                        | Effect                                                                                                     |
+| --------------- | ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| **Request TTL** | Profile `default_request_hours` → `request_expires_at`        | Pending request expires without decision                                                                   |
+| **Grant**       | Profile `default_grant_hours` at approve → `grant_expires_at` | After expiry, `activate` returns gone; reconciler sets `status=expired`                                    |
+| **Credential**  | `pkg/breakglass/credential.go` max + `min(grant left, max)`   | `kubectl` / `aws` stop when creds expire **even if grant still valid**; **409** if grant left &lt; API min |
 
 Operators see grant + cred in PS1 (`grant~…`, `cred~…`); `active` stores `credentialExpiresAt`. Catalog: `zoa breakglass describe` / `profiles` (request, grant, credential TTL). Full UX: [README — Two clocks](README.md#two-clocks-grant-vs-credentials).
 
@@ -162,21 +162,21 @@ The apiserver never sees the human username; attribution chains **boundary task*
 
 ## Contrast with Trusted Actions
 
-| Dimension    | Trusted Action                                 | Break-glass                                                        |
-| ------------ | ---------------------------------------------- | ------------------------------------------------------------------ |
-| Entry        | `zoa run <action>`                             | `zoa breakglass activate` then stock CLI                           |
-| K8s identity | `zoa-exec-<executionId>` per run               | `zoa-bg-<requestId>` per grant                                     |
-| AWS identity | Shared read/write TA roles per TA              | Standing BG roles + `zoa-bg-<requestId>` session                   |
-| Execution    | Sync impersonation or async Job + `zoa-runner` | No executor `Execute()`; operator drives tools                     |
-| Output       | S3 `output.json` + logs                        | Command stdout/stderr in boundary; platform logs only              |
-| Cleanup      | End of TA / Job / GC labels                    | Grant expiry + `CleanupBreakglass` (`pkg/scheduler/breakglass.go`) |
-| Approval     | TA metadata + workflow                         | Scope `authorization` + same approve HTTP pattern                  |
+| Dimension    | Trusted Action                                 | Break-glass                                                           |
+| ------------ | ---------------------------------------------- | --------------------------------------------------------------------- |
+| Entry        | `zoa run <action>`                             | `zoa breakglass activate` then stock CLI                              |
+| K8s identity | `zoa-exec-<executionId>` per run               | `zoa-bg-<requestId>` per grant                                        |
+| AWS identity | Shared read/write TA roles per TA              | Standing BG roles + `zoa-bg-<requestId>` session                      |
+| Execution    | Sync impersonation or async Job + `zoa-runner` | No executor `Execute()`; operator drives tools                        |
+| Output       | S3 `output.json` + logs                        | Command stdout/stderr in boundary; platform logs only                 |
+| Cleanup      | End of TA / Job / GC labels                    | Grant expiry + `CleanupBreakglass` (`pkg/scheduler/breakglass_gc.go`) |
+| Approval     | TA metadata + workflow                         | Scope `authorization` + same approve HTTP pattern                     |
 
 For TA internals (sync/async diagrams), see [implementation.md](../architecture/implementation.md).
 
 ## Expiry and cleanup
 
-On each **worker reconciler** tick (`BreakglassReconciler` in `pkg/scheduler/breakglass.go`, wired from `cmd/zoa-lambda/main.go`):
+Worker hygiene runs on **`reconciler`** and **`gc`** ticks (`breakglassExpireGrants`, `breakglassGarbageCollect`, `breakglassOrphanGC` on `Reconciler` — see [Worker routes](../architecture/worker-routes.md); `SetBreakglassStore` in `cmd/zoa-lambda/main.go`). Not a separate EventBridge schedule:
 
 1. Pending requests past deadline → `expired`
 2. Approved grants past `grant_expires_at` → `expired` (approval column unchanged)
@@ -197,11 +197,11 @@ Executor env mirrors TA EKS settings (`EKS_CLUSTER_*`, `ZOA_JOBS_NAMESPACE`) bec
 
 ## Package map (quick)
 
-| Package                        | Role                                           |
-| ------------------------------ | ---------------------------------------------- |
+| Package                        | Role                                                            |
+| ------------------------------ | --------------------------------------------------------------- |
 | `pkg/breakglass/`              | Profile catalog (scope kube\|aws, RBAC or IAM composition, TTL) |
-| `pkg/api/breakglass.go`        | HTTP: request, approve, activate, list         |
-| `pkg/executor/breakglass_*.go` | Kube RBAC + token, STS assume                  |
-| `pkg/store/`                   | Break-glass request persistence                |
-| `pkg/breakglass/active/`       | Boundary active grant files and paths          |
-| `internal/cli/breakglass*.go`  | Operator commands and activate artifact writes |
+| `pkg/api/breakglass.go`        | HTTP: request, approve, activate, list                          |
+| `pkg/executor/breakglass_*.go` | Kube RBAC + token, STS assume                                   |
+| `pkg/store/`                   | Break-glass request persistence                                 |
+| `pkg/breakglass/active/`       | Boundary active grant files and paths                           |
+| `internal/cli/breakglass*.go`  | Operator commands and activate artifact writes                  |

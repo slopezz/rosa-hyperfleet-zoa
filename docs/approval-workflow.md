@@ -131,7 +131,7 @@ Shared timestamps (break-glass today; **same shape planned for TA** when the wor
 
 ### Expiry (worker vs HTTP activate)
 
-- **Worker** (`pkg/scheduler/breakglass.go`, ~1m tick): queries `target-status-index` for lifecycle `pending` and `active`, compares `request_expires_at` / `grant_expires_at`, sets `status=expired` and `expired_at`. Does **not** change `approval` or `decided_*`.
+- **Worker** (`breakglassExpireGrants` in `pkg/scheduler/breakglass_gc.go`, ~1m + 5m GC ticks — [worker routes](architecture/worker-routes.md)): queries `target-status-index` for lifecycle `pending` and `active`, compares `request_expires_at` / `grant_expires_at`, sets `status=expired` and `expired_at`. Does **not** change `approval` or `decided_*`.
 - **Activate HTTP** (`POST /breakglass/requests/{id}/activate`): rejects if `status` ≠ `active` (`grant_not_active`), `approval` ≠ `approved` (`not_approved`), grant is past `grant_expires_at`, or **identity binding** fails (operator, session/task id from signer ARN, `creator_task_id` on the row).
 
 Example after grant timeout:

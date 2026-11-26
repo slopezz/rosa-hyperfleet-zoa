@@ -80,6 +80,14 @@ type ExecutorConfig struct {
 	TargetCluster            string
 }
 
+// Kubernetes exposes the API client for scheduler orphan GC (break-glass kube sweep).
+func (e *Executor) Kubernetes() kubernetes.Interface {
+	if e == nil {
+		return nil
+	}
+	return e.kubeClient
+}
+
 func New(kubeClient kubernetes.Interface, restConfig *rest.Config, s3Client S3API, awsCfg *aws.Config, cfg ExecutorConfig, logger *slog.Logger) *Executor {
 	var stsClient STSAssumeRoler
 	if awsCfg != nil {

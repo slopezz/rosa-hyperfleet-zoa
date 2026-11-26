@@ -202,6 +202,35 @@ func TestOrphanGC_WhenJobIsRecent_ItShouldSkip(t *testing.T) {
 	}
 }
 
+func TestRunGC_WhenBreakglassEnabled_ItShouldExpireGrants(t *testing.T) {
+	past := time.Now().Add(-time.Hour).Format(time.RFC3339Nano)
+	mock := &mockBreakglassStore{
+		items: []*store.BreakglassRequest{
+			{
+				RequestID:        "bg-gc-1",
+				TargetCluster:    "test-cluster",
+				Status:           store.StatusPending,
+				RequestExpiresAt: past,
+			},
+		},
+	}
+	kubeClient := fake.NewSimpleClientset() //nolint:staticcheck
+	ctx := context.Background()
+	cfg := testConfig()
+	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: cfg.JobsNamespace}}
+	_, _ = kubeClient.CoreV1().Namespaces().Create(ctx, ns, metav1.CreateOptions{})
+	exec := executor.New(kubeClient, nil, nil, nil, executor.ExecutorConfig{}, noopLogger())
+	r := NewReconciler(&mockExecutionStore{}, kubeClient, nil, exec, cfg, noopLogger())
+	r.SetBreakglassStore(mock)
+
+	if err := r.RunGC(ctx); err != nil {
+		t.Fatalf("RunGC: %v", err)
+	}
+	if mock.items[0].Status != store.StatusExpired {
+		t.Fatalf("expected break-glass expired via RunGC, got %s", mock.items[0].Status)
+	}
+}
+
 func TestRunGC_WhenCalled_ItShouldExecuteGCPhases(t *testing.T) {
 	execStore := &mockExecutionStore{
 		executions:   []*store.Execution{},

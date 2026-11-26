@@ -38,7 +38,7 @@ type Reconciler struct {
 	kubeClient     kubernetes.Interface
 	lambdaClient   LambdaInvoker
 	executor       *executor.Executor
-	breakglass     *BreakglassReconciler
+	breakglassStore store.BreakglassStore
 	cfg            *config.Config
 	logger         *slog.Logger
 }
@@ -54,11 +54,6 @@ func NewReconciler(executionStore store.ExecutionStore, kubeClient kubernetes.In
 	}
 }
 
-// SetBreakglassReconciler runs break-glass expiry on each reconciler tick when set.
-func (r *Reconciler) SetBreakglassReconciler(bg *BreakglassReconciler) {
-	r.breakglass = bg
-}
-
 // Run performs the reconciliation loop:
 // 1. Fan-out: dispatch approved TAs by async-invoking the Execution Lambda
 // 2. Poll async Jobs: check K8s Job status, transition dispatched→succeeded/failed
@@ -66,6 +61,9 @@ func (r *Reconciler) SetBreakglassReconciler(bg *BreakglassReconciler) {
 // 4. GC: clean up K8s resources for terminal executions, mark cleaned
 // 5. Orphan GC: delete K8s resources that have no matching DynamoDB record
 // 6. Stale must-gather pods: delete terminal child pods missed by runner defer cleanup
+// 7. Break-glass expireGrants (if enabled)
+// 8. Break-glass garbageCollect
+// 9. Break-glass orphanGC
 func (r *Reconciler) Run(ctx context.Context) error {
 	start := time.Now()
 	r.logger.Info("reconciler starting")
@@ -102,11 +100,17 @@ func (r *Reconciler) Run(ctx context.Context) error {
 		phaseErrors++
 	}
 
-	if r.breakglass != nil {
-		if err := r.breakglass.Run(ctx); err != nil {
-			r.logger.Error("break-glass expiry failed", "error", err)
-			phaseErrors++
-		}
+	if err := r.breakglassExpireGrants(ctx); err != nil {
+		r.logger.Error("break-glass expire grants failed", "error", err, "pillar", "breakglass", "phase", "expire_grants")
+		phaseErrors++
+	}
+	if err := r.breakglassGarbageCollect(ctx); err != nil {
+		r.logger.Error("break-glass garbage collection failed", "error", err, "pillar", "breakglass", "phase", "garbage_collect")
+		phaseErrors++
+	}
+	if err := r.breakglassOrphanGC(ctx); err != nil {
+		r.logger.Error("break-glass orphan garbage collection failed", "error", err, "pillar", "breakglass", "phase", "orphan_gc")
+		phaseErrors++
 	}
 
 	elapsed := time.Since(start)

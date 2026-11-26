@@ -40,3 +40,8 @@ func MustGatherPodSelector() string {
 func ZOAManagedSelector() string {
 	return KeyManagedBy + "=" + ValueManagedByZOA
 }
+
+// BreakglassResourceSelector matches break-glass kube RBAC objects (request-id label, not TA execution-id).
+func BreakglassResourceSelector() string {
+	return ZOAManagedSelector() + "," + KeyRequestID
+}

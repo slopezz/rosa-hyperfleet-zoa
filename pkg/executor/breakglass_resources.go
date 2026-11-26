@@ -20,8 +20,8 @@ func breakglassResourceName(requestID string) string {
 
 func breakglassManagedLabels(requestID string) map[string]string {
 	return map[string]string{
-		labels.KeyRequestID:            requestID,
-		"app.kubernetes.io/managed-by": "zoa-lambda",
+		labels.KeyRequestID: requestID,
+		labels.KeyManagedBy: labels.ValueManagedByZOA,
 	}
 }
 

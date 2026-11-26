@@ -6,11 +6,11 @@ Platform Terraform and accounts: [ZOA architecture (rosa-seaplane)](https://gith
 
 ## Start here
 
-| You are…               | Read                                                                                                                                                                           |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| You are…               | Read                                                                                                                                          |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Operator** (session) | [Operator workflow](guides/operator-workflow.md) — laptop → boundary → `zoa run`; break-glass: [break-glass/README.md](break-glass/README.md) |
-| **TA author**          | [Trusted Actions](trusted-actions.md) — writing, testing, conformance gates                                                                                                    |
-| **Contributor**        | [Development](development.md) · [E2E testing](e2e-testing.md)                                                                                                                  |
+| **TA author**          | [Trusted Actions](trusted-actions.md) — writing, testing, conformance gates                                                                   |
+| **Contributor**        | [Development](development.md) · [E2E testing](e2e-testing.md)                                                                                 |
 
 ## Guides
 
@@ -60,12 +60,13 @@ Emergency scoped access from the boundary (see [break-glass/README.md](break-gla
 
 Cross-cutting concerns that span all three pillars.
 
-| Document                                         | Description                                            |
-| ------------------------------------------------ | ------------------------------------------------------ |
-| [Lambda model](architecture/lambda-model.md)     | API, Worker, Access — three modes from one image       |
-| [Implementation](architecture/implementation.md) | Package layout, execution flows, env by `HANDLER_MODE` |
-| [Storage](architecture/storage.md)               | DynamoDB tables, S3, TTL, GSIs                         |
-| [Timeout tuning](architecture/timeout-tuning.md) | TA deadlines; links to Access/boundary session limits  |
+| Document                                         | Description                                              |
+| ------------------------------------------------ | -------------------------------------------------------- |
+| [Lambda model](architecture/lambda-model.md)     | API, Worker, Access — three modes from one image         |
+| [Worker routes](architecture/worker-routes.md)   | EventBridge routes, phase order, TA / BG / session logic |
+| [Implementation](architecture/implementation.md) | Package layout, execution flows, env by `HANDLER_MODE`   |
+| [Storage](architecture/storage.md)               | DynamoDB tables, S3, TTL, GSIs                           |
+| [Timeout tuning](architecture/timeout-tuning.md) | TA deadlines; links to Access/boundary session limits    |
 
 ## Engineering
 

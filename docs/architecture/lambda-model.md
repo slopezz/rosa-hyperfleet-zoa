@@ -41,6 +41,8 @@ The Worker Lambda uses the `route` field in the event payload:
 
 The **reaper** route enforces boundary **deadline**, **stale creating**, and **idle** policies: queries **`target-status-index`** on the sessions table for `TARGET_CLUSTER`, correlates ECS Exec activity via SSM/CloudWatch for idle, and calls `ecs:StopTask` when needed (`pkg/scheduler/reaper.go`, scheduled from `terraform/modules/zoa-lambda/main.tf`). See [session reaper](../boundary/session-reaper.md).
 
+Phase order, DynamoDB tables, and per-step behavior for all worker routes: **[Worker routes](worker-routes.md)**.
+
 ## Self-Invocation Pattern
 
 When the reconciler dispatches an approved TA:
