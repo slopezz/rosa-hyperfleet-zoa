@@ -30,22 +30,22 @@ func printBreakglassRequestDispatched(w io.Writer, req *client.BreakglassRequest
 	if req == nil || req.RequestID == "" {
 		return
 	}
-	scope := req.Name
-	if scope == "" {
-		scope = "unknown"
+	name := req.Name
+	if name == "" {
+		name = "unknown"
 	}
-	fmt.Fprintf(w, "✓ %s [%s] scope=%s\n", req.RequestID, breakglassTargetCluster(req.TargetCluster), scope)
+	fmt.Fprintf(w, "✓ %s [%s] name=%s\n", req.RequestID, breakglassTargetCluster(req.TargetCluster), name)
 }
 
 // printBreakglassActivateDispatched marks successful activate (same id line + · activated).
-func printBreakglassActivateDispatched(w io.Writer, requestID, targetCluster, scope string) {
+func printBreakglassActivateDispatched(w io.Writer, requestID, targetCluster, profileName string) {
 	if requestID == "" {
 		return
 	}
-	if scope == "" {
-		scope = "unknown"
+	if profileName == "" {
+		profileName = "unknown"
 	}
-	fmt.Fprintf(w, "✓ %s [%s] scope=%s · activated\n", requestID, breakglassTargetCluster(targetCluster), scope)
+	fmt.Fprintf(w, "✓ %s [%s] name=%s · activated\n", requestID, breakglassTargetCluster(targetCluster), profileName)
 }
 
 func breakglassApprovalDeployment() string {
@@ -68,7 +68,7 @@ func renderBreakglassRequest(global *GlobalOptions, req *client.BreakglassReques
 	if global.OutputFormat == output.FormatJSON {
 		payload := map[string]interface{}{
 			"id":                      req.RequestID,
-			"scope":                   req.Name,
+			"name":                    req.Name,
 			"target_cluster":          req.TargetCluster,
 			"status":                  req.Status,
 			"reason":                  req.Reason,

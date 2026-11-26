@@ -15,7 +15,7 @@ var rbacBindResources = []string{
 	"roles", "rolebindings", "clusterroles", "clusterrolebindings",
 }
 
-// elevatedForbiddenDeleteResources must not receive delete even in kube-elevated (read-only via omission + guard).
+// elevatedForbiddenDeleteResources must not receive delete even in kube_elevated (read-only via omission + guard).
 var elevatedForbiddenDeleteResources = []string{
 	"customresourcedefinitions",
 	"namespaces",
@@ -81,14 +81,11 @@ func validateAuthorization(meta ProfileMetadata) error {
 
 func validateKubeScope(def *Definition) error {
 	meta := def.Metadata
-	if meta.AwsRoleKey != "" {
-		return fmt.Errorf("scope %s: kube scopes must not set aws_role_key", meta.Name)
-	}
 	if def.RBAC == nil {
 		return fmt.Errorf("scope %s: kube scopes must declare RBAC", meta.Name)
 	}
 	for _, target := range []string{actions.TargetTypeRC, actions.TargetTypeMC} {
-		rules := def.RBAC(target)
+		rules := EffectiveRBAC(def, target)
 		if len(rules) == 0 {
 			return fmt.Errorf("scope %s: no RBAC rules for target %s", meta.Name, target)
 		}
@@ -116,8 +113,8 @@ func validateAWSScope(def *Definition) error {
 	if def.RBAC != nil {
 		return fmt.Errorf("scope %s: aws scopes must not declare RBAC in Go", meta.Name)
 	}
-	if meta.AwsRoleKey == "" {
-		return fmt.Errorf("scope %s: aws scopes require aws_role_key", meta.Name)
+	if !KnownAWSProfiles[meta.Name] {
+		return fmt.Errorf("scope %s: aws scopes must use name aws_read, aws_write, or aws_elevated", meta.Name)
 	}
 	return nil
 }

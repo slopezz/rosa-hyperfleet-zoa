@@ -684,7 +684,7 @@ func TestAccessHandler_WhenSessionList_ItShouldReturnSessions(t *testing.T) {
 	}
 	h := testAccessHandler(sessions, &mockTargetStoreAccess{})
 
-	rr := doAccessRequest(h, "GET", "/api/v0/sessions?scope=mine", nil, accessHeaders())
+	rr := doAccessRequest(h, "GET", "/api/v0/sessions?mine=true", nil, accessHeaders())
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
@@ -701,7 +701,7 @@ func TestAccessHandler_WhenSessionList_ItShouldReturnSessions(t *testing.T) {
 func TestAccessHandler_WhenSessionListMineWithOperatorParam_ItShouldReturn400(t *testing.T) {
 	h := testAccessHandler(&mockSessionStoreAccess{}, &mockTargetStoreAccess{})
 
-	rr := doAccessRequest(h, "GET", "/api/v0/sessions?scope=mine&operator=other", nil, accessHeaders())
+	rr := doAccessRequest(h, "GET", "/api/v0/sessions?mine=true&operator=other", nil, accessHeaders())
 
 	if rr.Code != http.StatusBadRequest {
 		t.Errorf("expected 400, got %d: %s", rr.Code, rr.Body.String())
@@ -785,7 +785,7 @@ func TestAccessHandler_WhenSessionListStatusFilter_ItShouldFilterByStatus(t *tes
 	}
 	h := testAccessHandler(sessions, &mockTargetStoreAccess{})
 
-	rr := doAccessRequest(h, "GET", "/api/v0/sessions?scope=mine&status=active", nil, accessHeaders())
+	rr := doAccessRequest(h, "GET", "/api/v0/sessions?mine=true&status=active", nil, accessHeaders())
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
@@ -848,7 +848,7 @@ func TestAccessHandler_WhenSessionListWithOperatorFilter_ItShouldFilterByOperato
 func TestAccessHandler_WhenSessionListMineInvalidIdentity_ItShouldReturn400(t *testing.T) {
 	h := testAccessHandler(&mockSessionStoreAccess{}, &mockTargetStoreAccess{})
 
-	rr := doAccessRequest(h, "GET", "/api/v0/sessions?scope=mine", nil, map[string]string{
+	rr := doAccessRequest(h, "GET", "/api/v0/sessions?mine=true", nil, map[string]string{
 		"__caller_arn": "not-a-valid-arn",
 	})
 

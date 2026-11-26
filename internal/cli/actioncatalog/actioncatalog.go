@@ -53,7 +53,7 @@ func Markdown(targetType string) (string, error) {
 	b.WriteString("## Quick rules\n\n")
 	b.WriteString("- Every `zoa run` **must** include `--reason TICKET`.\n")
 	b.WriteString("- Parameters map to CLI flags where listed; otherwise `--param name=value`.\n")
-	b.WriteString("- **kube-api** TAs talk to **this session's EKS cluster** (RC or MC). **aws-api** TAs talk to **that cluster's AWS account/region**.\n")
+	b.WriteString("- **`kube`** TAs talk to **this session's EKS cluster** (RC or MC). **`aws`** TAs talk to **that cluster's AWS account/region**.\n")
 	b.WriteString("- Clusters are **EKS**, not in-cluster OpenShift control planes — discover namespaces with `get_resource --resource namespaces` before guessing.\n\n")
 
 	list := actions.List()
@@ -135,5 +135,5 @@ func writeEnvironmentContext(b *strings.Builder, targetType string) {
 	default:
 		b.WriteString("Unknown target type.\n\n")
 	}
-	b.WriteString("**aws-api** read TAs (`list_eks_clusters`, `describe_vpc_endpoint`, …) operate in the **AWS account/region where this RC or MC EKS cluster lives**, not in customer worker accounts.\n\n")
+	b.WriteString("**`aws`** read TAs (`list_eks_clusters`, `describe_vpc_endpoint`, …) operate in the **AWS account/region where this RC or MC EKS cluster lives**, not in customer worker accounts.\n\n")
 }

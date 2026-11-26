@@ -83,9 +83,9 @@ func List() []ProfileMetadata {
 	return out
 }
 
-// KubeReadRules returns RBAC rules for kube-read on RC or MC.
+// KubeReadRules returns RBAC rules for kube_read on RC or MC.
 func KubeReadRules(targetType string) []actions.RBACRule {
-	def, ok := Get("kube-read")
+	def, ok := Get("kube_read")
 	if !ok || def.RBAC == nil {
 		return nil
 	}

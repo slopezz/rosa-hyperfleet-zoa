@@ -80,12 +80,12 @@ Requires `BREAKGLASS_TABLE` on the target API Lambda. Identity and task-binding 
 | Method | Path                                       | Description                                      |
 | ------ | ------------------------------------------ | ------------------------------------------------ |
 | `GET`  | `/api/v0/breakglass/profiles`              | List profiles (`?scope=kube\|aws`, `?type=read\|write\|elevated`) |
-| `GET`  | `/api/v0/breakglass/profiles/{name}`       | Describe one profile (`kube-read`, …)            |
+| `GET`  | `/api/v0/breakglass/profiles/{name}`       | Describe one profile (`kube_read`, …)            |
 | `POST` | `/api/v0/breakglass/requests`              | Create request JSON: `name`, `reason`            |
 | `GET`  | `/api/v0/breakglass/requests`              | List requests (optional `?target=`; default all targets in table, like TA runs) |
 | `GET`  | `/api/v0/breakglass/requests/{id}`         | Get request                                      |
 | `POST` | `/api/v0/breakglass/requests/{id}/activate` | Provision access and return credentials (task-bound) |
-| `GET`  | `/api/v0/breakglass/requests?mine=true`    | Your requests only (not audited); `scope=mine` accepted until cleanup |
+| `GET`  | `/api/v0/breakglass/requests?mine=true`    | Your requests only (not audited) |
 | `GET`  | `/api/v0/breakglass/requests` (no `mine=true`) | Cross-operator history (audited `breakglass_history`) |
 
 ### Approval
@@ -160,10 +160,10 @@ List sessions. Used by both `zoa session list` (own sessions) and `zoa session h
 
 | Param      | Type   | Description                                                              |
 | ---------- | ------ | ------------------------------------------------------------------------ |
-| `mine`     | string | `true` for own sessions only (`zoa session list` also sends `scope=mine` until cleanup) |
-| `scope`    | string | Legacy: `mine` same as `mine=true` for sessions                          |
+| `mine`     | string | `true` for own sessions only. `zoa session list` also sends legacy `scope=mine` for older Access Lambdas. |
+| `scope`    | string | Sessions only: `mine` treated like `mine=true` (not used on break-glass) |
 | `status`   | string | Filter by session status (`active`, `terminated`, `failed`, `creating`)  |
-| `operator` | string | Filter by operator (not allowed with `mine=true` / `scope=mine`)         |
+| `operator` | string | Filter by operator (not allowed with self-service session list)          |
 | `target`   | string | Filter by target cluster                                                 |
 | `since`    | string | Start of time window (duration: `1h`, `7d`; date: `2026-08-25`; RFC3339) |
 | `until`    | string | End of time window (same formats as `since`; default: now)               |
@@ -189,7 +189,7 @@ List sessions. Used by both `zoa session list` (own sessions) and `zoa session h
 }
 ```
 
-**Audit:** cross-operator queries (no `scope=mine`) are recorded as `session_history` in the audit trail. Own-session list (`scope=mine`) is not audited.
+**Audit:** cross-operator queries (no `mine=true` / `scope=mine`) are recorded as `session_history`. Own-session list is not audited.
 
 ---
 
@@ -324,8 +324,8 @@ The `action` field is a **stable event type** for filtering (`zoa audit --action
 | Yes      | Access | `POST …/sessions/join/{id}`                                   | `session_join`                                |
 | Yes      | Access | `POST …/sessions/terminate/{id}`                              | `session_terminate`                           |
 | Yes      | Access | `POST …/sessions/exec-attached/{id}`                          | `session_exec_attached`                       |
-| Yes      | Access | `GET …/sessions` without `scope=mine` · `zoa session history` | `session_history`                             |
-| No       | Access | `GET …/sessions?scope=mine` · `zoa session list`              | — (self-service; avoid noise)                 |
+| Yes      | Access | `GET …/sessions` without `mine=true` · `zoa session history` | `session_history`                             |
+| No       | Access | `GET …/sessions?mine=true` · `zoa session list`               | — (self-service; avoid noise)                 |
 | No       | Access | `GET …/targets` · `zoa targets`                               | — (read-only catalog)                         |
 | No       | Access | `GET /health`, `GET /version`                                 | —                                             |
 | Yes      | API    | `POST …/trusted-actions/{ta}/run` · `zoa run`                 | **TA registry name** (e.g. `get_db_resource`) |
@@ -508,7 +508,7 @@ List all registered Trusted Actions.
 
 | Param   | Type   | Description                                      |
 | ------- | ------ | ------------------------------------------------ |
-| `scope` | string | Credential surface: `kube`, `aws` (also matches legacy stored `kube-api` / `aws-api` on runs only) |
+| `scope` | string | Credential surface: `kube`, `aws` |
 | `type`  | string | Privilege: `read`, `write` (`elevated` rejected for TA) |
 
 ### Response

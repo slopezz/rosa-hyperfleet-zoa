@@ -102,7 +102,7 @@ func TestListRuns_WhenFiltersProvided_ItShouldPassQueryParameters(t *testing.T) 
 				t.Errorf("expected action=rollout_restart, got %q", query.Get("action"))
 			}
 			if query.Get("scope") != "kube" {
-				t.Errorf("expected scope=kube-api, got %q", query.Get("scope"))
+				t.Errorf("expected scope=kube, got %q", query.Get("scope"))
 			}
 			if query.Get("type") != "write" {
 				t.Errorf("expected type=write, got %q", query.Get("type"))

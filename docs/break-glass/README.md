@@ -13,10 +13,10 @@ Emergency scoped `kubectl` / `aws` from the **boundary** only. Same patterns as 
 
 ## Quick flow
 
-1. **Boundary:** `zoa breakglass request --name kube-read --reason ROSAENG-…` (all v1 profiles use **`approval: none`** → immediate approve via same workflow as future peer approve)
+1. **Boundary:** `zoa breakglass request kube_read --reason ROSAENG-…` (all v1 profiles use **`approval: none`** → immediate approve via same workflow as future peer approve)
 2. **Laptop:** `zoa approve <deployment>/<request-id>` — for future workflows; not required while profiles stay `none` ([approval workflow](../approval-workflow.md))
 3. **Boundary:** `zoa breakglass activate <request-id>` then stock `kubectl` / `aws` (see **Two clocks** — re-activate same id ~hourly while grant valid; at most one active kube + one active aws in `~/.config/zoa/breakglass/active`)
-4. **Discovery:** `zoa breakglass describe kube-read` shows composition bullets plus effective **RBAC** (kube) or **IAM** notes (aws) — same data the API returns for that target type
+4. **Discovery:** `zoa breakglass describe <profile>` shows composition bullets plus effective **RBAC** (kube) or **IAM** notes (aws) — same data the API returns for that target type
 5. **Expiry:** worker reconciler marks expired grants and GCs `zoa-bg-<id>` RBAC
 
 ## Two clocks (grant vs credentials)

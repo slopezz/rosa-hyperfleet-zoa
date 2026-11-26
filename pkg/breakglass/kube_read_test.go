@@ -8,9 +8,9 @@ import (
 )
 
 func TestKubeReadScope_WhenRegistered_ItShouldIncludeModernNetworkingAndStorage(t *testing.T) {
-	def, ok := Get("kube-read")
+	def, ok := Get("kube_read")
 	if !ok {
-		t.Fatal("kube-read not registered")
+		t.Fatal("kube_read not registered")
 	}
 	want := map[string]string{
 		"endpointslices":           "discovery.k8s.io",
@@ -33,15 +33,15 @@ func TestKubeReadScope_WhenRegistered_ItShouldIncludeModernNetworkingAndStorage(
 	}
 	for res := range want {
 		if !found[res] {
-			t.Fatalf("kube-read missing %q", res)
+			t.Fatalf("kube_read missing %q", res)
 		}
 	}
 }
 
 func TestKubeReadScope_WhenRegistered_ItShouldAllowServiceAccountRead(t *testing.T) {
-	def, ok := Get("kube-read")
+	def, ok := Get("kube_read")
 	if !ok {
-		t.Fatal("kube-read not registered")
+		t.Fatal("kube_read not registered")
 	}
 	rules := def.RBAC(actions.TargetTypeRC)
 	var hasSA bool
@@ -51,14 +51,14 @@ func TestKubeReadScope_WhenRegistered_ItShouldAllowServiceAccountRead(t *testing
 		}
 	}
 	if !hasSA {
-		t.Fatal("kube-read must include serviceaccounts get/list/watch")
+		t.Fatal("kube_read must include serviceaccounts get/list/watch")
 	}
 }
 
 func TestKubeReadScope_WhenRegistered_ItShouldIncludePlatformOperatorAPIGroups(t *testing.T) {
-	def, ok := Get("kube-read")
+	def, ok := Get("kube_read")
 	if !ok {
-		t.Fatal("kube-read not registered")
+		t.Fatal("kube_read not registered")
 	}
 	cases := []struct {
 		target string
@@ -80,7 +80,7 @@ func TestKubeReadScope_WhenRegistered_ItShouldIncludePlatformOperatorAPIGroups(t
 		tc := tc
 		t.Run(tc.target+"/"+tc.group, func(t *testing.T) {
 			if !kubeReadHasAPIGroup(def.RBAC(tc.target), tc.group) {
-				t.Fatalf("kube-read on %s missing platform API group %q", tc.target, tc.group)
+				t.Fatalf("kube_read on %s missing platform API group %q", tc.target, tc.group)
 			}
 		})
 	}
@@ -96,9 +96,9 @@ func kubeReadHasAPIGroup(rules []actions.RBACRule, group string) bool {
 }
 
 func TestKubeReadScope_WhenRegistered_ItShouldNotAllowWriteVerbs(t *testing.T) {
-	def, ok := Get("kube-read")
+	def, ok := Get("kube_read")
 	if !ok {
-		t.Fatal("kube-read not registered")
+		t.Fatal("kube_read not registered")
 	}
 	for _, target := range []string{actions.TargetTypeRC, actions.TargetTypeMC} {
 		for _, rule := range def.RBAC(target) {

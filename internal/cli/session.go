@@ -365,7 +365,8 @@ listing other operators here. Use 'zoa session history' for fleet-wide audit.`,
 
 			query := url.Values{}
 			query.Set("mine", "true")
-			query.Set("scope", "mine") // zoa-retrocompatibility-cleanup
+			// Legacy Access Lambdas (pre mine=true) still key off scope=mine; harmless when both set.
+			query.Set("scope", "mine")
 			if since != "" {
 				query.Set("since", since)
 			}

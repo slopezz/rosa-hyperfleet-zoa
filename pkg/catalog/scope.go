@@ -5,42 +5,22 @@ import (
 	"strings"
 )
 
-// MatchCredentialScope returns true when filter is empty or matches item scope (kube/aws),
-// including legacy execution rows stored as kube-api/aws-api.
+// MatchCredentialScope returns true when filter is empty or equals itemScope (kube or aws).
 func MatchCredentialScope(itemScope, filter string) bool {
 	filter = strings.TrimSpace(filter)
 	if filter == "" {
 		return true
 	}
-	itemScope = strings.TrimSpace(itemScope)
-	if itemScope == filter {
-		return true
-	}
-	// zoa-retrocompatibility-cleanup: drop kube-api/aws-api after stored rows age out
-	switch filter {
-	case "kube":
-		return itemScope == "kube-api"
-	case "aws":
-		return itemScope == "aws-api"
-	default:
-		return false
-	}
+	return strings.TrimSpace(itemScope) == filter
 }
 
-// ExecutionScopeDynamoValues expands a runs-list scope query for DynamoDB (IN when legacy values needed).
+// ExecutionScopeDynamoValues is the DynamoDB IN list for a runs-list scope filter.
 func ExecutionScopeDynamoValues(filter string) []string {
 	filter = strings.TrimSpace(filter)
 	if filter == "" {
 		return nil
 	}
-	switch filter {
-	case "kube":
-		return []string{"kube", "kube-api"} // zoa-retrocompatibility-cleanup
-	case "aws":
-		return []string{"aws", "aws-api"} // zoa-retrocompatibility-cleanup
-	default:
-		return []string{filter}
-	}
+	return []string{filter}
 }
 
 // MatchPrivilegeType filters catalog rows by privilege tier (read, write, elevated).

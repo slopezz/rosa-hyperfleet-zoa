@@ -76,7 +76,7 @@ The API Lambda **control-plane client** creates resources; the boundary task rol
 
 ## Activate flow (AWS plane)
 
-Scope metadata `plane: aws` and `aws_role_key` select a **pre-provisioned** IAM role in the account (Terraform `breakglass_iam.tf` in **rosa-seaplane**). The Lambda execution role may `sts:AssumeRole` only into those roles.
+AWS break-glass profiles (`aws_read`, `aws_write`, `aws_elevated`) select a **pre-provisioned** IAM role via profile **`name`** → `BREAKGLASS_AWS_*_ROLE_ARN` (Terraform `breakglass_iam.tf` in **rosa-seaplane**). The Lambda execution role may `sts:AssumeRole` only into those roles.
 
 ```mermaid
 sequenceDiagram
@@ -199,7 +199,7 @@ Executor env mirrors TA EKS settings (`EKS_CLUSTER_*`, `ZOA_JOBS_NAMESPACE`) bec
 
 | Package                        | Role                                           |
 | ------------------------------ | ---------------------------------------------- |
-| `pkg/breakglass/`              | Scope catalog (plane, RBAC, `AwsRoleKey`, TTL) |
+| `pkg/breakglass/`              | Scope catalog (plane, RBAC or IAM composition, TTL) |
 | `pkg/api/breakglass.go`        | HTTP: request, approve, activate, list         |
 | `pkg/executor/breakglass_*.go` | Kube RBAC + token, STS assume                  |
 | `pkg/store/`                   | Break-glass request persistence                |

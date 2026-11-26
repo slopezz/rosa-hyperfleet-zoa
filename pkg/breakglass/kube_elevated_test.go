@@ -8,9 +8,9 @@ import (
 )
 
 func TestKubeElevatedScope_WhenRegistered_ItShouldIncludePlatformMutateOnMC(t *testing.T) {
-	def, ok := Get("kube-elevated")
+	def, ok := Get("kube_elevated")
 	if !ok {
-		t.Fatal("kube-elevated not registered")
+		t.Fatal("kube_elevated not registered")
 	}
 	rules := def.RBAC(actions.TargetTypeMC)
 	if !rulesIncludePlatformMutate(rules, "hypershift.openshift.io") {
@@ -34,9 +34,9 @@ func rulesIncludePlatformMutate(rules []actions.RBACRule, apiGroup string) bool 
 }
 
 func TestKubeElevatedScope_WhenRegistered_ItShouldAllowNodeCordonAndNodeClaimReplace(t *testing.T) {
-	def, ok := Get("kube-elevated")
+	def, ok := Get("kube_elevated")
 	if !ok {
-		t.Fatal("kube-elevated not registered")
+		t.Fatal("kube_elevated not registered")
 	}
 	rules := def.RBAC(actions.TargetTypeMC)
 	var nodeDelete, nodeClaimDelete bool
@@ -61,9 +61,9 @@ func TestKubeElevatedScope_WhenRegistered_ItShouldAllowNodeCordonAndNodeClaimRep
 }
 
 func TestKubeElevatedScope_WhenRegistered_ItShouldNotGrantDeleteOnPlatformStar(t *testing.T) {
-	def, ok := Get("kube-elevated")
+	def, ok := Get("kube_elevated")
 	if !ok {
-		t.Fatal("kube-elevated not registered")
+		t.Fatal("kube_elevated not registered")
 	}
 	for _, target := range []string{actions.TargetTypeRC, actions.TargetTypeMC} {
 		for _, rule := range def.RBAC(target) {
@@ -75,9 +75,9 @@ func TestKubeElevatedScope_WhenRegistered_ItShouldNotGrantDeleteOnPlatformStar(t
 }
 
 func TestKubeElevatedScope_WhenRegistered_ItShouldNotGrantDeleteOnCRDs(t *testing.T) {
-	def, ok := Get("kube-elevated")
+	def, ok := Get("kube_elevated")
 	if !ok {
-		t.Fatal("kube-elevated not registered")
+		t.Fatal("kube_elevated not registered")
 	}
 	for _, target := range []string{actions.TargetTypeRC, actions.TargetTypeMC} {
 		rules := def.RBAC(target)
@@ -90,9 +90,9 @@ func TestKubeElevatedScope_WhenRegistered_ItShouldNotGrantDeleteOnCRDs(t *testin
 }
 
 func TestKubeElevatedScope_WhenRegistered_ItShouldAllowExecWithinPolicy(t *testing.T) {
-	def, ok := Get("kube-elevated")
+	def, ok := Get("kube_elevated")
 	if !ok {
-		t.Fatal("kube-elevated not registered")
+		t.Fatal("kube_elevated not registered")
 	}
 	if def.Metadata.Type != TypeElevated {
 		t.Fatalf("expected type elevated, got %s", def.Metadata.Type)

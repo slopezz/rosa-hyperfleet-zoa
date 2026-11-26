@@ -74,7 +74,7 @@ func newRunsCommand(global *GlobalOptions) *cobra.Command {
 	cmd.Flags().StringVar(&opts.status, "status", "", "Filter by status")
 	cmd.Flags().StringVar(&opts.action, "action", "", "Filter by action name")
 	cmd.Flags().StringVar(&opts.operator, "operator", "", "Filter by operator")
-	cmd.Flags().StringVar(&opts.scope, "scope", "", "Filter by scope (kube-api|aws-api)")
+	cmd.Flags().StringVar(&opts.scope, "scope", "", "Filter by credential scope (kube|aws)")
 	cmd.Flags().StringVar(&opts.actionType, "type", "", "Filter by type (read|write)")
 	cmd.Flags().StringVar(&opts.executionMode, "execution-mode", "", "Filter by execution class (sync|async)")
 	cmd.Flags().BoolVar(&opts.dryRun, "dry-run", false, "Show only dry-run executions")

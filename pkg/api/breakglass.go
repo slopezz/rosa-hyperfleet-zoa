@@ -209,8 +209,7 @@ func (h *Handler) handleListBreakglassRequests(w http.ResponseWriter, r *http.Re
 		}
 	}
 
-	// mine=true: self-service list (no audit). scope=mine accepted until zoa-retrocompatibility-cleanup.
-	mine := q.Get("mine") == "true" || q.Get("scope") == "mine" // zoa-retrocompatibility-cleanup
+	mine := q.Get("mine") == "true"
 	fleetView := !mine
 	if fleetView {
 		if v := q.Get("operator"); v != "" {

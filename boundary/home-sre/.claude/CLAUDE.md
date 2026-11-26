@@ -8,7 +8,7 @@ You are running inside a **ZOA Boundary** container: a time-boxed, audited ECS F
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | `/home/sre/.claude/ZOA_SESSION.md` | Session ID, operator, deployment, target, API URL                                                       |
 | `/home/sre/.claude/ZOA_ACTIONS.md` | **Baked TA catalog** for this deployment target (`rc` or `mc`); use `zoa describe` for live API details |
-| `/home/sre/.claude/ZOA_BREAKGLASS_PROFILES.md` | **Baked break-glass profile catalog** (`name`, `scope` kube\|aws, `type`); use `zoa breakglass describe <name>` when connected |
+| `/home/sre/.claude/ZOA_BREAKGLASS_PROFILES.md` | **Baked break-glass profile catalog** (`name`, `scope` kube\|aws, `type`); use `zoa breakglass describe <profile>` when connected |
 | This `CLAUDE.md`                   | **Agent essentials** table, rules, RC/MC platform, observability, control plane, ZOA execution          |
 
 The shell prompt is two lines: **`sessionId:<deployment>/<uuid>`** (audit handle — copy for `zoa session terminate`) and **`operator@zoa:deployment/target`**. Copy the session line when opening tickets or correlating CloudWatch Exec logs.
@@ -49,7 +49,7 @@ This is **ROSA Seaplane**: **Amazon EKS** clusters running platform software —
 - **`kube`** — Kubernetes API of **the EKS cluster for this session** (the RC or MC named in `ZOA_TARGET`). Workloads are pods/deployments/etc. inside that cluster.
 - **`aws`** — AWS APIs in the **same AWS account and region** as that cluster’s infrastructure (e.g. `list_eks_clusters`, `describe_vpc_endpoint`). Not the customer’s worker account; the account where this RC or MC EKS cluster is deployed.
 
-The **EKS managed control plane** (AWS-owned) does not appear as pods. To inspect the cluster as AWS infrastructure, use **`describe_eks_cluster`** (with the cluster name from discovery or ops docs), not `get_resource --resource pods` in a fictional “apiserver” namespace. Stored TA run rows may still show legacy `kube-api` / `aws-api`; filters accept `kube` / `aws`.
+The **EKS managed control plane** (AWS-owned) does not appear as pods. To inspect the cluster as AWS infrastructure, use **`describe_eks_cluster`** (with the cluster name from discovery or ops docs), not `get_resource --resource pods` in a fictional “apiserver” namespace.
 
 ## Platform workloads (what runs on RC vs MC)
 
@@ -216,9 +216,9 @@ You do **not** need `zoa deployments`, `zoa targets`, or `zoa session *` here �
 | **`zoa output` / `zoa logs` / `zoa download`** | Re-fetch or save artifacts from S3.                                                                                                  |
 | **`zoa audit`**                                | ZOA API audit trail (broader than TAs alone).                                                                                        |
 | **`zoa version`**                              | Client and API version.                                                                                                              |
-| **`zoa breakglass profiles`**                    | Profile catalog (`ZOA_BREAKGLASS_PROFILES.md` offline; alias `scopes` until cleanup).                                               |
-| **`zoa breakglass describe <name>`**           | RBAC / IAM composition for one profile (`kube-read`, …).                                                                             |
-| **`zoa breakglass request --name … --reason`** | Start approval workflow (does not elevate); `--scope` is a deprecated alias for `--name`.                                            |
+| **`zoa breakglass profiles`**                    | Profile catalog (`ZOA_BREAKGLASS_PROFILES.md` offline).                                                                            |
+| **`zoa breakglass describe <profile>`**        | RBAC / IAM composition for one profile (`kube_read`, …).                                                                             |
+| **`zoa breakglass request <profile> --reason`** | Start approval workflow (does not elevate); reason via flag or `ZOA_REASON` (same as `zoa run`).                                    |
 | **`zoa breakglass get <id> [--wait]`**         | Status; `--wait` until approved/rejected/expired (**no auto-activate**).                                                             |
 | **`zoa breakglass activate <id>`**             | Operator explicitly arms creds (only this task that created the request).                                                            |
 
@@ -232,15 +232,15 @@ Read **`ZOA_BREAKGLASS_PROFILES.md`** before discussing break-glass with the ope
 
 1. **Never propose break-glass as the first step.** Exhaust **Trusted Actions** in **`ZOA_ACTIONS.md`** first (`get_resource`, `describe_*`, `must_gather`, `aws` TAs, etc.).
 2. Break-glass is for **urgent gaps** where TAs cannot do the job (missing action, unsupported API, incident time pressure) — and only when the **operator agrees**.
-3. **Minimum profile:** start at **`kube-read` / `aws-read`**; escalate **type** to **write**, then **elevated**, only when catalog RBAC requires it (e.g. Secret data → **`kube-elevated`**).
-4. Use **`zoa breakglass describe <name>`** or the offline catalog to justify the smallest profile.
+3. **Minimum profile:** start at **`kube_read` / `aws_read`**; escalate **type** to **write**, then **elevated**, only when catalog RBAC requires it (e.g. Secret data → **`kube_elevated`**).
+4. Use **`zoa breakglass describe <profile>`** or the offline catalog to justify the smallest profile.
 5. **Do not run `activate` for the operator** unless they explicitly ask. You may suggest commands; activation is their deliberate step.
 6. **During / after** break-glass use, propose a **follow-up Trusted Action** (new action or flag) so the same work never needs break-glass again. Name a concrete command to add (mirror patterns in **`ZOA_ACTIONS.md`**: read vs write, `--dry-run`, cooldown).
 7. **Do not use break-glass** to bypass TA safety (`get_secret` on HCP, cooldown, dry-run) without operator and security awareness.
 
 ### Operator workflow (three steps)
 
-1. **`zoa breakglass request --name <profile> --reason TICKET`** — creates the request; may be `pending` or `approved` depending on catalog approval policy (v1: auto-approve when `approval: none`).
+1. **`zoa breakglass request <profile> --reason TICKET`** — creates the request; may be `pending` or `approved` depending on catalog approval policy (v1: auto-approve when `approval: none`).
 2. **Peer (laptop):** **`zoa approve <deployment>/<request-id>`** when approval is required.
 3. **Operator (this boundary):** **`zoa breakglass activate <request-id>`** — credentials and prompt change only after this command.
 

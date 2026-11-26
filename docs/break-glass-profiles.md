@@ -6,11 +6,11 @@ How to add or change **break-glass profile** definitions in Go (parallel to [Tru
 
 | Concept | JSON / UX field | Example |
 | ------- | --------------- | ------- |
-| Catalog id | `name` | `kube-read` |
+| Catalog id | `name` | `kube_read` |
 | Credential surface | `scope` | `kube`, `aws` |
 | Privilege | `type` | `read`, `write`, `elevated` |
 
-CLI: `zoa breakglass profiles`, `zoa breakglass request --name <profile>`. API: `GET /api/v0/breakglass/profiles`, POST body `{ "name", "reason" }`.
+CLI: `zoa breakglass profiles`, `zoa breakglass request <profile> --reason <ticket>`. API: `GET /api/v0/breakglass/profiles`, POST body `{ "name", "reason" }`.
 
 ## Overview
 
@@ -23,21 +23,21 @@ Each profile is a `Definition` in `pkg/breakglass/`: `ProfileMetadata` (`name`, 
 
 ## What RBAC each scope has (shipped today)
 
-**Start in code:** `kube_rbac.go` (verbs, RC/MC platform catalog, shared helpers), `kube_read.go` / `kube_write.go` / `kube_elevated.go`, `aws_*.go` per scope.  
-**Live detail:** `zoa breakglass describe <scope> --target-type rc|mc` (composition + full rule list).
+**Start in code:** `kube_rbac.go` (verb vocabulary only), `kube_read.go` / `kube_write.go` / `kube_elevated.go` (each profile’s full RBAC including platform apiGroups), `aws_*.go` per scope.  
+**Live detail:** `zoa breakglass describe <profile> --target-type rc|mc` (capabilities + full rule list).
 
-| Scope | Plane | Composition (code) |
-| ----- | ----- | ------------------ |
-| `kube-read` | kube | `kubeReadRBAC` — get/list/watch on core + admission/RBAC/CRD read + platform `*` (`kube_rbac.go` apiGroups); `pods/log` included |
-| `kube-write` | kube | `kubeReadRBAC` + `kubeWriteMutationsRBAC` (apps: mutate without delete; pods/configmaps/jobs: full) |
-| `kube-elevated` | kube | `kubeWriteRBAC` + elevated core (`verbsMutateFull` delta) + platform `verbsMutate` on `*` + secrets read + `pods/exec` |
-| `aws-read` | aws | `AwsRoleKeyRead` → ReadOnlyAccess |
-| `aws-write` | aws | `AwsRoleKeyWrite` → read + RC-only reboot/start/stop (MC ≡ read) |
-| `aws-elevated` | aws | `AwsRoleKeyElevated` → PowerUser + ZOA immutability Deny |
+| Scope | Plane | Where defined |
+| ----- | ----- | ------------- |
+| `kube_read` | kube | `kubeReadRBAC` in `kube_read.go` |
+| `kube_write` | kube | `kubeWriteRBAC` in `kube_write.go` |
+| `kube_elevated` | kube | `kubeElevatedRBAC` in `kube_elevated.go` |
+| `aws_read` | aws | Profile name → `BREAKGLASS_AWS_READ_ROLE_ARN` (ReadOnlyAccess) |
+| `aws_write` | aws | Profile name → `BREAKGLASS_AWS_WRITE_ROLE_ARN` (RC reboot/start/stop; MC ≡ read) |
+| `aws_elevated` | aws | Profile name → `BREAKGLASS_AWS_ELEVATED_ROLE_ARN` (PowerUser + Deny guards) |
 
-Kube tiers compose as **read → write delta → elevated delta** (no extra merge layer in API/CLI).
+Kube profiles are **self-contained** (no tier append or rule merge). Product copy still describes read ⊂ write ⊂ elevated; change each profile file when permissions change.
 
-Verb helpers (`kube_rbac.go`): `verbsRead`, `verbsMutate` (no delete), `verbsMutateFull` (incl. delete). Elevated platform CRs use `verbsMutate` on `resources: *` per apiGroup — not delete on HostedCluster-style objects.
+Shared vocabulary (`kube_rbac.go` only): `verbsRead`, `verbsMutate`, `verbsMutateFull`, `verbsExecCreate`. Every APIGroup and resource is explicit in the profile file (`kube_*Platform*APIGroups` duplicates the RC/MC platform inventory per profile; keep the three lists aligned).
 
 ## Shipped capabilities and restrictions (mirror Go metadata)
 
@@ -45,12 +45,12 @@ Update this table when you change `Capabilities` / `Restrictions` in scope `init
 
 | Scope | Capabilities (summary) | Restrictions (summary) |
 | ----- | ------------------------ | ---------------------- |
-| `kube-read` | Core + storage/scheduling/admission read; platform operator apiGroups read (`*`) per RC/MC | No secrets; no `pods/exec`; serviceaccounts metadata-only |
-| `kube-write` | All kube-read; apps controllers create/patch/update; pods/configmaps/jobs full mutate | No secrets/exec; no RBAC bind writes; no platform CR mutate |
-| `kube-elevated` | All kube-write; platform create/patch/update on `*`; elevated core full mutate (incl. nodes/PVC/PV/HPA/PDB/volumeattachments/NodeClaims); secrets read + exec | No RBAC bind writes; no webhook/CRD/namespace delete; no secret writes; no delete on platform `resources: *` |
-| `aws-read` | ReadOnlyAccess in session account | No write/elevated IAM |
-| `aws-write` | Read + RC EC2/RDS/ElastiCache reboot-style mutations | MC same as read; no elevated |
-| `aws-elevated` | PowerUser (e.g. EC2 terminate on MC) + immutability Deny on ZOA control plane | IAM/org/secrets sidebar per Terraform |
+| `kube_read` | Core + storage/scheduling/admission read; platform operator apiGroups read (`*`) per RC/MC | No secrets; no `pods/exec`; serviceaccounts metadata-only |
+| `kube_write` | All kube_read; apps controllers create/patch/update; pods/configmaps/jobs full mutate | No secrets/exec; no RBAC bind writes; no platform CR mutate |
+| `kube_elevated` | All kube_write; platform create/patch/update on `*`; elevated core full mutate (incl. nodes/PVC/PV/HPA/PDB/volumeattachments/NodeClaims); secrets read + exec | No RBAC bind writes; no webhook/CRD/namespace delete; no secret writes; no delete on platform `resources: *` |
+| `aws_read` | ReadOnlyAccess in session account | No write/elevated IAM |
+| `aws_write` | Read + RC EC2/RDS/ElastiCache reboot-style mutations | MC same as read; no elevated |
+| `aws_elevated` | PowerUser (e.g. EC2 terminate on MC) + immutability Deny on ZOA control plane | IAM/org/secrets sidebar per Terraform |
 
 ## Creating a new scope
 
@@ -75,7 +75,7 @@ import (
 func init() {
 	register(&Definition{
 		Metadata: ScopeMetadata{
-			ID:          "kube-read",
+			ID:          "kube_read",
 			Plane:       PlaneKube,
 			Type:        TypeRead,
 			Description: "Read-only kubectl (get/list/watch); no secrets or exec",
@@ -102,7 +102,7 @@ func kubeReadRBAC(targetType string) []actions.RBACRule {
 }
 ```
 
-AWS scopes set `AwsRoleKey` instead of `RBAC`; ARNs come from env/Terraform, not hardcoded in Go.
+AWS scopes have no `RBAC` func; the executor maps profile **`name`** to `BREAKGLASS_AWS_*_ROLE_ARN` (like TA `scope`+`type` → `AWS_*_ROLE_ARN`). IAM policy text lives in Terraform; **`iam_composition`** in Go is operator-facing only.
 
 ### 3. Approval metadata
 
@@ -113,10 +113,10 @@ Use the same `authorization.approval` field as Trusted Actions (`none` in v1). S
 `go test ./pkg/breakglass/...` is the PR gate (parallel to `pkg/actions/conformance_test.go`):
 
 - Subtest per registered scope id (catalog size is discovered from the registry, not hardcoded)
-- Metadata, authorization clocks, kube vs aws shape (`RBAC` vs `aws_role_key`)
+- Metadata, authorization clocks, kube vs aws shape (`RBAC` vs `iam_composition`)
 - `ValidateScope` / `ValidateAllScopes` — reuses TA forbidden RBAC patterns plus break-glass type rules (secrets read only on **elevated**; read/write without write verbs on read; only elevated `pods/exec`; no RBAC bind mutations; `serviceaccounts` get/list/watch on read+)
-- One `*_test.go` per scope id (`kube_read_test.go` → `kube-read`)
-- One `.go` implementation file per scope id (`aws_write.go` → `aws-write`)
+- One `*_test.go` per scope id (`kube_read_test.go` → `kube_read`)
+- One `.go` implementation file per scope id (`aws_write.go` → `aws_write`)
 
 Extend `shippedApproval` in `conformance_test.go` when the approval workflow epic adds peer approve to the catalog.
 
@@ -126,11 +126,11 @@ Extend `shippedApproval` in `conformance_test.go` when the approval workflow epi
 | ----- | ------ | ----- |
 | `Plane` | `kube`, `aws` | Audit/metrics plane; align with TA scope labels when we drop the `-api` suffix |
 | `Type` | `read`, `write`, `elevated` | Same vocabulary as TA `type` |
-| `ID` | `kube-read`, … | CLI/API `--scope` and Dynamo `scope` |
+| `ID` | `kube_read`, … | CLI/API `--scope` and Dynamo `scope` |
 
-## Discovering scopes
+## Discovering profiles
 
-From the boundary: `zoa breakglass scopes`, `zoa breakglass describe <id>`. Offline (embedded catalog, filtered by `ZOA_TARGET_TYPE`): `zoa breakglass scopes --offline --target-type rc` — same pattern as `internal/cli/actioncatalog` and `internal/cli/scopecatalog`.
+From the boundary: `zoa breakglass profiles`, `zoa breakglass describe <profile>`. Offline (embedded catalog, filtered by `ZOA_TARGET_TYPE`): `zoa breakglass profiles --offline --target-type rc` — same pattern as `internal/cli/actioncatalog` and `internal/cli/profilecatalog`.
 
 ## Related code
 

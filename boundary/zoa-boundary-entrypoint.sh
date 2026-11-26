@@ -71,7 +71,7 @@ write_zoa_session_md() {
     echo "**Target type \`${target_type}\`** matches **TYPE** in \`zoa targets\` — \`rc\` = Regional Cluster EKS (one per region); \`mc\` = Management Cluster EKS (HyperShift; may be several per region). kube TAs use this cluster; aws TAs use this cluster's AWS account/region."
     echo ""
     echo "Trusted Actions catalog: \`$(zoa_actions_catalog_path)\` (offline render from embedded CLI registry; live API is authoritative when connected)."
-    echo "Break-glass profile catalog: \`$(zoa_breakglass_profiles_catalog_path)\` (offline; live: \`zoa breakglass describe <name>\`)."
+    echo "Break-glass profile catalog: \`$(zoa_breakglass_profiles_catalog_path)\` (offline; live: \`zoa breakglass describe <profile>\`)."
     echo "Live details: \`zoa describe <action>\` · Offline: \`zoa actions --offline\` · See CLAUDE.md"
   } > "$(zoa_session_md_path)"
 }

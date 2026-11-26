@@ -202,7 +202,7 @@ func TestValidateScope_WhenKubeScopeMutatesClusterRoleBindings_ItShouldReject(t 
 }
 
 func TestValidateScope_WhenRegisteredKubeScopes_TheyShouldPassValidateScope(t *testing.T) {
-	for _, id := range []string{"kube-read", "kube-write", "kube-elevated"} {
+	for _, id := range []string{"kube_read", "kube_write", "kube_elevated"} {
 		id := id
 		t.Run(id, func(t *testing.T) {
 			def, ok := Get(id)

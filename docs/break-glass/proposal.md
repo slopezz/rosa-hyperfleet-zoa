@@ -14,7 +14,7 @@
 
 | Step        | Where                                                                                         | Command / action                                          |
 | ----------- | --------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| 1. Request  | Boundary                                                                                      | `zoa breakglass request --name <profile> --reason <Jira\|PD>` |
+| 1. Request  | Boundary                                                                                      | `zoa breakglass request <profile> --reason <Jira\|PD>` |
 | 2. Approve  | Laptop when peer workflow is required; **auto** when catalog `approval: none` (all v1 profiles) | `zoa approve <deployment>/<request-id>`                   |
 | 3. Activate | Boundary — **same ECS task** that created the request                                         | `zoa breakglass activate <request-id>`                    |
 
@@ -27,14 +27,14 @@ All six profiles use **`authorization.approval: none`** (synthetic approver `aut
 
 | name            | scope | type      | Targets (typical) | Notes                                                                                           |
 | --------------- | ----- | --------- | ----------------- | ----------------------------------------------------------------------------------------------- |
-| `kube-read`     | kube  | read      | RC, MC            | Composed RBAC in `kube_read.go` (platform addon API groups on RC; Hypershift/CAPI groups on MC) |
-| `kube-write`    | kube  | write     | RC, MC            | No secrets / exec in v1 read paths; write profile separate                                      |
-| `kube-elevated` | kube  | elevated  | RC, MC            | Near-admin: write + platform mutate (no platform `*` delete), core `verbsMutateFull`, secrets read, exec |
-| `aws-read`      | aws   | read      | RC, MC            | STS into Terraform-mapped read roles                                                            |
-| `aws-write`     | aws   | write     | RC, MC            | Mutating allow-list IAM                                                                         |
-| `aws-elevated`  | aws   | elevated  | RC, MC            | Elevated IAM; boundary task role denied ECS Exec for this path                                  |
+| `kube_read`     | kube  | read      | RC, MC            | Composed RBAC in `kube_read.go` (platform addon API groups on RC; Hypershift/CAPI groups on MC) |
+| `kube_write`    | kube  | write     | RC, MC            | No secrets / exec in v1 read paths; write profile separate                                      |
+| `kube_elevated` | kube  | elevated  | RC, MC            | Near-admin: write + platform mutate (no platform `*` delete), core `verbsMutateFull`, secrets read, exec |
+| `aws_read`      | aws   | read      | RC, MC            | STS into Terraform-mapped read roles                                                            |
+| `aws_write`     | aws   | write     | RC, MC            | Mutating allow-list IAM                                                                         |
+| `aws_elevated`  | aws   | elevated  | RC, MC            | Elevated IAM; boundary task role denied ECS Exec for this path                                  |
 
-`zoa breakglass describe <name>` mirrors `GET /api/v0/breakglass/profiles/{name}` (composition bullets + effective RBAC or IAM notes).
+`zoa breakglass describe <profile>` mirrors `GET /api/v0/breakglass/profiles/{name}` (composition bullets + effective RBAC or IAM notes).
 
 ### 0.3 HTTP API (`HANDLER_MODE=api`)
 
@@ -86,13 +86,13 @@ Laptop approve/reject: shared `POST /api/v0/approve/{id}` and `/reject/{id}` on 
 | Executor       | `pkg/executor/` — `zoa-bg-<requestId>` SA and labeled RBAC                                                                                 |
 | CLI / client   | `internal/cli/breakglass*.go`, `internal/client/breakglass.go`                                                                             |
 | Worker         | scheduler reconciler — expire rows + GC RBAC                                                                                               |
-| Terraform      | `rosa-seaplane` `terraform/modules/zoa-lambda/breakglass_*.tf` (DynamoDB, IAM roles, env vars, **DenyZoaBoundaryECSExec** on aws-elevated) |
+| Terraform      | `rosa-seaplane` `terraform/modules/zoa-lambda/breakglass_*.tf` (DynamoDB, IAM roles, env vars, **DenyZoaBoundaryECSExec** on aws_elevated) |
 
 Audit types include `breakglass_request`, `breakglass_approve`, **`breakglass_activate`**, `breakglass_expire` (`pkg/api/audit_actions.go`).
 
 ### 0.7 Ephemeral validation notes
 
-- RC clusters may run platform workloads before Seaplane CRDs exist in the cluster; **`kube-read`** still targets observed addon CRD groups (e.g. AWS ACK, VPC CNI, cert-manager, external-secrets).
+- RC clusters may run platform workloads before Seaplane CRDs exist in the cluster; **`kube_read`** still targets observed addon CRD groups (e.g. AWS ACK, VPC CNI, cert-manager, external-secrets).
 - MC validation covers Hypershift/CAPI groups even with zero HostedClusters.
 - Symptom `kubectl` → `localhost:8080` means no effective `KUBECONFIG` (empty token or missing file); v1 hardens with API failure + CLI artifact checks after activate.
 - `aws` commands use the boundary task role until bashrc sets `AWS_PROFILE` after a successful aws-scope activate.
@@ -150,7 +150,7 @@ Break-glass (BG) grants **time-boxed, scoped `kubectl` and/or `aws` CLI access**
 
 ### Goals
 
-- Scoped emergency access: **`kube-read` / `kube-write` / `aws-read` / `aws-write`** (same vocabulary as TA `Type`) — see §5.8.
+- Scoped emergency access: **`kube_read` / `kube_write` / `aws_read` / `aws_write`** (same vocabulary as TA `Type`) — see §5.8.
 - **Attribution:** human `operator` (identity bridge), ZOA `boundary_session_id`, BG `grant_id`, ECS `task_id`, CloudTrail / K8s audit correlation.
 - **Task binding:** only the **boundary ECS task** that created the request may call `connect` and receive credentials (API-enforced; not STS magic).
 - Prepare for **approval workflow** without a second domain model.
@@ -256,7 +256,7 @@ New table in `terraform/modules/zoa/dynamodb.tf` (sibling to `executions`, `audi
 | ------------------------------------------ | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `requestId`                                | create                   | PK                                                                                                                                                                                                                                                                                                         |
 | `status`                                   | every transition         | Shared enum with executions where possible                                                                                                                                                                                                                                                                 |
-| `scope`                                    | create                   | e.g. `kube-read` (`aws` vs `kube` inferred from scope prefix)                                                                                                                                                                                                                                              |
+| `scope`                                    | create                   | e.g. `kube_read` (`aws` vs `kube` inferred from scope prefix)                                                                                                                                                                                                                                              |
 | `targetCluster`                            | create                   | Same as executions / sessions                                                                                                                                                                                                                                                                              |
 | `accountId`                                | create                   |                                                                                                                                                                                                                                                                                                            |
 | `operator`                                 | create                   | Identity bridge                                                                                                                                                                                                                                                                                            |
@@ -304,7 +304,7 @@ Mirror **existing package boundaries** so “where do I look?” matches TA/sess
 
 | Concern                       | Established pattern                                                                | Break-glass (same shape)                                                                                                                                                                                                     |
 | ----------------------------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Catalog types + registry**  | `pkg/actions/types.go`, `registry.go`, `getresource.go`, …                         | **`pkg/scopes/`** — sibling package, **not** nested under breakglass. One file per scope id: `kube_read.go` → scope **`kube-read`** (hyphen in id, underscore in filename, like `getresource.go` ↔ `get_resource`).          |
+| **Catalog types + registry**  | `pkg/actions/types.go`, `registry.go`, `getresource.go`, …                         | **`pkg/scopes/`** — sibling package, **not** nested under breakglass. One file per scope id: `kube_read.go` → scope **`kube_read`** (hyphen in id, underscore in filename, like `getresource.go` ↔ `get_resource`).          |
 | **Catalog conformance**       | `pkg/actions/conformance_test.go`, `rbac_validator.go`                             | **`pkg/scopes/conformance_test.go`**, **`pkg/scopes/rbac_validator.go`** (reuse validators where possible).                                                                                                                  |
 | **Persistence**               | `pkg/store/execution.go`, `session.go`                                             | **`pkg/store/breakglass.go`** — `BreakglassRequest`, `BreakglassStore`, transitions like `Execution`.                                                                                                                        |
 | **HTTP path constants**       | `pkg/api/paths.go` — `PathTrustedActions`, `PathSessions`, …                       | **Extend `paths.go`:** `PathBreakglass`, `PathBreakglassScopes`, `PathBreakglassRequests` (§6).                                                                                                                              |
@@ -408,7 +408,7 @@ type AuthorizationConfig struct {
     // Future TA parity: "1-peer", "2-peers", "2-seniors" (see pkg/actions/TEMPLATE.go.example)
     Approval string `json:"approval"`
 
-    // Environments where Approval may downgrade to auto (e.g. ephemeral only for kube-read).
+    // Environments where Approval may downgrade to auto (e.g. ephemeral only for kube_read).
     // Empty = never auto from env alone; still subject to deployment override.
     AutoApproveEnvironments []string `json:"auto_approve_environments,omitempty"`
 
@@ -435,7 +435,7 @@ Authorization: AuthorizationConfig{
     DefaultGrantHours:       4,
     DefaultPendingHours:     24,
 },
-// kube-elevated:
+// kube_elevated:
 Authorization: AuthorizationConfig{
     Approval:                "strict",
     RequesterCannotApprove:  true,
@@ -458,11 +458,11 @@ Authorization: AuthorizationConfig{
 
 | Tier (`approval`) | Typical scopes                                            | Operator / approver experience                                                                                                                                                                      |
 | ----------------- | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **`auto`**        | `kube-read` in ephemeral                                  | Immediate `approved`; audit `decisionBy=auto`.                                                                                                                                                      |
-| **`manual`**      | `kube-read` stage+, `kube-write`, `aws-read`, `aws-write` | One approver; requester ≠ approver; optional comment on approve.                                                                                                                                    |
-| **`strict`**      | `kube-elevated`, `aws-elevated`                           | Mandatory `decisionNote` on approve; **two approvers** when engine supports it (v1 may require note + single on-call lead); shorter pending + grant TTL; optional page; **never** auto outside dev. |
+| **`auto`**        | `kube_read` in ephemeral                                  | Immediate `approved`; audit `decisionBy=auto`.                                                                                                                                                      |
+| **`manual`**      | `kube_read` stage+, `kube_write`, `aws_read`, `aws_write` | One approver; requester ≠ approver; optional comment on approve.                                                                                                                                    |
+| **`strict`**      | `kube_elevated`, `aws_elevated`                           | Mandatory `decisionNote` on approve; **two approvers** when engine supports it (v1 may require note + single on-call lead); shorter pending + grant TTL; optional page; **never** auto outside dev. |
 
-**Making a scope harder to approve later** does not require new code paths — change **metadata** in `kube_write.go` and/or **tighten override** in `config/stage/…yaml` → re-render deploy. `zoa breakglass describe <scope>` and `GET …/scopes/{id}` show the current workflow so approvers know rules before they get paged.
+**Making a scope harder to approve later** does not require new code paths — change **metadata** in `kube_write.go` and/or **tighten override** in `config/stage/…yaml` → re-render deploy. `zoa breakglass describe <profile>` and `GET …/profiles/{name}` show the current workflow so approvers know rules before they get paged.
 
 **Conformance** (`pkg/scopes/conformance_test.go`): every registered scope must set valid `Approval`, `DefaultGrantHours > 0`, `elevated` scopes must use `strict` and `DefaultGrantHours <= 2`, `read` scopes must not use `MinApprovers > 1` unless `strict`, etc.
 
@@ -487,7 +487,7 @@ Design principles (industry-aligned, ZOA-specific):
 | **kube-api** | **Each TA `.go` file** — `ActionMetadata.RBAC` (`pkg/actions/getresource.go`, etc.)                     | `pkg/executor` builds Role/Binding from that metadata (`zoa-exec-<executionId>`).                                                                                                                                                                                                                                                                                                                |
 | **aws-api**  | **Terraform** — `aws_iam_role.zoa_aws_read` / `zoa_aws_write` in `terraform/modules/zoa-lambda/main.tf` | **Not in each TA file.** Each aws TA only sets `Scope: "aws-api"` and `Type: "read"` \| `"write"` (`pkg/actions/awsvpc.go`). **`pkg/executor/executor.go`** does `roleARN := awsReadRoleARN; if meta.Type == "write" { roleARN = awsWriteRoleARN }`. ARNs are **Lambda env** `AWS_READ_ROLE_ARN` / `AWS_WRITE_ROLE_ARN` from `pkg/config/config.go` (set by Terraform on the API/worker Lambda). |
 
-Break-glass has **no per-action catalog** — the **scope id** (`kube-read`, `aws-write`, …) is the unit of authorization. Ship **one Go file per scope**, mirroring kube TA files (RBAC in code) and aws TA _wiring_ (role ARN from env), not aws TA _metadata_ (no IAM in every action file).
+Break-glass has **no per-action catalog** — the **scope id** (`kube_read`, `aws_write`, …) is the unit of authorization. Ship **one Go file per scope**, mirroring kube TA files (RBAC in code) and aws TA _wiring_ (role ARN from env), not aws TA _metadata_ (no IAM in every action file).
 
 **Package layout (`pkg/scopes/` — parallel to `pkg/actions/`):**
 
@@ -498,13 +498,13 @@ pkg/scopes/
   aws_rolekey.go         # AwsRoleKey enum + RoleARN(cfg) lookup
   rbac_validator.go    # optional: share/pkg/actions/rbac_validator patterns
   conformance_test.go
-  kube_read_rc.go          # KubeReadRules(rc) — scope kube-read + get_resource on RC
+  kube_read_rc.go          # KubeReadRules(rc) — scope kube_read + get_resource on RC
   kube_read_mc.go          # KubeReadRules(mc)
   kube_write_rc.go
   kube_write_mc.go
   kube_elevated_rc.go      # phase 2
   kube_elevated_mc.go
-  aws_read.go            # scope id aws-read; AwsRoleKey only (+ Describe bullets)
+  aws_read.go            # scope id aws_read; AwsRoleKey only (+ Describe bullets)
   aws_write.go
   aws_elevated.go
 ```
@@ -519,7 +519,7 @@ type kubeRead struct{}
 
 func (kubeRead) Metadata() ScopeMetadata {
     return ScopeMetadata{
-        ID: "kube-read", Plane: PlaneKube, Type: TypeRead,
+        ID: "kube_read", Plane: PlaneKube, Type: TypeRead,
         Description: "…",
         Authorization: AuthorizationConfig{
             Approval:                "manual",
@@ -540,7 +540,7 @@ func init() { Register(awsRead{}) }
 
 func (awsRead) Metadata() ScopeMetadata {
     return ScopeMetadata{
-        ID: "aws-read", Plane: PlaneAWS, Type: TypeRead,
+        ID: "aws_read", Plane: PlaneAWS, Type: TypeRead,
         AwsRoleKey: AwsRoleBreakglassRead,
         Authorization: AuthorizationConfig{
             Approval: "manual", /* stage+; no auto_approve envs in prod */
@@ -559,12 +559,12 @@ func (awsRead) Metadata() ScopeMetadata {
 | Layer                                                                                              | Responsibility                                                                                                                                                                                                                                                                                                                                                                                                              |
 | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Terraform** (`rosa-seaplane` `terraform/modules/zoa-lambda` or dedicated `breakglass` submodule) | Create `zoa_bg_aws_read`, `zoa_bg_aws_write`, `zoa_bg_aws_elevated` (names illustrative). Pass ARNs into API Lambda env.                                                                                                                                                                                                                                                                                                    |
-| **Lambda env**                                                                                     | Either **discrete vars** `BREAKGLASS_AWS_READ_ROLE_ARN`, `BREAKGLASS_AWS_WRITE_ROLE_ARN`, `BREAKGLASS_AWS_ELEVATED_ROLE_ARN` (parallel to `AWS_READ_ROLE_ARN` / `AWS_WRITE_ROLE_ARN`), **or** one JSON map `BREAKGLASS_AWS_ROLE_ARNS='{"aws-read":"arn:…",…}'` rendered from `config/` → `deploy/` like other ZOA env. Prefer **map** if scope count grows; **discrete vars** match TA ergonomics for v1 (read/write only). |
+| **Lambda env**                                                                                     | Either **discrete vars** `BREAKGLASS_AWS_READ_ROLE_ARN`, `BREAKGLASS_AWS_WRITE_ROLE_ARN`, `BREAKGLASS_AWS_ELEVATED_ROLE_ARN` (parallel to `AWS_READ_ROLE_ARN` / `AWS_WRITE_ROLE_ARN`), **or** one JSON map `BREAKGLASS_AWS_ROLE_ARNS='{"aws_read":"arn:…",…}'` rendered from `config/` → `deploy/` like other ZOA env. Prefer **map** if scope count grows; **discrete vars** match TA ergonomics for v1 (read/write only). |
 | **`pkg/config`**                                                                                   | Parse env into `BreakglassAWSRoleARNs map[AwsRoleKey]string` on `Load()`.                                                                                                                                                                                                                                                                                                                                                   |
 | **`pkg/scopes/aws_rolekey.go`**                                                                    | `func RoleARN(key AwsRoleKey, cfg *config.Config) (string, error)` — lookup env map; fail closed if missing.                                                                                                                                                                                                                                                                                                                |
 | **`connect` / credential helper**                                                                  | `scopes.Get(request.Scope)` → kube: apply `Definition().RBAC`; aws: `sts.AssumeRole(RoleARN(cfg), …)` — same executor-level decision as TA, but keyed by **scope id** instead of `meta.Type` on each action.                                                                                                                                                                                                                |
 
-**Validation at request time:** API rejects unknown `scope` strings via registry `Get` (404), same as unknown TA name on `zoa run`. **CLI** `zoa breakglass request --scope` can tab-complete from `scopes.List()`.
+**Validation at request time:** API rejects unknown profile `name` via registry `Get` (404), same as unknown TA name on `zoa run`. **CLI** `zoa breakglass request <profile>` tab-completes from `breakglass.List()`.
 
 **Why not put AWS policies in the Lambda without Go?** Terraform must own IAM (review, FedRAMP evidence). Go must own **which scope uses which role** and kube RBAC rules so they are versioned with `revision` on the request and unit-tested — not scattered in Lambda handler switches.
 
@@ -574,14 +574,14 @@ TA metadata already uses **`Type`: `read` \| `write`** (`pkg/actions`). Break-gl
 
 | Scope               | Plane | Ship                 | Maps to TA `Type` | Access (summary)                                                     | Approval workflow (`approval`)                                                    |
 | ------------------- | ----- | -------------------- | ----------------- | -------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| **`kube-read`**     | K8s   | **v1**               | `read`            | `get/list/watch`; **no** `secrets`; no HCP `cluster-*`; no RBAC bind | **`auto`** in ephemeral; **`manual`** elsewhere                                   |
-| **`kube-write`**    | K8s   | v1                   | `write`           | patch/update on workloads; **no** Secrets; no cluster RBAC           | **`manual`** (1 approver, requester ≠ approver)                                   |
-| **`kube-elevated`** | K8s   | **yes, after write** | —                 | **Near-admin** (§5.8.2)                                              | **`strict`** (note required; 2 approvers when supported; 1h grant; page optional) |
-| **`aws-read`**      | AWS   | v1                   | `read`            | Describe/List/Get + **Deny** secrets/SSM/customer S3                 | **`manual`** (stage+); dev may override in config only                            |
-| **`aws-write`**     | AWS   | after read           | `write`           | Near-admin, constrained (§5.8.2)                                     | **`manual`**; optional `require_decision_note` via config tighten                 |
-| **`aws-elevated`**  | AWS   | **yes, after write** | —                 | Near-admin AWS (§5.8.2)                                              | **`strict`**; never auto                                                          |
+| **`kube_read`**     | K8s   | **v1**               | `read`            | `get/list/watch`; **no** `secrets`; no HCP `cluster-*`; no RBAC bind | **`auto`** in ephemeral; **`manual`** elsewhere                                   |
+| **`kube_write`**    | K8s   | v1                   | `write`           | patch/update on workloads; **no** Secrets; no cluster RBAC           | **`manual`** (1 approver, requester ≠ approver)                                   |
+| **`kube_elevated`** | K8s   | **yes, after write** | —                 | **Near-admin** (§5.8.2)                                              | **`strict`** (note required; 2 approvers when supported; 1h grant; page optional) |
+| **`aws_read`**      | AWS   | v1                   | `read`            | Describe/List/Get + **Deny** secrets/SSM/customer S3                 | **`manual`** (stage+); dev may override in config only                            |
+| **`aws_write`**     | AWS   | after read           | `write`           | Near-admin, constrained (§5.8.2)                                     | **`manual`**; optional `require_decision_note` via config tighten                 |
+| **`aws_elevated`**  | AWS   | **yes, after write** | —                 | Near-admin AWS (§5.8.2)                                              | **`strict`**; never auto                                                          |
 
-**v1 slice:** **`kube-read`** + **`aws-read`** (CLI + console); **`kube-write`** for ephemeral/e2e. **`aws-write`** then **`kube-elevated` / `aws-elevated`** once policies and approval workflow exist.
+**v1 slice:** **`kube_read`** + **`aws_read`** (CLI + console); **`kube_write`** for ephemeral/e2e. **`aws_write`** then **`kube_elevated` / `aws_elevated`** once policies and approval workflow exist.
 
 #### Elevated (last-resort incidents) — near-admin, no `*-admin` id
 
@@ -589,12 +589,12 @@ Break-glass will be **infrequent** but must **unblock** incidents when TAs do no
 
 | Principle     | Choice                                                                                                                                                                                                                                                                                            |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Ship it?      | **Yes** — as **`kube-elevated` / `aws-elevated`**, not a scope literally named `admin` (avoids mental model = unlimited).                                                                                                                                                                         |
+| Ship it?      | **Yes** — as **`kube_elevated` / `aws_elevated`**, not a scope literally named `admin` (avoids mental model = unlimited).                                                                                                                                                                         |
 | vs true admin | **Elevated = near-admin** (wide operational Allow). **`write` = near-admin with a complex policy** (many Allow lines **and** many Deny lines). Still **never** attach AWS `AdministratorAccess` or bind K8s `cluster-admin` by name — custom roles that **behave** like admin minus exfiltration. |
 | Approval      | Encoded per scope in **`Authorization`** (§5.7.1); **write** = `manual`; **elevated** = `strict`; tighten via config without new handlers.                                                                                                                                                        |
 | TTL           | **`grantExpiresAt` shorter for elevated** (e.g. 1h default vs 4h for read/write) — config per scope id.                                                                                                                                                                                           |
 | After action  | Operator policy: **follow with TA** to automate what they did; elevated usage triggers **post-incident review** metric/audit queue (process, not code in v1).                                                                                                                                     |
-| Product story | ZOA remains daily driver (**session + `zoa run`**); BG elevated is **documented last resort** in runbooks, not listed beside `kube-read` in onboarding.                                                                                                                                           |
+| Product story | ZOA remains daily driver (**session + `zoa run`**); BG elevated is **documented last resort** in runbooks, not listed beside `kube_read` in onboarding.                                                                                                                                           |
 
 If elevated is requested **often**, that is a signal to **add or extend TAs**, not to widen elevated.
 
@@ -626,7 +626,7 @@ Each scope file’s **`ScopeMetadata`** carries human **`capabilities` / `restri
 
 > **Shipped source of truth:** `pkg/breakglass/` (`kube_read.go`, `kube_write.go`, `kube_elevated.go`, `kube_rbac.go`, `aws_*.go`). Operator-facing **`capabilities` / `restrictions`** and the summary table live in [../break-glass-profiles.md](../break-glass-profiles.md). The subsections below are a **security-review archive** — align new work with Go first, then refresh this appendix if needed.
 
-**Source of truth (archive note):** RBAC was originally sketched in **`pkg/scopes`** split files; shipped code uses **`pkg/breakglass`** as `[]actions.RBACRule` on **`zoa-bg-<requestId>`** ClusterRole (+ Binding). TA **`get_resource`** alignment with **`kube-read`** remains a follow-up where noted elsewhere.
+**Source of truth (archive note):** RBAC was originally sketched in **`pkg/scopes`** split files; shipped code uses **`pkg/breakglass`** as `[]actions.RBACRule` on **`zoa-bg-<requestId>`** ClusterRole (+ Binding). TA **`get_resource`** alignment with **`kube_read`** remains a follow-up where noted elsewhere.
 
 **Target selection:** `ZOA_TARGET_TYPE` / `TargetTypes` on the scope registry — same as TAs (`list_db_gvks` RC-only, `must_gather` both).
 
@@ -641,7 +641,7 @@ Each scope file’s **`ScopeMetadata`** carries human **`capabilities` / `restri
 
 ---
 
-##### Kubernetes — RC (`kube-read` / shared `get_resource`)
+##### Kubernetes — RC (`kube_read` / shared `get_resource`)
 
 **Verbs (all rules):** `get`, `list`, `watch` only.
 
@@ -675,7 +675,7 @@ Each scope file’s **`ScopeMetadata`** carries human **`capabilities` / `restri
 
 ---
 
-##### Kubernetes — MC (`kube-read` / shared `get_resource` on MC)
+##### Kubernetes — MC (`kube_read` / shared `get_resource` on MC)
 
 Same as **RC rule sets A + B**, plus MC **rule set C′**:
 
@@ -690,7 +690,7 @@ Same as **RC rule sets A + B**, plus MC **rule set C′**:
 
 ---
 
-##### Kubernetes — RC `kube-write`
+##### Kubernetes — RC `kube_write`
 
 **Verbs:** `get`, `list`, `patch`, `update` on workloads; **`delete`** only on **`pods`** and **`jobs`** (stuck terminating).
 
@@ -707,13 +707,13 @@ Same as **RC rule sets A + B**, plus MC **rule set C′**:
 
 ---
 
-##### Kubernetes — MC `kube-write`
+##### Kubernetes — MC `kube_write`
 
-Same as RC **kube-write**, namespaces = MC platform list **excluding** `cluster-*` by default. Optional: **delete pod** in `hypershift` / `openshift-*` only.
+Same as RC **kube_write**, namespaces = MC platform list **excluding** `cluster-*` by default. Optional: **delete pod** in `hypershift` / `openshift-*` only.
 
 ---
 
-##### Kubernetes — RC / MC `kube-elevated`
+##### Kubernetes — RC / MC `kube_elevated`
 
 **ClusterRole (single binding, cluster-wide):** K8s has **no Deny** — **`resources: ["*"]` would include `secrets`**, so elevated **must not** use global star rules. Use **read rule sets A+B+C (or C′)** plus **wide mutate rules** on the same apiGroups with explicit resource lists (or `*` **within** each group **except** `secrets` in core).
 
@@ -770,7 +770,7 @@ Same as RC **kube-write**, namespaces = MC platform list **excluding** `cluster-
 
 `iam:*`, `organizations:*`, `account:CloseAccount`, `account:Delete*`, `secretsmanager:*`, `ssm:GetParameter*`, `kms:Decrypt`, `kms:ImportKeyMaterial`, `s3:GetObject`, `s3:PutObject` on `arn:aws:s3:::*customer*` patterns (use env-specific prefix list), `sts:AssumeRole` to other roles, `ec2:ModifyInstanceAttribute` on `userData`, `rds:Delete*`, `dynamodb:Delete*`
 
-Session: `RoleSessionName` `zoa-bg-<requestId>`, tags `ZOAScope=aws-elevated`, mandatory `SourceIdentity` when bridge hits.
+Session: `RoleSessionName` `zoa-bg-<requestId>`, tags `ZOAScope=aws_elevated`, mandatory `SourceIdentity` when bridge hits.
 
 ---
 
@@ -781,9 +781,9 @@ Session: `RoleSessionName` `zoa-bg-<requestId>`, tags `ZOAScope=aws-elevated`, m
 | RC/MC apiGroup lists  | New Argo app / operator CRD in `argocd/config` → extend rule set C / C′ or regenerate from `oc api-resources` in CI |
 | Namespace allow-lists | Tekton/Argo path changes in `rosa-seaplane` config                                                                  |
 | IAM Allow shards      | New regional pipeline–owned service that SRE must poke in incident                                                  |
-| `get_resource`        | Must stay aligned with **`kube-read`** — one function `scopes.KubeReadRBAC(targetType)`                             |
+| `get_resource`        | Must stay aligned with **`kube_read`** — one function `scopes.KubeReadRBAC(targetType)`                             |
 
-**Security review gate:** sign off **§5.8.3** before enabling `kube-write` / `aws-write` in stage; **elevated** requires second approver + this appendix attached to MR.
+**Security review gate:** sign off **§5.8.3** before enabling `kube_write` / `aws_write` in stage; **elevated** requires second approver + this appendix attached to MR.
 
 #### AWS access modes (CLI + console from day one for `aws-*` scopes)
 
@@ -792,7 +792,7 @@ Boundary has **no Red Hat SAML / Kerberos** like the laptop; do **not** run [rh-
 | Mode        | v1                   | Notes                                                                                                                                                                                                                                                                                                                                                                               |
 | ----------- | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **CLI**     | **Yes**              | Hidden `credential_process` + AssumeRole (`DurationSeconds` capped by grant).                                                                                                                                                                                                                                                                                                       |
-| **Console** | **Yes** (aws scopes) | `zoa breakglass use <id> --console` and/or `--console-service <svc>` (mirror rh-aws-saml-login). API mints federation URL; output **only the URL** (or copy-to-clipboard if available) — **never** access key material. Audit `breakglass_console_link`. Optional: deny console on `aws-write` until security review. Default remains CLI-only flags (no console unless requested). |
+| **Console** | **Yes** (aws scopes) | `zoa breakglass use <id> --console` and/or `--console-service <svc>` (mirror rh-aws-saml-login). API mints federation URL; output **only the URL** (or copy-to-clipboard if available) — **never** access key material. Audit `breakglass_console_link`. Optional: deny console on `aws_write` until security review. Default remains CLI-only flags (no console unless requested). |
 
 **Policy work:** implement Terraform from **§5.8.3**; iterate in `breakglass_iam.tf` + `pkg/scopes/kube_*_{rc,mc}.go`.
 
@@ -849,8 +849,8 @@ Command group: **`breakglass`** (new `cmdGroupBoundary` or sibling to `session` 
 | Command                                       | Description                                                                                                                                                                                                  |
 | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `zoa breakglass scopes` [`<scope>`]           | List scopes (catalog); optional arg = short describe. See §7.2.                                                                                                                                              |
-| `zoa breakglass describe <scope>`             | Full scope detail (approval, TTL, can/cannot).                                                                                                                                                               |
-| `zoa breakglass request <scope> --reason REQ` | Create BG request (`kube-read`, `aws-read`, …). Uses default target from `ZOA_TARGET` / deployment.                                                                                                          |
+| `zoa breakglass describe <profile>`            | Full profile detail (approval, TTL, can/cannot).                                                                                                                                                            |
+| `zoa breakglass request <profile> --reason REQ` | Create BG request (`kube_read`, `aws_read`, …). Uses default target from `ZOA_TARGET` / deployment.                                                                                                      |
 | `zoa breakglass requests`                     | List my grant requests (pending + approved). **Alias:** `list` for ergonomics. Mirrors **`zoa runs`** ↔ `PathTrustedActionsRuns`.                                                                            |
 | `zoa breakglass status <request-id>`          | Poll approval / expiry (`request-id` = UUID from create/list).                                                                                                                                               |
 | `zoa breakglass use <request-id>`             | After approved: provision + activate kube/aws for this shell (**silent** config). Idempotent while grant valid. **`--console`** / **`--console-service`** for AWS (v1). API: `POST …/connect` until renamed. |
@@ -876,12 +876,12 @@ Boundary already uses a **two-line PS1** (`sessionId:…` + `operator@zoa:deploy
 {
   "kube": {
     "requestId": "<uuid>",
-    "scope": "kube-read",
+    "scope": "kube_read",
     "grantExpiresAt": "2026-04-08T18:00:00Z"
   },
   "aws": {
     "requestId": "<uuid>",
-    "scope": "aws-read",
+    "scope": "aws_read",
     "grantExpiresAt": "2026-04-08T20:00:00Z"
   }
 }
@@ -889,20 +889,20 @@ Boundary already uses a **two-line PS1** (`sessionId:…` + `operator@zoa:deploy
 
 - **`use` sets only the stanza(s) implied by that request’s `scope`** (kube scopes → `kube`, aws scopes → `aws`). Two approved grants → two `use` calls → **both** stanzas populated — kube and aws BG **at once** with different `requestId`s.
 - **`11-zoa-breakglass-prompt.bashrc`:** on each prompt, read `active`; if `grantExpiresAt` passed, clear that stanza + env (no API call); set `KUBECONFIG` / `AWS_PROFILE` from filesystem paths derived from `requestId` (**no export echoed**).
-- **Third prompt line** (or compact suffix on line 2), e.g. `breakglass: kube=kube-read (~1h) aws=aws-read (~2h)` — scope + **time remaining**, not profile paths or UUIDs (optional truncated id only if support asks; default **scope only**).
+- **Third prompt line** (or compact suffix on line 2), e.g. `breakglass: kube=kube_read (~1h) aws=aws_read (~2h)` — scope + **time remaining**, not profile paths or UUIDs (optional truncated id only if support asks; default **scope only**).
 - Optional later: enable **`kube-ps1`** on line 3 when `kube` stanza active (cluster/context from env) — same mental model as ROSA boundary; not required for v1 if scope line is enough.
 
 **`use` stdout:** may be **empty on success** when prompt is updated — operator confirmation is the new break-glass segment on PS1, not a printed banner.
 
 ### 7.2 Scope catalog UX (mirror `zoa actions` / `zoa describe`)
 
-Operators need to pick **`kube-read` vs `kube-write`** (etc.) **before** `request`, with the same discoverability as Trusted Actions. The **one Go file per scope** is not only for RBAC/IAM wiring — it is the **source of truth for catalog metadata** (description, approval, TTL, plane, examples), exactly like each TA file’s `Metadata()`.
+Operators need to pick **`kube_read` vs `kube_write`** (etc.) **before** `request`, with the same discoverability as Trusted Actions. The **one Go file per scope** is not only for RBAC/IAM wiring — it is the **source of truth for catalog metadata** (description, approval, TTL, plane, examples), exactly like each TA file’s `Metadata()`.
 
 **Naming (avoid “profile” in product copy):**
 
 | Term                     | Use                                                                                                                                                                              |
 | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **scope** / **scope id** | User-facing: `kube-read`, `aws-write`. This is what you **request**.                                                                                                             |
+| **scope** / **scope id** | User-facing: `kube_read`, `aws_write`. This is what you **request**.                                                                                                             |
 | **plane**                | `kube` \| `aws` — derived from scope id prefix; shown in list tables, not a separate CLI argument in v1.                                                                         |
 | **type**                 | `read` \| `write` \| `elevated` — aligns with TA `Type`; shown in list/describe for muscle memory.                                                                               |
 | **profile**              | **Do not** use in help for scopes — reserved for **`AWS_PROFILE=zoa-bg-<requestId>`** (artifact after `use`). Say “scope” or “access level” in runbooks if plain language helps. |
@@ -914,22 +914,22 @@ Operators need to pick **`kube-read` vs `kube-write`** (etc.) **before** `reques
 | --------------------------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `zoa breakglass scopes`                       | `zoa actions`             | Table: `SCOPE`, `PLANE`, `TYPE`, `TTL`, `APPROVAL`, `DESCRIPTION`.                                                                                      |
 | `zoa breakglass scopes <scope>`               | `zoa actions <action>`    | Short describe on stdout (same as `describe` subcommand).                                                                                               |
-| `zoa breakglass describe <scope>`             | `zoa describe <action>`   | Full detail: what you can/cannot do (human bullets), default grant hours, approval rule, example `request` line, optional `--console` note for `aws-*`. |
+| `zoa breakglass describe <profile>`            | `zoa describe <action>`  | Full detail: what you can/cannot do (human bullets), default grant hours, approval rule, example `request` line, optional `--console` note for `aws-*`. |
 | `zoa breakglass scopes --offline`             | `zoa actions --offline`   | No API; filter by `--target-type rc\|mc` if a scope is plane-specific later (v1: same six scopes on both).                                              |
 | `zoa breakglass scopes --offline -o markdown` | `zoa actions -o markdown` | Boundary cheat sheet for agents / operator guide.                                                                                                       |
 
-**Shell completion:** `zoa breakglass request` completes scope ids from registry (offline: `scopecatalog.List()`; online: optional cache from last `scopes` call or lightweight `GET`).
+**Shell completion:** `zoa breakglass request` completes profile names from registry (offline: `profilecatalog.List()`; online: optional cache from last `profiles` call or lightweight `GET`).
 
 **HTTP API (read-only, no auth secrets):**
 
 | Method | Path                             | Notes                                                                                                                               |
 | ------ | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `GET`  | `/api/v0/breakglass/scopes`      | `{ "items": [ ScopeDescribe, … ] }` — filter env: hide scopes not shipped in this deployment (e.g. no `kube-elevated` in prod yet). |
+| `GET`  | `/api/v0/breakglass/scopes`      | `{ "items": [ ScopeDescribe, … ] }` — filter env: hide scopes not shipped in this deployment (e.g. no `kube_elevated` in prod yet). |
 | `GET`  | `/api/v0/breakglass/scopes/{id}` | 404 if unknown or disabled. Body = `ScopeDescribe` JSON (not raw IAM policy or full RBAC rule YAML in v1).                          |
 
 **`ScopeDescribe` fields (operator-safe, for list/describe):**
 
-- `id`, `plane`, `type`, `description`, `examples[]` (e.g. `zoa breakglass request kube-read --reason …`)
+- `id`, `plane`, `type`, `description`, `examples[]` (e.g. `zoa breakglass request kube_read --reason …`)
 - `authorization` object (same JSON as `AuthorizationConfig` — `approval`, `min_approvers`, `require_decision_note`, TTL defaults) so describe matches enforce
 - `capabilities[]` / `restrictions[]` — short bullets (“get/list pods; no secrets”; “AWS Describe*; deny Secrets Manager”)
 - `console_supported` (bool, aws scopes)
@@ -945,11 +945,11 @@ Operators need to pick **`kube-read` vs `kube-write`** (etc.) **before** `reques
 **Operator journey (UX):**
 
 1. Incident → still try **`zoa actions`** / **`zoa run`** first (docs say this).
-2. Not enough → **`zoa breakglass scopes`** → **`zoa breakglass describe kube-read`** (or write) to confirm fit.
-3. **`zoa breakglass request <scope> --reason …`** → wait / approver.
+2. Not enough → **`zoa breakglass scopes`** → **`zoa breakglass describe kube_read`** (or write) to confirm fit.
+3. **`zoa breakglass request <profile> --reason …`** → wait / approver.
 4. **`zoa breakglass use <request-id>`** — prompt shows active **scope**, not “profile”.
 
-**Approve UX (laptop):** approver sees **`scope`** + `reason` on approve notification; optional future `zoa breakglass describe <scope> --offline` on laptop if Access proxies read-only scope catalog (phase 2 — not required if compound approve UI shows capabilities summary from API).
+**Approve UX (laptop):** approver sees **`scope`** + `reason` on approve notification; optional future `zoa breakglass describe <profile> --offline` on laptop if Access proxies read-only scope catalog (phase 2 — not required if compound approve UI shows capabilities summary from API).
 
 ---
 
@@ -985,7 +985,7 @@ No BG-specific Lambda binary.
 
 Per RC/MC (same module as `zoa-lambda`):
 
-- **AWS:** one IAM role per scope (e.g. `…-zoa-breakglass-aws-read`, `…-zoa-breakglass-aws-write`) — parallel naming to TA `zoa_aws_read` / `zoa_aws_write`, **distinct ARNs**. Trust **API Lambda** only; **Deny** secrets paths.
+- **AWS:** one IAM role per scope (e.g. `…-zoa-breakglass-aws_read`, `…-zoa-breakglass-aws_write`) — parallel naming to TA `zoa_aws_read` / `zoa_aws_write`, **distinct ARNs**. Trust **API Lambda** only; **Deny** secrets paths.
 - **Kube:** no Terraform roles; scope RBAC lives in **zoa** code, applied by API on `use`.
 - Config YAML: `breakglass_scopes:` map `scope_id → { approval?, min_approvers?, require_decision_note?, auto_approve_environments?, grant_hours?, pending_hours? }` — **overrides tighten** workflow/TTL from `pkg/scopes` defaults; `breakglass_grant_duration_seconds` global fallback only when scope omits grant hours.
 - **`breakglass_role_arns` on boundary task:** **empty** (credentials only via API).
@@ -1044,8 +1044,8 @@ Shipped vs remaining: **§0.9**. Original plan (for history):
 | `pendingTTL` (`requestExpiresAt`)    | Max time **unapproved** request stays valid; e.g. 4–24h by env (prod manual approval may be shorter). **Not** the same as post-approve 4h grant.                                |
 | Eager vs lazy provision              | **Lazy on first `activate`** (shipped); grant clock from `decisionAt + DefaultGrantHours`.                                                                                      |
 | Namespace for BG SA                  | `zoa-system` or `kube-system` — match TA SA placement pattern.                                                                                                                  |
-| Scope IAM/RBAC text                  | Security review on **§5.8.3** before stage write/elevated; align `get_resource` with RC/MC `kube-read`.                                                                         |
-| Console on `aws-write`               | Allow from v1 or gate until policy sign-off.                                                                                                                                    |
+| Scope IAM/RBAC text                  | Security review on **§5.8.3** before stage write/elevated; align `get_resource` with RC/MC `kube_read`.                                                                         |
+| Console on `aws_write`               | Allow from v1 or gate until policy sign-off.                                                                                                                                    |
 | Elevated approval                    | `strict` metadata ships with `MinApprovers: 2` when dual-approve exists; v1 may use `MinApprovers: 1` + `RequireDecisionNote: true` as interim.                                 |
 | Elevated TTL                         | Default 1h vs 4h for read/write.                                                                                                                                                |
 | Approve from API only vs Access only | Both (already designed for TA).                                                                                                                                                 |
@@ -1056,7 +1056,7 @@ Shipped vs remaining: **§0.9**. Original plan (for history):
 
 ## 13. Acceptance (MVP)
 
-1. SRE in boundary: `zoa breakglass request --scope kube-read --reason INC-1` → **`approved`** when catalog `approval: none`.
+1. SRE in boundary: `zoa breakglass request kube_read --reason INC-1` → **`approved`** when catalog `approval: none`.
 2. Within grant window: `zoa breakglass activate <request-id>` → `kubectl get ns` without manual config; bashrc wires `KUBECONFIG`.
 3. K8s audit shows SA `zoa-bg-…`; DynamoDB / `zoa audit` links grant → operator → boundary session (`breakglass_activate` audit).
 4. Different boundary task id cannot **`activate`** the same grant (403).

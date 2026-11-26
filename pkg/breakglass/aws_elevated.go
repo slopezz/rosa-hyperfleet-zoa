@@ -5,7 +5,7 @@ import "github.com/openshift-online/rosa-seaplane-zoa/pkg/actions"
 func init() {
 	register(&Definition{
 		Metadata: ProfileMetadata{
-			Name: "aws-elevated",
+			Name: "aws_elevated",
 			Scope: ScopeAWS,
 			Type:        TypeElevated,
 			Description: "PowerUserAccess with Deny guards on ZOA control-plane immutability.",
@@ -14,7 +14,6 @@ func init() {
 				DefaultGrantHours:   1,
 				DefaultRequestHours: 8,
 			},
-			AwsRoleKey: AwsRoleKeyElevated,
 			Capabilities: []string{
 				"PowerUserAccess in the session account (e.g. EC2 terminate for stuck nodes on MC)",
 				"Immutability Deny: ZOA S3 artifacts, Dynamo rows/tables, ZOA Lambdas, boundary ECS Exec",
@@ -26,6 +25,11 @@ func init() {
 				"Role: {cluster_id}-zoa-bg-aws-elevated",
 			},
 			TargetTypes: []string{actions.TargetTypeRC, actions.TargetTypeMC},
+			Examples: []string{
+				"zoa breakglass request aws_elevated --reason ROSAENG-1234",
+				"zoa breakglass request aws_elevated --reason ROSAENG-1234 --wait",
+				"zoa breakglass request aws_elevated --reason ROSAENG-1234 --wait --wait-timeout 10m --wait-poll-interval 1m",
+			},
 		},
 	})
 }

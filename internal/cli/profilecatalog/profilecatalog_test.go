@@ -17,13 +17,13 @@ func TestList_WhenTargetTypeRC_ItShouldReturnKubeScopes(t *testing.T) {
 	}
 	found := false
 	for _, s := range items {
-		if s.Name == "kube-read" {
+		if s.Name == "kube_read" {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Fatal("expected kube-read on rc")
+		t.Fatal("expected kube_read on rc")
 	}
 }
 
@@ -36,7 +36,7 @@ func TestGet_WhenScopeMissing_ItShouldError(t *testing.T) {
 
 func TestClientScopeFromMetadata_WhenApprovalSet_ItShouldMapAuthorization(t *testing.T) {
 	meta := breakglass.ProfileMetadata{
-		Name: "kube-read",
+		Name: "kube_read",
 		Scope: breakglass.ScopeKube,
 		Type:  breakglass.TypeRead,
 		Authorization: breakglass.Authorization{

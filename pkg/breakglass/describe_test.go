@@ -7,9 +7,9 @@ import (
 )
 
 func TestDescribeProfile_WhenKubeWrite_ItShouldIncludeEffectiveRBAC(t *testing.T) {
-	def, ok := Get("kube-write")
+	def, ok := Get("kube_write")
 	if !ok {
-		t.Fatal("kube-write not registered")
+		t.Fatal("kube_write not registered")
 	}
 	desc := DescribeProfile(def, actions.TargetTypeMC)
 	if len(desc.RBAC) == 0 {
@@ -21,9 +21,9 @@ func TestDescribeProfile_WhenKubeWrite_ItShouldIncludeEffectiveRBAC(t *testing.T
 }
 
 func TestDescribeProfile_WhenAwsRead_ItShouldIncludeIAMComposition(t *testing.T) {
-	def, ok := Get("aws-read")
+	def, ok := Get("aws_read")
 	if !ok {
-		t.Fatal("aws-read not registered")
+		t.Fatal("aws_read not registered")
 	}
 	desc := DescribeProfile(def, "")
 	if len(desc.IAMComposition) == 0 {

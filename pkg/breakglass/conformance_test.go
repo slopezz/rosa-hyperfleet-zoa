@@ -33,11 +33,25 @@ func TestAllRegisteredScopes_Conformance(t *testing.T) {
 			if !validTypes[meta.Type] {
 				t.Errorf("type must be read, write, or elevated, got %q", meta.Type)
 			}
+			if strings.Contains(meta.Name, "-") {
+				t.Errorf("Name should use snake_case (underscores), got %q", meta.Name)
+			}
 			if meta.Authorization.Approval != shippedApproval {
 				t.Errorf("authorization.approval must be %q until workflow epic (got %q)", shippedApproval, meta.Authorization.Approval)
 			}
 			if err := ValidateScope(def); err != nil {
 				t.Error(err)
+			}
+			if len(meta.Examples) == 0 {
+				t.Error("Examples must include at least one zoa breakglass request command with --reason")
+			}
+			for i, ex := range meta.Examples {
+				if !strings.Contains(ex, "--reason") {
+					t.Errorf("Examples[%d] must include --reason: %q", i, ex)
+				}
+				if !strings.HasPrefix(ex, "zoa breakglass request ") {
+					t.Errorf("Examples[%d] must start with 'zoa breakglass request ': %q", i, ex)
+				}
 			}
 		})
 	}
@@ -100,19 +114,17 @@ func TestKubeScopes_WhenRegistered_TheyShouldExposeRBACForRCAndMC(t *testing.T) 
 	}
 }
 
-func TestAWSScopes_WhenRegistered_TheyShouldSetRoleKeys(t *testing.T) {
-	expected := map[string]string{
-		"aws-read":     AwsRoleKeyRead,
-		"aws-write":    AwsRoleKeyWrite,
-		"aws-elevated": AwsRoleKeyElevated,
-	}
-	for id, wantKey := range expected {
+func TestAWSScopes_WhenRegistered_TheyShouldUseKnownProfileNames(t *testing.T) {
+	for _, id := range []string{ProfileAWSRead, ProfileAWSWrite, ProfileAWSElevated} {
 		def, ok := Get(id)
 		if !ok {
 			t.Fatalf("scope %q not registered", id)
 		}
-		if def.Metadata.AwsRoleKey != wantKey {
-			t.Errorf("aws_role_key: want %q, got %q", wantKey, def.Metadata.AwsRoleKey)
+		if def.Metadata.Name != id {
+			t.Errorf("name: want %q, got %q", id, def.Metadata.Name)
+		}
+		if def.Metadata.Scope != ScopeAWS {
+			t.Errorf("scope %q: plane want aws, got %q", id, def.Metadata.Scope)
 		}
 		if def.RBAC != nil {
 			t.Error("aws scope must not set RBAC func")
@@ -135,9 +147,8 @@ func TestScopeSourceFiles_WhenPresent_TheyShouldMatchCatalog(t *testing.T) {
 			continue
 		}
 		switch name {
-		case "types.go", "registry.go", "approval.go", "rbac_validator.go", "aws_keys.go",
-			"kube_rbac.go", "describe.go", "describe_target.go", "credential.go",
-			"aws_catalog.go":
+		case "types.go", "registry.go", "approval.go", "rbac_validator.go", "aws_profiles.go",
+			"kube_rbac.go", "describe.go", "describe_target.go", "credential.go":
 			continue
 		}
 		implStems[strings.TrimSuffix(name, ".go")] = true

@@ -140,7 +140,7 @@ var _ = Describe("zoa session", Serial, func() {
 				Expect(err).NotTo(HaveOccurred(), listOut)
 				row := findSessionForTarget(rows, rawID, targetID)
 				Expect(row).NotTo(BeNil(),
-					"session %q for target %q not in scope=mine list (same central profile as start): %v",
+					"session %q for target %q not in mine=true list (same central profile as start): %v",
 					rawID, targetID, rows)
 				Expect(validateActiveSessionRecord(*row, targetID, rawID, reasonValue)).NotTo(HaveOccurred())
 				sessionOperator = row.Operator

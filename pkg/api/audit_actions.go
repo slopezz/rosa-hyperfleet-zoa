@@ -15,7 +15,7 @@ const (
 	AuditActionRunOutput = "run_output"
 	AuditActionRunLogs   = "run_logs"
 
-	AuditActionBreakglassProfiles   = "breakglass_scopes"
+	AuditActionBreakglassProfiles = "breakglass_profiles"
 	AuditActionBreakglassRequest  = "breakglass_request"
 	AuditActionBreakglassActivate = "breakglass_activate"
 	AuditActionBreakglassApprove  = "breakglass_approve"

@@ -55,7 +55,7 @@ type ProfileMetadata struct {
 	IAMComposition  []string               `json:"iam_composition,omitempty"`
 	RBAC            []ProfileRBACRule      `json:"rbac,omitempty"`
 	TargetType      string                 `json:"target_type,omitempty"`
-	AwsRoleKey      string                 `json:"aws_role_key,omitempty"`
+	Examples        []string               `json:"examples,omitempty"`
 }
 
 type BreakglassRequestList struct {

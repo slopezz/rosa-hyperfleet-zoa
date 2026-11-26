@@ -64,7 +64,7 @@ func applyBreakglassUpdates(req *store.BreakglassRequest, updates map[string]int
 func TestApproveBreakglassRequest_WhenSelfApprove_ItShouldFail(t *testing.T) {
 	req := &store.BreakglassRequest{
 		RequestID:        "id-1",
-		Name:            "kube-read",
+		Name:            "kube_read",
 		Operator:         "alice",
 		Status:           store.StatusPending,
 		RequestExpiresAt: time.Now().Add(time.Hour).Format(time.RFC3339Nano),
@@ -79,7 +79,7 @@ func TestApproveBreakglassRequest_WhenSelfApprove_ItShouldFail(t *testing.T) {
 func TestApproveBreakglassRequest_WhenPeerApprove_ItShouldSetDecidedFields(t *testing.T) {
 	req := &store.BreakglassRequest{
 		RequestID:        "id-2",
-		Name:            "kube-read",
+		Name:            "kube_read",
 		Operator:         "alice",
 		Status:           store.StatusPending,
 		Approval:         store.WorkflowApprovalPending,

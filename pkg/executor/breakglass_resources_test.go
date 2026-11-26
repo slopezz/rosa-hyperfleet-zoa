@@ -19,7 +19,7 @@ func TestEnsureBreakglassKube_WhenClusterScoped_ItShouldUseZoaBgNaming(t *testin
 
 	_, _ = client.CoreV1().Namespaces().Create(ctx, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: jobNamespace}}, metav1.CreateOptions{})
 
-	saName, err := e.EnsureBreakglassKube(ctx, "req-1", "kube-read")
+	saName, err := e.EnsureBreakglassKube(ctx, "req-1", "kube_read")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

@@ -34,6 +34,25 @@ func TestRunFlagHelp_WhenKnownFlag_ItShouldMatchRunModifiers(t *testing.T) {
 	}
 }
 
+func TestRequestFlagHelp_WhenKnownFlag_ItShouldMatchRequestModifiers(t *testing.T) {
+	help := RequestFlagHelp("wait")
+	if help == "" {
+		t.Fatal("expected wait help")
+	}
+	for _, m := range RequestModifiers() {
+		if m.Flags == "--wait" && m.Description != help {
+			t.Fatalf("RequestModifiers and RequestFlagHelp diverged for wait: %q vs %q", m.Description, help)
+		}
+	}
+}
+
+func TestEnrichProfileDescribe_WhenProfileSet_ItShouldIncludeRequestModifiers(t *testing.T) {
+	view := EnrichProfileDescribe(&client.ProfileMetadata{Name: "kube_read"})
+	if len(view.CLI.RequestModifiers) == 0 {
+		t.Fatal("expected request modifiers")
+	}
+}
+
 func TestEnrichDescribe_WhenActionHasParams_ItShouldIncludeRunModifiers(t *testing.T) {
 	view := EnrichDescribe(&client.Action{
 		Name:   "get_resource",

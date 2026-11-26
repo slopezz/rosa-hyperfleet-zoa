@@ -26,24 +26,24 @@ func (e *Executor) breakglassAWSRoleARN(scopeID string) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("unknown scope %q", scopeID)
 	}
-	switch def.Metadata.AwsRoleKey {
-	case breakglass.AwsRoleKeyRead:
+	switch def.Metadata.Name {
+	case breakglass.ProfileAWSRead:
 		if e.breakglassAWSReadARN == "" {
 			return "", fmt.Errorf("BREAKGLASS_AWS_READ_ROLE_ARN not configured")
 		}
 		return e.breakglassAWSReadARN, nil
-	case breakglass.AwsRoleKeyWrite:
+	case breakglass.ProfileAWSWrite:
 		if e.breakglassAWSWriteARN == "" {
 			return "", fmt.Errorf("BREAKGLASS_AWS_WRITE_ROLE_ARN not configured")
 		}
 		return e.breakglassAWSWriteARN, nil
-	case breakglass.AwsRoleKeyElevated:
+	case breakglass.ProfileAWSElevated:
 		if e.breakglassAWSElevatedARN == "" {
 			return "", fmt.Errorf("BREAKGLASS_AWS_ELEVATED_ROLE_ARN not configured")
 		}
 		return e.breakglassAWSElevatedARN, nil
 	default:
-		return "", fmt.Errorf("scope %q has no AWS role key", scopeID)
+		return "", fmt.Errorf("scope %q is not an AWS break-glass profile", scopeID)
 	}
 }
 

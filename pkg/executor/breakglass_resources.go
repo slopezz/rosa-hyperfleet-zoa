@@ -39,7 +39,7 @@ func (e *Executor) EnsureBreakglassKube(ctx context.Context, requestID, scopeID 
 	}
 	rbac := &actions.RBACConfig{
 		ClusterScoped: true,
-		Rules:         def.RBAC(e.targetType),
+		Rules:         breakglass.EffectiveRBAC(def, e.targetType),
 	}
 	saName := breakglassResourceName(requestID)
 	if err := e.createBreakglassResourcesIdempotent(ctx, requestID, saName, rbac); err != nil {

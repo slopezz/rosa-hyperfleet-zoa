@@ -12,7 +12,7 @@ import (
 func TestRenderBreakglassProfiles_WhenTable_ItShouldPrintHeaderRow(t *testing.T) {
 	list := &client.BreakglassProfileList{
 		Items: []client.ProfileMetadata{{
-			Name:        "kube-read",
+			Name:        "kube_read",
 			Scope:       "kube",
 			Type:        "read",
 			Description: "read-only",
@@ -32,13 +32,13 @@ func TestRenderBreakglassProfiles_WhenTable_ItShouldPrintHeaderRow(t *testing.T)
 	if !strings.Contains(out, "NAME") || !strings.Contains(out, "SCOPE") || !strings.Contains(out, "APPROVAL") {
 		t.Fatalf("missing headers: %q", out)
 	}
-	if !strings.Contains(out, "kube-read") || !strings.Contains(out, "none") {
+	if !strings.Contains(out, "kube_read") || !strings.Contains(out, "none") {
 		t.Fatalf("missing row: %q", out)
 	}
 }
 
 func TestRenderBreakglassProfiles_WhenJSON_ItShouldEmitListEnvelope(t *testing.T) {
-	list := &client.BreakglassProfileList{Items: []client.ProfileMetadata{{Name: "aws-read"}}, Count: 1}
+	list := &client.BreakglassProfileList{Items: []client.ProfileMetadata{{Name: "aws_read"}}, Count: 1}
 	out := captureStdout(t, func() {
 		if err := renderBreakglassProfiles(output.FormatJSON, list); err != nil {
 			t.Fatal(err)
@@ -48,7 +48,7 @@ func TestRenderBreakglassProfiles_WhenJSON_ItShouldEmitListEnvelope(t *testing.T
 	if err := json.Unmarshal([]byte(out), &decoded); err != nil {
 		t.Fatal(err)
 	}
-	if decoded.Count != 1 || len(decoded.Items) != 1 || decoded.Items[0].Name != "aws-read" {
+	if decoded.Count != 1 || len(decoded.Items) != 1 || decoded.Items[0].Name != "aws_read" {
 		t.Fatalf("unexpected json: %+v", decoded)
 	}
 }

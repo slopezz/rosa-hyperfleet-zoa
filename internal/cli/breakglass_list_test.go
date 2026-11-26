@@ -14,7 +14,7 @@ func TestPrintBreakglassRequestTable_WhenMine_ItShouldRenderRows(t *testing.T) {
 		Count: 1,
 		Items: []client.BreakglassRequest{{
 			RequestID:     "req-1",
-			Name:          "kube-read",
+			Name:          "kube_read",
 			TargetCluster: "eph-regional",
 			Status:        "active",
 			Reason:        "ROSAENG-1",
@@ -37,7 +37,7 @@ func TestPrintBreakglassRequestTable_WhenMine_ItShouldRenderRows(t *testing.T) {
 		t.Fatalf("printBreakglassRequestTable: %v", err)
 	}
 	out := buf.String()
-	if !strings.Contains(out, "req-1") || !strings.Contains(out, "kube-read") {
+	if !strings.Contains(out, "req-1") || !strings.Contains(out, "kube_read") {
 		t.Fatalf("expected table row, got:\n%s", out)
 	}
 }

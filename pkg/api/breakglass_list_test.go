@@ -64,7 +64,7 @@ func TestHandleListBreakglassRequests_WhenNoTargetQuery_ItShouldNotDefaultToLamb
 	bgStore := &filterCapturingBreakglassStore{}
 	h := testBreakglassHandler(bgStore)
 
-	rr := doRequest(h, "GET", "/api/v0/breakglass/requests?scope=mine", nil, defaultHeaders())
+	rr := doRequest(h, "GET", "/api/v0/breakglass/requests?mine=true", nil, defaultHeaders())
 	if rr.Code != httpStatusOK(t, rr) {
 		return
 	}

@@ -67,7 +67,7 @@ v1 **legacy** `/approve/{id}` on Access may stay as a thin wrapper (deployment i
 | Surface        | Flow                                                                                                                                  |
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | TA             | `zoa run … --reason TICKET`                                                                                                           |
-| Break-glass    | `zoa breakglass request --scope … --reason TICKET` → peer `zoa approve …` when needed → **`zoa breakglass activate <id>`** (explicit) |
+| Break-glass    | `zoa breakglass request <profile> --reason TICKET` → peer `zoa approve …` when needed → **`zoa breakglass activate <id>`** (explicit) |
 | Track approval | `zoa breakglass get <id> --wait` (decision only; then activate manually)                                                              |
 | Laptop approve | `zoa approve <deployment>/<request-id>` — required when effective approval is not `none` (v1: auto-approve when `none`).              |
 
@@ -99,7 +99,7 @@ Shared evaluation for TA and break-glass: Rego + approval records (LDAP snapshot
 
 ## Break-glass row: `status` vs `approval` (implemented)
 
-Scope catalog policy (`authorization.approval`: `none`, `manual`, …) lives in **`pkg/breakglass`** and `zoa breakglass scopes describe` — it is **not** copied onto each request row.
+Profile catalog policy (`authorization.approval`: `none`, `manual`, …) lives in **`pkg/breakglass`** and `zoa breakglass describe <profile>` — it is **not** copied onto each request row.
 
 Each **request row** stores two axes:
 

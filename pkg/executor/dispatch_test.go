@@ -416,9 +416,9 @@ func TestDispatchAsync_WhenAWSAPIScope_ItShouldNotIncludeSessionPolicy(t *testin
 		t.Errorf("aws-api TA should NOT have session policy, but got: %s", *stsCall.Policy)
 	}
 
-	// Should use the aws-read role, not the uploader role
+	// Should use the aws_read role, not the uploader role
 	if *stsCall.RoleArn != "arn:aws:iam::123456789012:role/zoa-aws-read" {
-		t.Errorf("expected aws-read role, got %s", *stsCall.RoleArn)
+		t.Errorf("expected aws_read role, got %s", *stsCall.RoleArn)
 	}
 }
 
@@ -462,7 +462,7 @@ func TestDispatchAsync_WhenAWSAPIWriteScope_ItShouldUseWriteRole(t *testing.T) {
 
 	stsCall := mockSTS.calls[0]
 	if *stsCall.RoleArn != "arn:aws:iam::123456789012:role/zoa-aws-write" {
-		t.Errorf("expected aws-write role for write TAs, got %s", *stsCall.RoleArn)
+		t.Errorf("expected aws_write role for write TAs, got %s", *stsCall.RoleArn)
 	}
 	if stsCall.Policy != nil {
 		t.Errorf("aws-api write TA should NOT have session policy")

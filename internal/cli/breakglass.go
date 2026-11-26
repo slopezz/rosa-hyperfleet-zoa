@@ -13,8 +13,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/openshift-online/rosa-seaplane-zoa/internal/cli/reason"
+	"github.com/openshift-online/rosa-seaplane-zoa/internal/cli/parambind"
 	"github.com/openshift-online/rosa-seaplane-zoa/internal/cli/profilecatalog"
+	"github.com/openshift-online/rosa-seaplane-zoa/internal/cli/reason"
 	"github.com/openshift-online/rosa-seaplane-zoa/internal/client"
 	"github.com/openshift-online/rosa-seaplane-zoa/internal/output"
 	"github.com/openshift-online/rosa-seaplane-zoa/pkg/breakglass"
@@ -45,9 +46,8 @@ func newBreakglassProfilesCommand(global *GlobalOptions) *cobra.Command {
 	catalogOpts := &catalogOptions{}
 	var scopeFilter, typeFilter string
 	cmd := &cobra.Command{
-		Use:     "profiles",
-		Aliases: []string{"scopes"}, // zoa-retrocompatibility-cleanup
-		Short:   "List break-glass profiles",
+		Use:   "profiles",
+		Short: "List break-glass profiles",
 		Long: `List break-glass profiles. With --offline (or without ZOA_API_URL in the boundary), uses the
 catalog embedded in this CLI build, filtered by --target-type or ZOA_TARGET_TYPE.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -77,9 +77,23 @@ catalog embedded in this CLI build, filtered by --target-type or ZOA_TARGET_TYPE
 func newBreakglassDescribeProfileCommand(global *GlobalOptions) *cobra.Command {
 	catalogOpts := &catalogOptions{}
 	cmd := &cobra.Command{
-		Use:   "describe <name>",
+		Use:   "describe <profile>",
 		Short: "Describe a break-glass profile",
-		Args:  cobra.ExactArgs(1),
+		Long: `Show profile capabilities, restrictions, and effective RBAC or IAM notes.
+
+By default, calls the ZOA API. With --offline, reads embedded registry metadata (see zoa breakglass profiles --offline).`,
+		Example: `  zoa breakglass describe kube_read
+
+  zoa breakglass describe kube_elevated --target-type mc
+
+  zoa breakglass describe aws_write -o json`,
+		Args: cobra.ExactArgs(1),
+		ValidArgsFunction: func(_ *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) == 0 {
+				return completeProfileNames(toComplete), cobra.ShellCompDirectiveNoFileComp
+			}
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return describeBreakglassProfile(cmd.Context(), global, catalogOpts, args[0])
 		},
@@ -149,9 +163,9 @@ func describeBreakglassProfile(ctx context.Context, global *GlobalOptions, catal
 			return err
 		}
 		if global.OutputFormat == output.FormatJSON {
-			return output.JSON(os.Stdout, scope)
+			return output.JSON(os.Stdout, parambind.EnrichProfileDescribe(scope))
 		}
-		printProfileMetadata(scope)
+		profilecatalog.FormatDescribeHuman(os.Stdout, scope)
 		return nil
 	}
 	c, err := getClient(global)
@@ -163,59 +177,10 @@ func describeBreakglassProfile(ctx context.Context, global *GlobalOptions, catal
 		return err
 	}
 	if global.OutputFormat == output.FormatJSON {
-		return output.JSON(os.Stdout, scope)
+		return output.JSON(os.Stdout, parambind.EnrichProfileDescribe(scope))
 	}
-	printProfileMetadata(scope)
+	profilecatalog.FormatDescribeHuman(os.Stdout, scope)
 	return nil
-}
-
-func printProfileMetadata(scope *client.ProfileMetadata) {
-	if scope == nil {
-		return
-	}
-	fmt.Printf("Name:        %s\n", scope.Name)
-	fmt.Printf("Scope:       %s\n", scope.Scope)
-	fmt.Printf("Type:        %s\n", scope.Type)
-	if scope.Authorization != nil {
-		if v, ok := scope.Authorization["approval"].(string); ok {
-			fmt.Printf("Approval:    %s\n", v)
-		}
-	}
-	if ttl := profileCatalogRequestTTL(*scope); ttl != "" {
-		fmt.Printf("Request TTL: %s (decision must complete before request expires)\n", ttl)
-	}
-	if ttl := profileCatalogGrantTTL(*scope); ttl != "" {
-		fmt.Printf("Grant TTL:   %s after approve\n", ttl)
-	}
-	if scope.Scope != "" {
-		fmt.Printf("Credential TTL: up to %s per activate (re-activate while grant valid)\n", breakglass.CredentialMaxTTLDisplay(scope.Scope))
-	}
-	fmt.Printf("Description: %s\n", scope.Description)
-	composition := scope.Composition
-	if len(composition) == 0 {
-		composition = scope.Capabilities
-	}
-	for _, c := range composition {
-		fmt.Printf("  • %s\n", c)
-	}
-	for _, r := range scope.Restrictions {
-		fmt.Printf("  ✗ %s\n", r)
-	}
-	if scope.Scope == breakglass.ScopeKube && len(scope.RBAC) > 0 {
-		fmt.Printf("\nEffective RBAC (target %s, %d rules):\n", scope.TargetType, len(scope.RBAC))
-		for i, rule := range scope.RBAC {
-			fmt.Printf("  [%d] apiGroups=%v resources=%v verbs=%v\n", i+1, rule.APIGroups, rule.Resources, rule.Verbs)
-		}
-	}
-	if scope.Scope == breakglass.ScopeAWS {
-		if scope.AwsRoleKey != "" {
-			fmt.Printf("\nAWS role key: %s\n", scope.AwsRoleKey)
-		}
-		for _, line := range scope.IAMComposition {
-			fmt.Printf("  • %s\n", line)
-		}
-	}
-	fmt.Printf("\nExample: zoa breakglass request --name %s --reason %s\n", scope.Name, reason.ExampleJiraIssue)
 }
 
 func profileCatalogApproval(s client.ProfileMetadata) string {
@@ -302,21 +267,43 @@ func renderBreakglassProfiles(format output.Format, list *client.BreakglassProfi
 
 func newBreakglassRequestCommand(global *GlobalOptions) *cobra.Command {
 	var (
-		profileName  string
 		reasonFlag   string
 		wait         bool
 		waitTimeout  time.Duration
 		pollInterval time.Duration
 	)
 	cmd := &cobra.Command{
-		Use:   "request",
+		Use:   "request <profile>",
 		Short: "Create a break-glass request",
 		Long: `Create a break-glass request. Default (human): stderr ack + hints; -o json prints the request object on stdout (like zoa run).
 
+A reason is required (Jira issue or PagerDuty incident): use --reason or ZOA_REASON in the boundary task.
+
 With --wait: stderr ack, poll with progress until active/denied/expired, then stdout metadata (like zoa get).
 --wait does not activate credentials — run zoa breakglass activate <id> yourself after approval.`,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			resp, err := createBreakglassRequest(cmd.Context(), global, profileName, reasonFlag)
+		Example: `  zoa breakglass request kube_read --reason ROSAENG-1234
+
+  zoa breakglass request kube_elevated --reason ROSAENG-1234 --wait
+
+  zoa breakglass request aws_write --reason '#123456' -o json`,
+		Args: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				return fmt.Errorf("missing profile name\n\n  Usage: zoa breakglass request <profile> --reason <ticket>\n  Run 'zoa breakglass profiles' to see available profiles")
+			}
+			if len(args) > 1 {
+				return fmt.Errorf("unexpected argument %q — pass flags after the profile name\n\n  Example: zoa breakglass request %s --reason <ticket>",
+					args[1], args[0])
+			}
+			return nil
+		},
+		ValidArgsFunction: func(_ *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) == 0 {
+				return completeProfileNames(toComplete), cobra.ShellCompDirectiveNoFileComp
+			}
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			resp, err := createBreakglassRequest(cmd.Context(), global, args[0], reasonFlag)
 			if err != nil {
 				return err
 			}
@@ -350,14 +337,10 @@ With --wait: stderr ack, poll with progress until active/denied/expired, then st
 			return finishBreakglassWait(global, pollRes.req, pollRes.timedOut, pollRes.elapsed)
 		},
 	}
-	cmd.Flags().StringVar(&profileName, "name", "", "Break-glass profile name (required)")
-	cmd.Flags().StringVar(&profileName, "scope", "", "Deprecated: use --name") // zoa-retrocompatibility-cleanup
-	cmd.Flags().StringVar(&reasonFlag, "reason", "",
-		fmt.Sprintf("Required; env %s (%s)", reason.EnvVar, reason.FormatHint))
-	cmd.Flags().BoolVar(&wait, "wait", false, "Wait for approval decision (does not activate)")
-	cmd.Flags().DurationVar(&waitTimeout, "wait-timeout", 5*time.Minute, "Max poll duration when --wait is active")
-	cmd.Flags().DurationVar(&pollInterval, "wait-poll-interval", 30*time.Second, "Poll frequency when --wait is active")
-	_ = cmd.MarkFlagRequired("name")
+	cmd.Flags().StringVar(&reasonFlag, "reason", "", parambind.RequestFlagHelp("reason"))
+	cmd.Flags().BoolVar(&wait, "wait", false, parambind.RequestFlagHelp("wait"))
+	cmd.Flags().DurationVar(&waitTimeout, "wait-timeout", 5*time.Minute, parambind.RequestFlagHelp("wait-timeout"))
+	cmd.Flags().DurationVar(&pollInterval, "wait-poll-interval", 30*time.Second, parambind.RequestFlagHelp("wait-poll-interval"))
 	return cmd
 }
 
@@ -401,7 +384,7 @@ func newBreakglassRequestsCommand(global *GlobalOptions) *cobra.Command {
 		Use:     "requests",
 		Short:   "List your break-glass requests",
 		Aliases: []string{"list"},
-		Long: `List your requests on this deployment (scope=mine). Not audited.
+		Long: `List your requests on this deployment (mine=true). Not audited.
 
 Lists RC and MC targets in the shared break-glass table unless --target is set (same as zoa runs).
 
@@ -447,7 +430,7 @@ func newBreakglassHistoryCommand(global *GlobalOptions) *cobra.Command {
 		Short: "Break-glass requests across all operators",
 		Long: `Fleet-wide break-glass history on this deployment (RC + MC). Audited on the API (like zoa session history).
 
-Optional --target filters one cluster (same as zoa runs). Does not pass scope=mine.`,
+Optional --target filters one cluster (same as zoa runs). Fleet list; does not set mine=true.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			c, err := getClient(global)
 			if err != nil {

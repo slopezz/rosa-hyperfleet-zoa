@@ -331,7 +331,7 @@ func TestGetResourceMetadata(t *testing.T) {
 			t.Errorf("expected name 'get_resource', got %q", meta.Name)
 		}
 		if meta.Scope != "kube" {
-			t.Errorf("expected scope 'kube-api', got %q", meta.Scope)
+			t.Errorf("expected scope 'kube', got %q", meta.Scope)
 		}
 		if meta.Type != "read" {
 			t.Errorf("expected type 'read', got %q", meta.Type)

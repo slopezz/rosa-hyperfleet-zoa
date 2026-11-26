@@ -14,11 +14,11 @@ func TestPrintBreakglassRequestDispatched_WhenComplete_ItShouldMatchSessionStyle
 	req := &client.BreakglassRequest{
 		RequestID:     "abc-def",
 		TargetCluster: "eph-1fcc5750-regional",
-		Name:          "kube-read",
+		Name:          "kube_read",
 	}
 	var buf bytes.Buffer
 	printBreakglassRequestDispatched(&buf, req)
-	want := "✓ abc-def [eph-1fcc5750-regional] scope=kube-read\n"
+	want := "✓ abc-def [eph-1fcc5750-regional] name=kube_read\n"
 	if buf.String() != want {
 		t.Fatalf("dispatched line = %q, want %q", buf.String(), want)
 	}
@@ -26,8 +26,8 @@ func TestPrintBreakglassRequestDispatched_WhenComplete_ItShouldMatchSessionStyle
 
 func TestPrintBreakglassActivateDispatched_WhenComplete_ItShouldAppendActivatedSuffix(t *testing.T) {
 	var buf bytes.Buffer
-	printBreakglassActivateDispatched(&buf, "req-1", "eph-regional", "aws-read")
-	want := "✓ req-1 [eph-regional] scope=aws-read · activated\n"
+	printBreakglassActivateDispatched(&buf, "req-1", "eph-regional", "aws_read")
+	want := "✓ req-1 [eph-regional] name=aws_read · activated\n"
 	if buf.String() != want {
 		t.Fatalf("activate line = %q, want %q", buf.String(), want)
 	}
@@ -45,7 +45,7 @@ func TestRenderBreakglassRequest_WhenApproved_ItShouldPrintActivateHintOnStderr(
 	req := &client.BreakglassRequest{
 		RequestID:      "abc",
 		Status:         "active",
-		Name:           "kube-read",
+		Name:           "kube_read",
 		TargetCluster:  "eph-regional",
 		GrantExpiresAt: "2030-01-01T00:00:00Z",
 	}
@@ -64,7 +64,7 @@ func TestRenderBreakglassRequest_WhenApproved_ItShouldPrintActivateHintOnStderr(
 	var stderr bytes.Buffer
 	_, _ = io.Copy(&stderr, r)
 	out := stderr.String()
-	if !strings.Contains(out, "✓ abc [eph-regional] scope=kube-read") {
+	if !strings.Contains(out, "✓ abc [eph-regional] name=kube_read") {
 		t.Fatalf("expected dispatched line on stderr, got:\n%s", out)
 	}
 	if !strings.Contains(out, "activate abc") {
@@ -83,7 +83,7 @@ func TestRenderBreakglassGetHuman_WhenApproved_ItShouldPrintStdoutMetadata(t *te
 	req := &client.BreakglassRequest{
 		RequestID:     "abc",
 		Status:        "active",
-		Name:          "kube-read",
+		Name:          "kube_read",
 		TargetCluster: "eph-regional",
 	}
 	var buf bytes.Buffer

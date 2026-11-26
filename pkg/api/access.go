@@ -392,10 +392,9 @@ func (h *AccessHandler) handleSessionList(w http.ResponseWriter, r *http.Request
 		filter.Target = &v
 	}
 
-	// mine=true (and scope=mine until zoa-retrocompatibility-cleanup): caller's sessions only.
-	if q.Get("mine") == "true" || q.Get("scope") == "mine" { // zoa-retrocompatibility-cleanup
+	if sessionListSelfService(q) {
 		if q.Get("operator") != "" {
-			writeError(w, http.StatusBadRequest, "invalid_query", "operator filter is not allowed with scope=mine")
+			writeError(w, http.StatusBadRequest, "invalid_query", "operator filter is not allowed with mine=true (or scope=mine)")
 			return
 		}
 		username, _, err := ExtractSREIdentity(operatorARN)
@@ -443,8 +442,8 @@ func (h *AccessHandler) handleSessionList(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Audit cross-operator queries (session history) but not self-service list (scope=mine).
-	if q.Get("scope") != "mine" {
+	// Audit cross-operator queries (session history) but not self-service list (mine=true / scope=mine).
+	if !sessionListSelfService(q) {
 		h.recordAccessAudit(r, http.StatusOK, "session_history", "", "", q.Get("target"))
 	}
 

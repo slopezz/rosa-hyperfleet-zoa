@@ -301,7 +301,7 @@ func (e *Executor) DispatchAsync(ctx context.Context, exec *store.Execution, act
 
 	// Build STS credentials for the Job:
 	// - kube-api TAs: assume uploader role (S3 only), session policy restricts to execution prefix
-	// - aws-api TAs: assume aws-read/write role (AWS API + S3 upload in same role)
+	// - aws-api TAs: assume aws_read/write role (AWS API + S3 upload in same role)
 	var stsOut *sts.AssumeRoleOutput
 	var err error
 

@@ -31,8 +31,8 @@ type ProfileMetadata struct {
 	Capabilities   []string      `json:"capabilities,omitempty"`
 	Restrictions   []string      `json:"restrictions,omitempty"`
 	TargetTypes    []string      `json:"target_types,omitempty"`
-	AwsRoleKey     string        `json:"aws_role_key,omitempty"`
 	IAMComposition []string      `json:"iam_composition,omitempty"`
+	Examples       []string      `json:"examples,omitempty"`
 }
 
 // Definition compiles RBAC / AWS wiring for a break-glass profile.

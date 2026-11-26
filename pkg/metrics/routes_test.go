@@ -18,7 +18,7 @@ func TestNormalizeRoute_WhenKnownPaths_ItShouldReturnStableTemplates(t *testing.
 		{"GET", "/api/v0/trusted-actions/runs/550e8400-e29b-41d4-a716-446655440000/output", "GET /api/v0/trusted-actions/runs/{id}/output"},
 		{"GET", "/api/v0/trusted-actions/runs/550e8400-e29b-41d4-a716-446655440000/logs", "GET /api/v0/trusted-actions/runs/{id}/logs"},
 		{"GET", "/api/v0/breakglass/profiles", "GET /api/v0/breakglass/profiles"},
-		{"GET", "/api/v0/breakglass/profiles/kube-read", "GET /api/v0/breakglass/profiles/{name}"},
+		{"GET", "/api/v0/breakglass/profiles/kube_read", "GET /api/v0/breakglass/profiles/{name}"},
 		{"POST", "/api/v0/breakglass/requests", "POST /api/v0/breakglass/requests"},
 		{"GET", "/api/v0/breakglass/requests/550e8400-e29b-41d4-a716-446655440000", "GET /api/v0/breakglass/requests/{id}"},
 		{"POST", "/api/v0/breakglass/requests/550e8400-e29b-41d4-a716-446655440000/activate", "POST /api/v0/breakglass/requests/{id}/activate"},

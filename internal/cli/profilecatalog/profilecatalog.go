@@ -9,8 +9,8 @@ import (
 )
 
 // OfflineNotice is printed to stderr when using --offline break-glass catalog output.
-const OfflineNotice = "Offline scope catalog: embedded in this zoa CLI build (filtered by target type). " +
-	"The live API is the source of truth when connected — run `zoa breakglass scopes` without --offline to verify."
+const OfflineNotice = "Offline profile catalog: embedded in this zoa CLI build (filtered by target type). " +
+	"The live API is the source of truth when connected — run `zoa breakglass profiles` without --offline to verify."
 
 // List returns API-shaped scope metadata for the given target type (rc or mc).
 func List(targetType string) ([]client.ProfileMetadata, error) {
@@ -68,7 +68,7 @@ func ClientScopeFromMetadata(m breakglass.ProfileMetadata) client.ProfileMetadat
 		Authorization: auth,
 		Capabilities:  m.Capabilities,
 		Restrictions:  m.Restrictions,
-		AwsRoleKey:    m.AwsRoleKey,
+		Examples:      append([]string(nil), m.Examples...),
 	}
 }
 
