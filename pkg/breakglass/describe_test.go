@@ -30,6 +30,6 @@ func TestDescribeProfile_WhenAwsRead_ItShouldIncludeIAMComposition(t *testing.T)
 		t.Fatal("expected iam_composition")
 	}
 	if len(desc.RBAC) != 0 {
-		t.Fatal("aws scope must not expose kube rbac")
+		t.Fatal("aws profile must not expose kube rbac")
 	}
 }

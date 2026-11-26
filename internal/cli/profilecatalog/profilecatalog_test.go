@@ -7,13 +7,13 @@ import (
 	"github.com/openshift-online/rosa-seaplane-zoa/pkg/breakglass"
 )
 
-func TestList_WhenTargetTypeRC_ItShouldReturnKubeScopes(t *testing.T) {
+func TestList_WhenTargetTypeRC_ItShouldReturnKubeProfiles(t *testing.T) {
 	items, err := List(actions.TargetTypeRC)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(items) < 3 {
-		t.Fatalf("expected kube scopes on rc, got %d", len(items))
+		t.Fatalf("expected kube profiles on rc, got %d", len(items))
 	}
 	found := false
 	for _, s := range items {
@@ -28,7 +28,7 @@ func TestList_WhenTargetTypeRC_ItShouldReturnKubeScopes(t *testing.T) {
 }
 
 func TestGet_WhenScopeMissing_ItShouldError(t *testing.T) {
-	_, err := Get(actions.TargetTypeRC, "not-a-scope")
+	_, err := Get(actions.TargetTypeRC, "not-a-profile")
 	if err == nil {
 		t.Fatal("expected error")
 	}

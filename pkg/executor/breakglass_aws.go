@@ -11,7 +11,7 @@ import (
 	"github.com/openshift-online/rosa-seaplane-zoa/pkg/breakglass"
 )
 
-// BreakglassAWSCreds holds short-lived STS credentials for a break-glass AWS scope.
+// BreakglassAWSCreds holds short-lived STS credentials for a break-glass grant (aws credential scope).
 type BreakglassAWSCreds struct {
 	AccessKeyID     string    `json:"access_key_id"`
 	SecretAccessKey string    `json:"secret_access_key"`
@@ -21,10 +21,10 @@ type BreakglassAWSCreds struct {
 	RoleARN         string    `json:"role_arn"`
 }
 
-func (e *Executor) breakglassAWSRoleARN(scopeID string) (string, error) {
-	def, ok := breakglass.Get(scopeID)
+func (e *Executor) breakglassAWSRoleARN(profileID string) (string, error) {
+	def, ok := breakglass.Get(profileID)
 	if !ok {
-		return "", fmt.Errorf("unknown scope %q", scopeID)
+		return "", fmt.Errorf("unknown break-glass profile %q", profileID)
 	}
 	switch def.Metadata.Name {
 	case breakglass.ProfileAWSRead:
@@ -43,16 +43,16 @@ func (e *Executor) breakglassAWSRoleARN(scopeID string) (string, error) {
 		}
 		return e.breakglassAWSElevatedARN, nil
 	default:
-		return "", fmt.Errorf("scope %q is not an AWS break-glass profile", scopeID)
+		return "", fmt.Errorf("profile %q is not aws_read, aws_write, or aws_elevated", profileID)
 	}
 }
 
 // AssumeBreakglassRole issues STS credentials for an approved break-glass grant.
-func (e *Executor) AssumeBreakglassRole(ctx context.Context, requestID, scopeID string, duration time.Duration) (*BreakglassAWSCreds, error) {
+func (e *Executor) AssumeBreakglassRole(ctx context.Context, requestID, profileID string, duration time.Duration) (*BreakglassAWSCreds, error) {
 	if e.stsClient == nil {
 		return nil, fmt.Errorf("STS client not configured")
 	}
-	roleARN, err := e.breakglassAWSRoleARN(scopeID)
+	roleARN, err := e.breakglassAWSRoleARN(profileID)
 	if err != nil {
 		return nil, err
 	}

@@ -48,11 +48,6 @@ func printOfflineProfileCatalogNotice() {
 	fmt.Fprintln(os.Stderr, profilecatalog.OfflineNotice)
 }
 
-// printOfflineScopeCatalogNotice is deprecated; use printOfflineProfileCatalogNotice.
-func printOfflineScopeCatalogNotice() {
-	printOfflineProfileCatalogNotice()
-}
-
 func resolveCatalogTargetType(opts *catalogOptions) (string, error) {
 	return targettype.Resolve(opts.targetType)
 }

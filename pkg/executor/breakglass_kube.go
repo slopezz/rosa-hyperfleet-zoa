@@ -22,8 +22,8 @@ type BreakglassKubeCluster struct {
 }
 
 // BreakglassKubeActivate prepares RBAC and returns cluster metadata for exec-based auth.
-func (e *Executor) BreakglassKubeActivate(ctx context.Context, requestID, scopeID string) (*BreakglassKubeCluster, error) {
-	saName, err := e.EnsureBreakglassKube(ctx, requestID, scopeID)
+func (e *Executor) BreakglassKubeActivate(ctx context.Context, requestID, profileID string) (*BreakglassKubeCluster, error) {
+	saName, err := e.EnsureBreakglassKube(ctx, requestID, profileID)
 	if err != nil {
 		return nil, err
 	}
@@ -44,8 +44,8 @@ func (e *Executor) BreakglassKubeActivate(ctx context.Context, requestID, scopeI
 }
 
 // IssueBreakglassKubeToken returns a SA token for the grant (capped by breakglass.KubeCredentialMaxSeconds).
-func (e *Executor) IssueBreakglassKubeToken(ctx context.Context, requestID, scopeID string, grantRemaining time.Duration) (string, time.Time, error) {
-	saName, err := e.EnsureBreakglassKube(ctx, requestID, scopeID)
+func (e *Executor) IssueBreakglassKubeToken(ctx context.Context, requestID, profileID string, grantRemaining time.Duration) (string, time.Time, error) {
+	saName, err := e.EnsureBreakglassKube(ctx, requestID, profileID)
 	if err != nil {
 		return "", time.Time{}, err
 	}

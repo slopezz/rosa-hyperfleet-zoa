@@ -7,7 +7,7 @@ import (
 func newBreakglassCommand(global *GlobalOptions) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "breakglass",
-		Short: "Break-glass emergency scoped access (boundary)",
+		Short: "Break-glass emergency access (boundary)",
 		Long: `Request, list, and activate break-glass grants from inside the boundary (ZOA_API_URL).
 
 Laptop approvers use: zoa approve <deployment>/<request-id> [--comment ...]`,

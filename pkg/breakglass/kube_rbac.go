@@ -12,7 +12,7 @@ package breakglass
 //
 // CLI: zoa breakglass describe kube_read|kube_write|kube_elevated --target-type rc|mc
 //
-// AWS scopes: aws_read.go / aws_write.go / aws_elevated.go (IAM via profile name → env ARN).
+// AWS profiles: aws_read.go / aws_write.go / aws_elevated.go (IAM via profile name → env ARN).
 
 var (
 	verbsRead       = []string{"get", "list", "watch"}

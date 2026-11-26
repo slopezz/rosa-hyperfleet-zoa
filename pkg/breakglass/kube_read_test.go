@@ -104,7 +104,7 @@ func TestKubeReadScope_WhenRegistered_ItShouldNotAllowWriteVerbs(t *testing.T) {
 		for _, rule := range def.RBAC(target) {
 			for _, verb := range rule.Verbs {
 				if writeVerbs[verb] {
-					t.Fatalf("read scope has write verb %q on target %s", verb, target)
+					t.Fatalf("read profile has write verb %q on target %s", verb, target)
 				}
 			}
 		}

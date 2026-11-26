@@ -99,7 +99,7 @@ func TestAllRegisteredProfiles_HaveTestFile(t *testing.T) {
 	}
 }
 
-func TestKubeScopes_WhenRegistered_TheyShouldExposeRBACForRCAndMC(t *testing.T) {
+func TestKubeProfiles_WhenRegistered_TheyShouldExposeRBACForRCAndMC(t *testing.T) {
 	for _, def := range ListDefinitions() {
 		if def.Metadata.Scope != ScopeKube {
 			continue
@@ -114,11 +114,11 @@ func TestKubeScopes_WhenRegistered_TheyShouldExposeRBACForRCAndMC(t *testing.T) 
 	}
 }
 
-func TestAWSScopes_WhenRegistered_TheyShouldUseKnownProfileNames(t *testing.T) {
+func TestAWSProfiles_WhenRegistered_TheyShouldUseKnownProfileNames(t *testing.T) {
 	for _, id := range []string{ProfileAWSRead, ProfileAWSWrite, ProfileAWSElevated} {
 		def, ok := Get(id)
 		if !ok {
-			t.Fatalf("scope %q not registered", id)
+			t.Fatalf("profile %q not registered", id)
 		}
 		if def.Metadata.Name != id {
 			t.Errorf("name: want %q, got %q", id, def.Metadata.Name)
@@ -127,12 +127,12 @@ func TestAWSScopes_WhenRegistered_TheyShouldUseKnownProfileNames(t *testing.T) {
 			t.Errorf("profile %q: scope want aws, got %q", id, def.Metadata.Scope)
 		}
 		if def.RBAC != nil {
-			t.Error("aws scope must not set RBAC func")
+			t.Error("aws profile must not set RBAC func")
 		}
 	}
 }
 
-// Ensure authoring layout: one implementation file per scope id (underscore form).
+// Ensure authoring layout: one implementation file per profile name (underscore form).
 func TestProfileSourceFiles_WhenPresent_TheyShouldMatchCatalog(t *testing.T) {
 	_, thisFile, _, _ := runtime.Caller(0)
 	dir := filepath.Dir(thisFile)
@@ -148,7 +148,7 @@ func TestProfileSourceFiles_WhenPresent_TheyShouldMatchCatalog(t *testing.T) {
 		}
 		switch name {
 		case "types.go", "registry.go", "approval.go", "rbac_validator.go", "aws_profiles.go",
-			"kube_rbac.go", "describe.go", "describe_target.go", "credential.go":
+			"kube_rbac.go", "describe.go", "credential.go":
 			continue
 		}
 		implStems[strings.TrimSuffix(name, ".go")] = true
@@ -156,7 +156,7 @@ func TestProfileSourceFiles_WhenPresent_TheyShouldMatchCatalog(t *testing.T) {
 	for _, def := range ListDefinitions() {
 		stem := strings.ReplaceAll(def.Metadata.Name, "-", "_")
 		if !implStems[stem] {
-			t.Errorf("scope %q missing profile source file %s.go", def.Metadata.Name, stem)
+			t.Errorf("profile %q missing source file %s.go", def.Metadata.Name, stem)
 		}
 	}
 }

@@ -25,14 +25,14 @@ func breakglassManagedLabels(requestID string) map[string]string {
 	}
 }
 
-// EnsureBreakglassKube creates cluster-scoped RBAC for an approved break-glass kube scope.
-func (e *Executor) EnsureBreakglassKube(ctx context.Context, requestID, scopeID string) (string, error) {
-	def, ok := breakglass.Get(scopeID)
+// EnsureBreakglassKube creates cluster-scoped RBAC for an approved break-glass grant (kube credential scope).
+func (e *Executor) EnsureBreakglassKube(ctx context.Context, requestID, profileID string) (string, error) {
+	def, ok := breakglass.Get(profileID)
 	if !ok || def.RBAC == nil {
-		return "", fmt.Errorf("unknown kube scope %q", scopeID)
+		return "", fmt.Errorf("unknown break-glass profile %q", profileID)
 	}
 	if def.Metadata.Scope != breakglass.ScopeKube {
-		return "", fmt.Errorf("profile %q is not a kube-scope profile", scopeID)
+		return "", fmt.Errorf("profile %q has scope %q, want %q", profileID, def.Metadata.Scope, breakglass.ScopeKube)
 	}
 	if err := e.ensureNamespace(ctx); err != nil {
 		return "", fmt.Errorf("ensuring namespace: %w", err)

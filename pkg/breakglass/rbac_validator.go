@@ -25,7 +25,7 @@ var elevatedForbiddenDeleteResources = []string{
 	"validatingadmissionpolicybindings",
 }
 
-// ValidateProfile checks metadata shape and kube RBAC policy for a registered scope.
+// ValidateProfile checks metadata shape and kube RBAC policy for a registered profile.
 func ValidateProfile(def *Definition) error {
 	if def == nil {
 		return fmt.Errorf("nil profile definition")
@@ -94,14 +94,14 @@ func validateKubeProfile(def *Definition) error {
 			cfg.AllowSecretRead = true
 		}
 		if err := actions.ValidateRBACRules(cfg); err != nil {
-			return fmt.Errorf("scope %s (%s): %w", meta.Name, target, err)
+			return fmt.Errorf("profile %s (%s): %w", meta.Name, target, err)
 		}
-		if err := validateScopeTypeRBAC(meta.Type, rules); err != nil {
-			return fmt.Errorf("scope %s (%s): %w", meta.Name, target, err)
+		if err := validatePrivilegeTypeRBAC(meta.Type, rules); err != nil {
+			return fmt.Errorf("profile %s (%s): %w", meta.Name, target, err)
 		}
 		if meta.Type == TypeElevated {
 			if err := validateElevatedRBAC(rules); err != nil {
-				return fmt.Errorf("scope %s (%s): %w", meta.Name, target, err)
+				return fmt.Errorf("profile %s (%s): %w", meta.Name, target, err)
 			}
 		}
 	}
@@ -119,17 +119,17 @@ func validateAWSProfile(def *Definition) error {
 	return nil
 }
 
-func validateScopeTypeRBAC(scopeType string, rules []actions.RBACRule) error {
+func validatePrivilegeTypeRBAC(privilegeType string, rules []actions.RBACRule) error {
 	for _, rule := range rules {
 		for _, verb := range rule.Verbs {
-			if scopeType == TypeRead && writeVerbs[verb] {
+			if privilegeType == TypeRead && writeVerbs[verb] {
 				return fmt.Errorf("read profile must not include write verb %q", verb)
 			}
 		}
-		if err := validateSecretsPolicy(scopeType, rule); err != nil {
+		if err := validateSecretsPolicy(privilegeType, rule); err != nil {
 			return err
 		}
-		if scopeType != TypeElevated && ruleAllowsPodsExec(rule) {
+		if privilegeType != TypeElevated && ruleAllowsPodsExec(rule) {
 			return fmt.Errorf("only elevated profiles may grant pods/exec")
 		}
 		for _, res := range rule.Resources {
@@ -146,12 +146,12 @@ func validateScopeTypeRBAC(scopeType string, rules []actions.RBACRule) error {
 	return nil
 }
 
-func validateSecretsPolicy(scopeType string, rule actions.RBACRule) error {
+func validateSecretsPolicy(privilegeType string, rule actions.RBACRule) error {
 	if !slices.Contains(rule.Resources, "secrets") {
 		return nil
 	}
-	if scopeType != TypeElevated {
-		return fmt.Errorf("secrets only allowed in elevated scope")
+	if privilegeType != TypeElevated {
+		return fmt.Errorf("secrets only allowed on elevated profiles (type %q)", TypeElevated)
 	}
 	for _, verb := range rule.Verbs {
 		if writeVerbs[verb] {
@@ -164,14 +164,14 @@ func validateSecretsPolicy(scopeType string, rule actions.RBACRule) error {
 func validateElevatedRBAC(rules []actions.RBACRule) error {
 	for _, rule := range rules {
 		if slices.Contains(rule.Resources, "*") && slices.Contains(rule.Verbs, "delete") {
-			return fmt.Errorf("elevated scope must not grant delete with resources *")
+			return fmt.Errorf("elevated profile must not grant delete with resources *")
 		}
 		for _, res := range rule.Resources {
 			if !slices.Contains(elevatedForbiddenDeleteResources, res) {
 				continue
 			}
 			if slices.Contains(rule.Verbs, "delete") {
-				return fmt.Errorf("elevated scope must not grant delete on %s", res)
+				return fmt.Errorf("elevated profile must not grant delete on %s", res)
 			}
 		}
 	}
@@ -189,7 +189,7 @@ func ruleAllowsPodsExec(rule actions.RBACRule) bool {
 	return false
 }
 
-// ValidateAllProfiles returns validation errors for every registered scope (both RC and MC rules).
+// ValidateAllProfiles returns validation errors for every registered profile (both RC and MC rules).
 func ValidateAllProfiles() []error {
 	var errs []error
 	for _, def := range ListDefinitions() {

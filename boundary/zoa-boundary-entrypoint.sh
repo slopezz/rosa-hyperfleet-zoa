@@ -99,7 +99,7 @@ install_breakglass_profiles_catalog() {
   mkdir --parents "$(zoa_sre_home)/.claude"
 
   if ! command -v zoa &>/dev/null; then
-    echo "FATAL: zoa CLI not found — cannot render offline break-glass scope catalog" >&2
+    echo "FATAL: zoa CLI not found — cannot render offline break-glass profile catalog" >&2
     exit 1
   fi
 

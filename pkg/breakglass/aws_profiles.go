@@ -7,7 +7,7 @@ const (
 	ProfileAWSElevated = "aws_elevated"
 )
 
-// KnownAWSProfiles is the set of registered aws-scope profile names.
+// KnownAWSProfiles is the set of registered AWS profiles (metadata scope aws).
 var KnownAWSProfiles = map[string]bool{
 	ProfileAWSRead:     true,
 	ProfileAWSWrite:    true,

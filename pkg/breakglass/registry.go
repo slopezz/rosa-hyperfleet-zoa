@@ -14,7 +14,7 @@ var (
 	runtimeTarget string
 )
 
-// SetTargetType filters scopes to the ZOA_TARGET_TYPE (rc or mc) at runtime.
+// SetTargetType filters profiles to the ZOA_TARGET_TYPE (rc or mc) at runtime.
 func SetTargetType(target string) {
 	mu.Lock()
 	defer mu.Unlock()
@@ -44,18 +44,18 @@ func allowedOnRuntimeTarget(meta ProfileMetadata) bool {
 	return false
 }
 
-// Get returns a scope visible on this target type.
-func Get(id string) (*Definition, bool) {
+// Get returns a profile visible on this target type.
+func Get(profileID string) (*Definition, bool) {
 	mu.RLock()
 	defer mu.RUnlock()
-	def, ok := catalog[id]
+	def, ok := catalog[profileID]
 	if !ok || !allowedOnRuntimeTarget(def.Metadata) {
 		return nil, false
 	}
 	return def, true
 }
 
-// ListDefinitions returns registered scope definitions for this target type, sorted by id.
+// ListDefinitions returns registered profiles for this target type, sorted by name.
 func ListDefinitions() []*Definition {
 	mu.RLock()
 	defer mu.RUnlock()
@@ -69,7 +69,7 @@ func ListDefinitions() []*Definition {
 	return out
 }
 
-// List returns registered scopes for this target type, sorted by id.
+// List returns registered profile metadata for this target type, sorted by name.
 func List() []ProfileMetadata {
 	mu.RLock()
 	defer mu.RUnlock()

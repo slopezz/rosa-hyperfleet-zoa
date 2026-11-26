@@ -26,7 +26,7 @@ func TestValidateProfile_WhenReadScopeHasPatchVerb_ItShouldReject(t *testing.T) 
 		},
 	}
 	if err := ValidateProfile(def); err == nil {
-		t.Fatal("expected error for write verb on read scope")
+		t.Fatal("expected error for write verb on read profile type")
 	}
 }
 
@@ -50,7 +50,7 @@ func TestValidateProfile_WhenWriteScopeListsSecrets_ItShouldReject(t *testing.T)
 		},
 	}
 	if err := ValidateProfile(def); err == nil {
-		t.Fatal("expected error for secrets outside elevated scope")
+		t.Fatal("expected error for secrets outside elevated profile type")
 	}
 }
 

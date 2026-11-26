@@ -8,19 +8,19 @@ import (
 	"github.com/openshift-online/rosa-seaplane-zoa/pkg/store"
 )
 
-// BreakglassAutoApprover is the synthetic approver when the scope catalog skips peer workflow (approval "none").
+// BreakglassAutoApprover is the synthetic approver when the profile catalog skips peer workflow (approval "none").
 const BreakglassAutoApprover = "auto"
 
 const breakglassAutoApproveNote = "break-glass auto-approve (approval workflow epic pending)"
 
-// BreakglassSkipsPeerApproval is true when the scope metadata does not require peer approve before activate
+// BreakglassSkipsPeerApproval is true when the profile metadata does not require peer approve before activate
 // (same idea as Trusted Actions with authorization.approval "none"). No Lambda env override.
 func BreakglassSkipsPeerApproval(auth breakglass.Authorization) bool {
 	return !breakglass.NeedsApproval(auth)
 }
 
 // ApproveBreakglassOnCreateWhenNoPeerWorkflow runs ApproveBreakglassRequest immediately after create when the
-// scope catalog allows it — same transition as laptop approve, synthetic approver for audit.
+// profile catalog allows it — same transition as laptop approve, synthetic approver for audit.
 func ApproveBreakglassOnCreateWhenNoPeerWorkflow(
 	ctx context.Context,
 	bgStore store.BreakglassStore,
