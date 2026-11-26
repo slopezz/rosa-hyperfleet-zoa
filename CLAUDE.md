@@ -16,7 +16,7 @@ Guidance for AI coding assistants working in this repository.
 | ------------------- | ------- | ----------------------------------------------------------------------------- |
 | **Boundary**        | Shipped | Ephemeral ECS Fargate shell per target VPC; entry point for all operator work |
 | **Trusted Actions** | Shipped | Audited `zoa run` from inside the boundary; ephemeral per-execution RBAC      |
-| **Break-glass**     | Planned | Emergency scoped access from boundary — see `docs/break-glass/README.md`      |
+| **Break-glass**     | Shipped | Audited scoped `kubectl`/`aws` from boundary — see `docs/break-glass/README.md` |
 
 ## Architecture (short)
 
@@ -25,8 +25,8 @@ Guidance for AI coding assistants working in this repository.
 | Mode       | Where                         | Caller                             | Purpose                                                |
 | ---------- | ----------------------------- | ---------------------------------- | ------------------------------------------------------ |
 | **access** | RC account, **no VPC**        | SRE laptop (SigV4)                 | Sessions, targets, `ecs:RunTask` for boundary          |
-| **api**    | Per target VPC (RC + each MC) | Boundary task role (`ZOA_API_URL`) | TA dispatch, runs, audit, streaming downloads          |
-| **worker** | Per target VPC                | EventBridge + self-invoke          | Reconciler, GC, **session reaper**, async TA execution |
+| **api**    | Per target VPC (RC + each MC) | Boundary task role (`ZOA_API_URL`) | TA dispatch, break-glass, runs, audit, streaming downloads |
+| **worker** | Per target VPC                | EventBridge + self-invoke          | Reconciler, GC, **session reaper**, async TA, break-glass expiry/GC |
 
 **Three container images** from this repo: `zoa-lambda`, `zoa-runner` (async Jobs on EKS), `zoa-boundary` (operator shell).
 
@@ -35,6 +35,7 @@ Guidance for AI coding assistants working in this repository.
 - **Session**: Laptop → Access Function URL → DynamoDB + ECS boundary → ECS Exec transcript (CloudWatch).
 - **TA (sync)**: Boundary → API Function URL → identity bridge (task ARN → session → operator) → EKS impersonation → inline response.
 - **TA (async)**: API dispatches Job → `zoa-runner` uploads to S3 → Worker reconciles.
+- **Break-glass**: Boundary → API (`request` → `activate`) → per-request `zoa-bg-<id>` kube creds or STS into Terraform IAM roles → stock `kubectl`/`aws`; Worker expires grants and GCs RBAC.
 
 Failure domains are **per target VPC** for API/Worker/boundary; **central Access** for laptop session APIs. See `README.md` (Failure Domains).
 
@@ -52,6 +53,7 @@ Start at **`docs/README.md`**. Do not duplicate long architecture in agent promp
 | Lambda model                | `docs/architecture/lambda-model.md`, `docs/architecture/implementation.md`                                                                         |
 | API / CLI                   | `docs/api-reference.md`, `docs/cli-reference.md`                                                                                                   |
 | TAs                         | `docs/trusted-actions.md`                                                                                                                          |
+| Break-glass (operator)      | `docs/break-glass/README.md`, `docs/break-glass/credential-architecture.md`                                                                          |
 | Break-glass profiles        | `docs/break-glass-profiles.md`                                                                                                                       |
 | E2E / dev                   | `docs/e2e-testing.md`, `docs/development.md`                                                                                                       |
 | Platform ADR                | [rosa-seaplane `docs/design/zoa-architecture.md`](https://github.com/openshift-online/rosa-seaplane/blob/main/docs/design/zoa-architecture.md) |
