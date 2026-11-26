@@ -4,9 +4,9 @@ Decisions and behavior for **peer approval** on TAs and break-glass. Target arch
 
 ## Decisions (current)
 
-1. **Single vocabulary for “no workflow”:** `authorization.approval: "none"` — same field name in `pkg/actions` (TAs) and `pkg/breakglass` (break-glass scopes).
-2. **v1 catalog:** Every shipped TA and every break-glass scope is **`none`**. A **reason** (Jira / PagerDuty) is still required via `pkg/reason` / CLI `ZOA_REASON`.
-3. **No deployment-wide approval bypass env var.** When scope metadata is `none`, create handler calls `ApproveBreakglassOnCreateWhenNoPeerWorkflow` (same `ApproveBreakglassRequest` as laptop approve), not a Lambda toggle.
+1. **Single vocabulary for “no workflow”:** `authorization.approval: "none"` — same field name in `pkg/actions` (TAs) and `pkg/breakglass` (break-glass profiles).
+2. **v1 catalog:** Every shipped TA and every break-glass profile is **`none`**. A **reason** (Jira / PagerDuty) is still required via `pkg/reason` / CLI `ZOA_REASON`.
+3. **No deployment-wide approval bypass env var.** When profile metadata is `none`, create handler calls `ApproveBreakglassOnCreateWhenNoPeerWorkflow` (same `ApproveBreakglassRequest` as laptop approve), not a Lambda toggle.
 4. **Break-glass still creates `status=pending` first**, then transitions lifecycle to **`active`** in the same HTTP request when the **profile catalog** has `authorization.approval: "none"` via `ApproveBreakglassOnCreateWhenNoPeerWorkflow`. Audit may record synthetic approver `auto`; the **Dynamo row** leaves `decided_by` / `decided_at` empty (`approval` = `approved`, lifecycle `status` = `active`).
 5. **Peer approve/reject (v1):** one opaque UUID on `POST /api/v0/approve/{id}` and `POST /api/v0/reject/{id}` (API + Access). Handler **looks up break-glass first**, then executions (TA). TA execution approve returns **501**. Split per-pillar routes are planned (below).
 6. **`ZOA_ENVIRONMENT`** (platform tier from Terraform/GitOps) is **deferred** until the workflow epic; operators do not set it.
@@ -56,9 +56,9 @@ v1 **legacy** `/approve/{id}` on Access may stay as a thin wrapper (deployment i
 
 ### Break-glass
 
-- Metadata: **`approval: "none"` on all scopes in v1** (workflow epic will require peer approval). Shorter `DefaultGrantHours` on elevated scopes is **grant duration**, not approval policy.
-- Create: `POST /breakglass/requests` → row starts `status=pending`, `approval=pending`; if catalog `approval: none`, **`ApproveBreakglassOnCreateWhenNoPeerWorkflow`** transitions lifecycle to **`active`** in the same request (synthetic approver `auto` in audit only). When scopes require peer workflow, that call is a no-op and both columns stay `pending`.
-- Logic lives in `pkg/api/breakglass_workflow.go` — driven only by **scope catalog metadata**, like TA dispatch ignoring approval when `none`.
+- Metadata: **`approval: "none"` on all profiles in v1** (workflow epic will require peer approval). Shorter `DefaultGrantHours` on elevated profiles is **grant duration**, not approval policy.
+- Create: `POST /breakglass/requests` → row starts `status=pending`, `approval=pending`; if catalog `approval: none`, **`ApproveBreakglassOnCreateWhenNoPeerWorkflow`** transitions lifecycle to **`active`** in the same request (synthetic approver `auto` in audit only). When profiles require peer workflow, that call is a no-op and both columns stay `pending`.
+- Logic lives in `pkg/api/breakglass_workflow.go` — driven only by **profile catalog metadata**, like TA dispatch ignoring approval when `none`.
 - **Three-step UX (always):** request (boundary) → approve (peer / auto when `none`) → **`zoa breakglass activate <id>`** (operator, boundary). CLI **`--wait`** on `request` / `get` polls with a **stderr progress line** (like `zoa run --wait`) until lifecycle **`active`**, **`denied`**, or **`expired`**, then prints **`✓`/`✗` + elapsed** on stderr and **metadata on stdout** (or JSON envelope with `next_step`); it **never** calls activate.
 - **Task binding:** only the **same boundary ECS task** that created the request may call `POST …/requests/{id}/activate`. Stored `creatorTaskId` is the full **32-character ECS task id** from the boundary task role session name.
 
