@@ -8,7 +8,7 @@ Platform Terraform and accounts: [ZOA architecture (rosa-seaplane)](https://gith
 
 | You are…               | Read                                                                                                                                                                           |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Operator** (session) | [Operator workflow](guides/operator-workflow.md) — laptop → TA sequence diagram in [Operator workflow #4](guides/operator-workflow.md#4-start-session-join-exec-and-ownership) |
+| **Operator** (session) | [Operator workflow](guides/operator-workflow.md) — laptop → boundary → `zoa run`; break-glass: [break-glass/README.md](break-glass/README.md) |
 | **TA author**          | [Trusted Actions](trusted-actions.md) — writing, testing, conformance gates                                                                                                    |
 | **Contributor**        | [Development](development.md) · [E2E testing](e2e-testing.md)                                                                                                                  |
 

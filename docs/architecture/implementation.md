@@ -119,7 +119,7 @@ sequenceDiagram
 - No output size limit — writes directly to S3 without Lambda response constraints
 - Clean permission separation: SA in K8s audit logs has only TA-declared RBAC; S3 upload uses a separate STS credential with no K8s permissions — no need for two containers or intermediate storage
 
-**Break-glass** uses the same API Lambda and executor packages but provisions **per-request** `zoa-bg-<requestId>` credentials for interactive `kubectl` / `aws` (kube plane vs AWS plane). See [Break-glass credential architecture](../break-glass/credential-architecture.md).
+**Break-glass** uses the same API Lambda and executor packages but provisions **per-request** `zoa-bg-<requestId>` credentials for interactive `kubectl` / `aws` (**kube** vs **aws** `scope`). See [Break-glass credential architecture](../break-glass/credential-architecture.md).
 
 ## Response Streaming
 

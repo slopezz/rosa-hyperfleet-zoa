@@ -249,7 +249,7 @@ Boundary tasks share one **ECS task role** per target; the API sees the **task i
 
 Full design: [Identity bridge](../boundary/identity-bridge.md). Control-plane split: [Boundary architecture](../boundary/architecture.md).
 
-Raw **`aws`** / **`oc`** from the boundary today use the **task role** (shared in CloudTrail). Planned break-glass: short-lived STS from a ZOA API path — [break-glass](../break-glass/README.md).
+**Break-glass (shipped):** stock **`kubectl`** / **`aws`** use **short-lived creds** only after **`zoa breakglass activate <id>`** (kube SA token or STS into profile-scoped IAM roles). Without an active grant, the shell has **no** kubeconfig and does not point **`aws`** at break-glass files — the ECS **task role** remains for **`zoa`** only. See [Break-glass](../break-glass/README.md) and [credential architecture](../break-glass/credential-architecture.md).
 
 ## Discover deployments
 
@@ -304,6 +304,8 @@ zoa run get_resource --resource pods -n openshift-ingress --reason ROSAENG-1234
 **`--reason` is required** on every `zoa run` (Jira issue or PagerDuty incident, e.g. `ROSAENG-1234`, `#123456`).
 
 Read [Trusted Actions guide](../trusted-actions.md) for authoring; [CLAUDE.md](https://github.com/openshift-online/rosa-seaplane-zoa/blob/main/boundary/home-sre/.claude/CLAUDE.md) in the image explains Claude + TA rules.
+
+**Break-glass (last resort):** prefer **`zoa run`**. When no TA fits: `zoa breakglass profiles` → `zoa breakglass request <profile> --reason TICKET` → peer **`zoa approve`** when required → **`zoa breakglass activate <id>`** → work with **`kubectl`** / **`aws`** → follow up with a new TA. Full flow: [break-glass/README.md](../break-glass/README.md).
 
 ## End a session
 

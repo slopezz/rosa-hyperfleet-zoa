@@ -4,8 +4,8 @@ ZOA exposes its APIs through **two Lambda Function URLs**, each serving a differ
 
 | Lambda     | `HANDLER_MODE` | Caller                                | Purpose                                       |
 | ---------- | -------------- | ------------------------------------- | --------------------------------------------- |
-| **Access** | `access`       | SRE laptop (via SSM autodiscovery)    | Session lifecycle, targets, approval (future) |
-| **API**    | `api`          | Boundary task (`ZOA_API_URL` env var) | Trusted Action execution, runs, audit         |
+| **Access** | `access`       | SRE laptop (via SSM autodiscovery)    | Session lifecycle, targets, break-glass approve/reject |
+| **API**    | `api`          | Boundary task (`ZOA_API_URL` env var) | Trusted Actions, break-glass, runs, audit             |
 
 Both share the same `/api/v0` prefix, error envelope, and authentication model. Health and version endpoints are available on both.
 

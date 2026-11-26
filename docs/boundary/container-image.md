@@ -15,8 +15,8 @@ Image: **`zoa-boundary`** (`Containerfile.boundary`). Konflux component **`rosa-
 | Tool         | Purpose                                                                                  |
 | ------------ | ---------------------------------------------------------------------------------------- |
 | `zoa`        | TAs, actions, audit (API Lambda)                                                         |
-| `kubectl`    | Future break-glass; no kubeconfig by default                                             |
-| `aws` CLI v2 | SigV4 to Function URLs; future AWS break-glass                                           |
+| `kubectl`    | Break-glass after `zoa breakglass activate`; no kubeconfig by default                    |
+| `aws` CLI v2 | SigV4 to Function URLs; break-glass uses scoped cred file after activate (not task role)   |
 | `jq`         | JSON from `zoa -o json`                                                                  |
 | `claude`     | Bedrock (`CLAUDE_CODE_USE_BEDROCK=1`); operational assist only (not customer data store) |
 
