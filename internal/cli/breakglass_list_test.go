@@ -37,7 +37,7 @@ func TestPrintBreakglassRequestTable_WhenMine_ItShouldRenderRows(t *testing.T) {
 		t.Fatalf("printBreakglassRequestTable: %v", err)
 	}
 	out := buf.String()
-	if !strings.Contains(out, "PROFILE") || !strings.Contains(out, "req-1") || !strings.Contains(out, "kube_read") {
+	if !strings.Contains(out, "ID") || !strings.Contains(out, "PROFILE") || !strings.Contains(out, "req-1") || !strings.Contains(out, "kube_read") {
 		t.Fatalf("expected table row, got:\n%s", out)
 	}
 }
