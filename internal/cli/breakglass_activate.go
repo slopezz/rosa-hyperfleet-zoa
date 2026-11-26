@@ -17,7 +17,7 @@ func validateBreakglassActivateArtifacts(home, requestID, scope string, resp *cl
 	switch scope {
 	case breakglass.ScopeKube:
 		if resp.KubeToken == "" {
-			return fmt.Errorf("activate: API returned no kube token for profile %q", resp.Name)
+			return fmt.Errorf("activate: API returned no kube token for profile %q", resp.Profile)
 		}
 		kcfg := filepath.Join(dir, "kubeconfig")
 		if _, err := os.Stat(kcfg); err != nil {
@@ -25,7 +25,7 @@ func validateBreakglassActivateArtifacts(home, requestID, scope string, resp *cl
 		}
 	case breakglass.ScopeAWS:
 		if resp.AWS == nil || fmt.Sprint(resp.AWS["access_key_id"]) == "" {
-			return fmt.Errorf("activate: API returned no AWS credentials for profile %q (check BREAKGLASS_AWS_*_ROLE_ARN on API Lambda)", resp.Name)
+			return fmt.Errorf("activate: API returned no AWS credentials for profile %q (check BREAKGLASS_AWS_*_ROLE_ARN on API Lambda)", resp.Profile)
 		}
 		creds := active.AWSCredentialsPath(home)
 		if _, err := os.Stat(creds); err != nil {

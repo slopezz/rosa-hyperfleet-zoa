@@ -77,6 +77,20 @@ func TestHandleListBreakglassRequests_WhenNoTargetQuery_ItShouldNotDefaultToLamb
 	}
 }
 
+func TestHandleListBreakglassRequests_WhenProfileProvided_ItShouldPassProfileFilter(t *testing.T) {
+	bgStore := &filterCapturingBreakglassStore{}
+	h := testBreakglassHandler(bgStore)
+
+	rr := doRequest(h, "GET", "/api/v0/breakglass/requests?profile=kube_write", nil, defaultHeaders())
+	if rr.Code != httpStatusOK(t, rr) {
+		return
+	}
+	f := bgStore.capturedFilter
+	if f == nil || f.Profile == nil || *f.Profile != "kube_write" {
+		t.Errorf("expected profile=kube_write, got %v", f)
+	}
+}
+
 func TestHandleListBreakglassRequests_WhenTargetProvided_ItShouldPassTargetFilter(t *testing.T) {
 	bgStore := &filterCapturingBreakglassStore{}
 	h := testBreakglassHandler(bgStore)

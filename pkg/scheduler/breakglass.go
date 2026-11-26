@@ -50,7 +50,7 @@ func (r *BreakglassReconciler) garbageCollect(ctx context.Context) error {
 		if item.Cleaned {
 			continue
 		}
-		if def, ok := breakglass.Get(item.Name); ok && def.Metadata.Scope == breakglass.ScopeKube {
+		if def, ok := breakglass.Get(item.Profile); ok && def.Metadata.Scope == breakglass.ScopeKube {
 			r.exec.CleanupBreakglass(ctx, item.RequestID)
 		}
 		if err := r.store.MarkCleaned(ctx, item.RequestID); err != nil {

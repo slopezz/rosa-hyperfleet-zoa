@@ -130,7 +130,7 @@ func isTerminalBreakglassStatus(status string) bool {
 }
 
 func newBreakglassRequestsCommand(global *GlobalOptions) *cobra.Command {
-	var since, until, status, approval, decidedBy, decidedSince, target string
+	var since, until, status, approval, decidedBy, decidedSince, target, profile string
 	var limit int
 	cmd := &cobra.Command{
 		Use:     "requests",
@@ -149,6 +149,7 @@ Use 'zoa breakglass history' for fleet-wide audit view.`,
 			list, err := c.ListBreakglassRequests(cmd.Context(), &client.BreakglassListParams{
 				Mine:         true,
 				Target:       target,
+				Profile:      profile,
 				Since:        since,
 				Until:        until,
 				Status:       status,
@@ -164,6 +165,7 @@ Use 'zoa breakglass history' for fleet-wide audit view.`,
 		},
 	}
 	cmd.Flags().StringVarP(&target, "target", "t", "", "Filter by target cluster (default: all targets in deployment)")
+	cmd.Flags().StringVar(&profile, "profile", "", "Filter by break-glass profile (e.g. kube_read)")
 	cmd.Flags().StringVar(&since, "since", "24h", "Start of time window (duration: 1h, 7d; date: 2026-08-25; RFC3339)")
 	cmd.Flags().StringVar(&until, "until", "", "End of time window (same formats as --since; default: now)")
 	cmd.Flags().StringVar(&status, "status", "", "Filter by lifecycle status (pending, active, expired, denied)")
@@ -175,7 +177,7 @@ Use 'zoa breakglass history' for fleet-wide audit view.`,
 }
 
 func newBreakglassHistoryCommand(global *GlobalOptions) *cobra.Command {
-	var since, until, operator, status, approval, decidedBy, decidedSince, target string
+	var since, until, operator, status, approval, decidedBy, decidedSince, target, profile string
 	var limit int
 	cmd := &cobra.Command{
 		Use:   "history",
@@ -190,6 +192,7 @@ Optional --target filters one cluster (same as zoa runs). Fleet list; does not s
 			}
 			list, err := c.ListBreakglassRequests(cmd.Context(), &client.BreakglassListParams{
 				Target:       target,
+				Profile:      profile,
 				Operator:     operator,
 				Status:       status,
 				Approval:     approval,
@@ -206,6 +209,7 @@ Optional --target filters one cluster (same as zoa runs). Fleet list; does not s
 		},
 	}
 	cmd.Flags().StringVarP(&target, "target", "t", "", "Filter by target cluster (default: all targets in deployment)")
+	cmd.Flags().StringVar(&profile, "profile", "", "Filter by break-glass profile (e.g. kube_read)")
 	cmd.Flags().StringVar(&since, "since", "24h", "Start of time window (duration: 1h, 7d; date: 2026-08-25; RFC3339)")
 	cmd.Flags().StringVar(&until, "until", "", "End of time window (same formats as --since; default: now)")
 	cmd.Flags().StringVar(&operator, "operator", "", "Filter by operator")
@@ -297,18 +301,18 @@ func activateBreakglass(ctx context.Context, global *GlobalOptions, requestID st
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	meta := map[string]string{"request_id": requestID, "name": resp.Name, "grant_expires_at": resp.GrantExpiresAt}
+	meta := map[string]string{"request_id": requestID, "profile": resp.Profile, "grant_expires_at": resp.GrantExpiresAt}
 	metaBytes, _ := json.Marshal(meta)
 	if err := os.WriteFile(filepath.Join(dir, "meta.json"), metaBytes, 0o600); err != nil {
 		return err
 	}
-	scope, err := active.ScopeForProfile(resp.Name)
+	scope, err := active.ScopeForProfile(resp.Profile)
 	if err != nil {
 		return err
 	}
 	stanza := active.Stanza{
 		RequestID:           requestID,
-		Name:                resp.Name,
+		Profile:             resp.Profile,
 		GrantExpiresAt:      resp.GrantExpiresAt,
 		CredentialExpiresAt: breakglassCredentialExpiresAt(scope, resp),
 	}
@@ -327,7 +331,7 @@ func activateBreakglass(ctx context.Context, global *GlobalOptions, requestID st
 		return err
 	}
 	progress := breakglassProgressWriter()
-	printBreakglassActivateDispatched(progress, requestID, resp.TargetCluster, resp.Name)
+	printBreakglassActivateDispatched(progress, requestID, resp.TargetCluster, resp.Profile)
 	printBreakglassActivateHints(progress, home, requestID, scope, resp)
 	if global.OutputFormat == output.FormatJSON {
 		id := resp.ID
@@ -337,7 +341,7 @@ func activateBreakglass(ctx context.Context, global *GlobalOptions, requestID st
 		safe := map[string]interface{}{
 			"id":             id,
 			"request_id":     requestID,
-			"name":           resp.Name,
+			"profile":        resp.Profile,
 			"target_cluster": resp.TargetCluster,
 			"status":         resp.Status,
 			"config_dir":     dir,

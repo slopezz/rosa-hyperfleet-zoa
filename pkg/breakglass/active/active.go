@@ -15,7 +15,7 @@ import (
 // Stanza is one active grant on a credential scope (kube or aws).
 type Stanza struct {
 	RequestID           string `json:"requestId"`
-	Name                string `json:"name"`
+	Profile             string `json:"profile"`
 	GrantExpiresAt      string `json:"grantExpiresAt"`
 	CredentialExpiresAt string `json:"credentialExpiresAt,omitempty"`
 }
@@ -100,7 +100,7 @@ func Write(home string, a *Active) error {
 // Activate merges one stanza for the profile's scope (replaces prior grant on that scope).
 // At most one active kube and one active aws grant; e.g. kube_write replaces kube_read in active + PS1.
 func Activate(home string, stanza Stanza) error {
-	scope, err := ScopeForProfile(stanza.Name)
+	scope, err := ScopeForProfile(stanza.Profile)
 	if err != nil {
 		return err
 	}

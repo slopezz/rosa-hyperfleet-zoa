@@ -35,7 +35,7 @@ func ApproveBreakglassRequest(ctx context.Context, bgStore store.BreakglassStore
 	if req.Operator != "" && req.Operator == approver {
 		return errBreakglassSelfApprove
 	}
-	def, _ := breakglass.Get(req.Name)
+	def, _ := breakglass.Get(req.Profile)
 	if def != nil && def.Metadata.Authorization.RequireDecisionNote && note == "" && approver != BreakglassAutoApprover {
 		return errBreakglassNoteRequired
 	}
@@ -66,7 +66,7 @@ func RejectBreakglassRequest(ctx context.Context, bgStore store.BreakglassStore,
 	if approver == "" {
 		return errBreakglassNoApprover
 	}
-	def, _ := breakglass.Get(req.Name)
+	def, _ := breakglass.Get(req.Profile)
 	if def != nil && def.Metadata.Authorization.RequireDecisionNote && note == "" {
 		return errBreakglassNoteRequired
 	}

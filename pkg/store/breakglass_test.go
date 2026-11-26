@@ -28,7 +28,7 @@ func TestDynamoDBBreakglassStore_Create_WhenPending_ItShouldSetTTLAndTargetStatu
 	expires := time.Now().Add(24 * time.Hour).Format(time.RFC3339Nano)
 	req := &BreakglassRequest{
 		RequestID:        "req-1",
-		Name:             "kube_read",
+		Profile:          "kube_read",
 		Reason:           "incident",
 		Operator:         "alice",
 		TargetCluster:    "mc01",
@@ -48,5 +48,17 @@ func TestDynamoDBBreakglassStore_Create_WhenPending_ItShouldSetTTLAndTargetStatu
 	wantKey := BreakglassTargetStatusKey(StatusPending, expires)
 	if req.TargetStatusKey != wantKey {
 		t.Errorf("expected targetStatusKey %q, got %q", wantKey, req.TargetStatusKey)
+	}
+}
+
+func TestFilterBreakglassItems_WhenProfileSet_ItShouldKeepMatchingRows(t *testing.T) {
+	profile := "kube_read"
+	items := []*BreakglassRequest{
+		{RequestID: "a", Profile: "kube_read"},
+		{RequestID: "b", Profile: "aws_read"},
+	}
+	out := filterBreakglassItems(items, &BreakglassFilter{Profile: &profile})
+	if len(out) != 1 || out[0].RequestID != "a" {
+		t.Fatalf("expected single kube_read row, got %d", len(out))
 	}
 }

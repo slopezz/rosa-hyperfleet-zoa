@@ -103,7 +103,7 @@ zoa_breakglass_ps1_part() {
   local scope="$1"
   local active="$2"
   local profile exp grant_left credential_exp cred_left part
-  profile="$(jq -r --arg p "${scope}" '.[$p].name // empty' "${active}")"
+  profile="$(jq -r --arg p "${scope}" '.[$p].profile // empty' "${active}")"
   if [[ -z "${profile}" ]]; then
     return 0
   fi

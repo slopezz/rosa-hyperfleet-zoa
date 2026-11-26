@@ -23,7 +23,7 @@ func TestBreakglassSkipsPeerApproval_WhenWorkflowRequired_ItShouldRequirePeer(t 
 func TestApproveBreakglassOnCreateWhenNoPeerWorkflow_ItShouldTransitionViaApproveWorkflow(t *testing.T) {
 	req := &store.BreakglassRequest{
 		RequestID:        "req-1",
-		Name:            "kube_read",
+		Profile:          "kube_read",
 		Status:           store.StatusPending,
 		Approval:         store.WorkflowApprovalPending,
 		Operator:         "alice",
@@ -57,7 +57,7 @@ func TestApproveBreakglassOnCreateWhenNoPeerWorkflow_ItShouldTransitionViaApprov
 func TestApproveBreakglassRequest_WhenAutoApproverOnStrictNoteScope_ItShouldAllowEmptyPeerNote(t *testing.T) {
 	req := &store.BreakglassRequest{
 		RequestID:        "req-2",
-		Name:            "kube_elevated",
+		Profile:          "kube_elevated",
 		Status:           store.StatusPending,
 		Operator:         "alice",
 		RequestExpiresAt: "2099-01-01T00:00:00Z",

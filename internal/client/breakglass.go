@@ -9,7 +9,7 @@ import (
 
 type BreakglassRequest struct {
 	RequestID        string   `json:"id"`
-	Name             string   `json:"name"`
+	Profile          string   `json:"profile"`
 	Reason           string   `json:"reason"`
 	Operator         string   `json:"operator"`
 	Status           string   `json:"status"`
@@ -44,17 +44,17 @@ type ProfileRBACRule struct {
 }
 
 type ProfileMetadata struct {
-	Name            string                 `json:"name"`
-	Scope           string                 `json:"scope"`
-	Type            string                 `json:"type"`
-	Description     string                 `json:"description"`
-	Authorization   map[string]interface{} `json:"authorization,omitempty"`
-	Capabilities    []string               `json:"capabilities,omitempty"`
-	Restrictions    []string               `json:"restrictions,omitempty"`
-	IAMComposition  []string               `json:"iam_composition,omitempty"`
-	RBAC            []ProfileRBACRule      `json:"rbac,omitempty"`
-	TargetType      string                 `json:"target_type,omitempty"`
-	Examples        []string               `json:"examples,omitempty"`
+	Name           string                 `json:"name"`
+	Scope          string                 `json:"scope"`
+	Type           string                 `json:"type"`
+	Description    string                 `json:"description"`
+	Authorization  map[string]interface{} `json:"authorization,omitempty"`
+	Capabilities   []string               `json:"capabilities,omitempty"`
+	Restrictions   []string               `json:"restrictions,omitempty"`
+	IAMComposition []string               `json:"iam_composition,omitempty"`
+	RBAC           []ProfileRBACRule      `json:"rbac,omitempty"`
+	TargetType     string                 `json:"target_type,omitempty"`
+	Examples       []string               `json:"examples,omitempty"`
 }
 
 type BreakglassRequestList struct {
@@ -65,7 +65,7 @@ type BreakglassRequestList struct {
 type BreakglassActivateResponse struct {
 	RequestID          string                 `json:"request_id"`
 	ID                 string                 `json:"id"`
-	Name               string                 `json:"name"`
+	Profile            string                 `json:"profile"`
 	TargetCluster      string                 `json:"target_cluster"`
 	Status             string                 `json:"status"`
 	GrantExpiresAt     string                 `json:"grant_expires_at"`
@@ -96,7 +96,7 @@ func (c *Client) ListBreakglassProfiles(ctx context.Context, query url.Values) (
 }
 
 func (c *Client) CreateBreakglassRequest(ctx context.Context, profileName, reason string) (*BreakglassRequest, error) {
-	body := map[string]string{"name": profileName, "reason": reason}
+	body := map[string]string{"profile": profileName, "reason": reason}
 	var resp BreakglassRequest
 	if err := c.doV0(ctx, http.MethodPost, "/breakglass/requests", body, &resp); err != nil {
 		return nil, err
@@ -115,6 +115,7 @@ func (c *Client) GetBreakglassRequest(ctx context.Context, id string) (*Breakgla
 type BreakglassListParams struct {
 	Mine         bool
 	Target       string
+	Profile      string
 	Operator     string
 	Status       string
 	Approval     string
@@ -133,6 +134,9 @@ func (c *Client) ListBreakglassRequests(ctx context.Context, params *BreakglassL
 		}
 		if params.Target != "" {
 			q.Set("target", params.Target)
+		}
+		if params.Profile != "" {
+			q.Set("profile", params.Profile)
 		}
 		if params.Operator != "" {
 			q.Set("operator", params.Operator)

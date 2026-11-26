@@ -67,8 +67,8 @@ func (h *Handler) handleDescribeBreakglassProfile(w http.ResponseWriter, r *http
 }
 
 type breakglassCreateRequest struct {
-	Name   string `json:"name"`
-	Reason string `json:"reason"`
+	Profile string `json:"profile"`
+	Reason  string `json:"reason"`
 }
 
 func (h *Handler) handleCreateBreakglassRequest(w http.ResponseWriter, r *http.Request) {
@@ -80,9 +80,9 @@ func (h *Handler) handleCreateBreakglassRequest(w http.ResponseWriter, r *http.R
 		writeError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body")
 		return
 	}
-	body.Name = strings.TrimSpace(body.Name)
-	if body.Name == "" {
-		writeError(w, http.StatusBadRequest, "invalid_request", "name is required")
+	body.Profile = strings.TrimSpace(body.Profile)
+	if body.Profile == "" {
+		writeError(w, http.StatusBadRequest, "invalid_request", "profile is required")
 		return
 	}
 	reasonValue, err := reason.Require(body.Reason)
@@ -94,7 +94,7 @@ func (h *Handler) handleCreateBreakglassRequest(w http.ResponseWriter, r *http.R
 		writeError(w, http.StatusBadRequest, code, err.Error())
 		return
 	}
-	def, ok := breakglass.Get(body.Name)
+	def, ok := breakglass.Get(body.Profile)
 	if !ok {
 		writeError(w, http.StatusNotFound, "not_found", "unknown break-glass profile")
 		return
@@ -110,7 +110,7 @@ func (h *Handler) handleCreateBreakglassRequest(w http.ResponseWriter, r *http.R
 	taskID, _ := extractTaskIDFromSigner(signerARN)
 	req := &store.BreakglassRequest{
 		RequestID:        uuid.NewString(),
-		Name:             body.Name,
+		Profile:          body.Profile,
 		Reason:           reasonValue,
 		Operator:         operator,
 		SignerARN:        signerARN,
@@ -177,6 +177,9 @@ func (h *Handler) handleListBreakglassRequests(w http.ResponseWriter, r *http.Re
 	// targets in the deployment table (RC + MC rows share BREAKGLASS_TABLE).
 	if v := q.Get("target"); v != "" {
 		filter.Target = &v
+	}
+	if v := q.Get("profile"); v != "" {
+		filter.Profile = &v
 	}
 	if v := q.Get("status"); v != "" && v != "all" {
 		s := store.Status(v)
@@ -278,13 +281,13 @@ func (h *Handler) handleActivateBreakglassRequest(w http.ResponseWriter, r *http
 	resp := map[string]interface{}{
 		"id":               req.RequestID,
 		"request_id":       req.RequestID,
-		"name":             req.Name,
+		"profile":          req.Profile,
 		"target_cluster":   req.TargetCluster,
 		"grant_expires_at": req.GrantExpiresAt,
 		"status":           "ready",
 		"kind":             "breakglass",
 	}
-	def, scopeOK := breakglass.Get(req.Name)
+	def, scopeOK := breakglass.Get(req.Profile)
 	if scopeOK && h.executor != nil {
 		remaining := time.Until(mustParseRFC3339(req.GrantExpiresAt))
 		if _, err := breakglass.CredentialDurationForGrant(def.Metadata.Scope, remaining); err != nil {
@@ -294,14 +297,14 @@ func (h *Handler) handleActivateBreakglassRequest(w http.ResponseWriter, r *http
 		}
 		switch def.Metadata.Scope {
 		case breakglass.ScopeKube:
-			cluster, err := h.executor.BreakglassKubeActivate(r.Context(), req.RequestID, req.Name)
+			cluster, err := h.executor.BreakglassKubeActivate(r.Context(), req.RequestID, req.Profile)
 			if err != nil {
 				h.logger.Error("breakglass activate kube", "error", err)
 				writeError(w, http.StatusInternalServerError, "provision_failed", "failed to provision break-glass kube access")
 				return
 			}
 			resp["kube"] = cluster
-			token, exp, err := h.executor.IssueBreakglassKubeToken(r.Context(), req.RequestID, req.Name, remaining)
+			token, exp, err := h.executor.IssueBreakglassKubeToken(r.Context(), req.RequestID, req.Profile, remaining)
 			if err != nil {
 				if writeBreakglassGrantTooShort(w, err) {
 					return
@@ -313,7 +316,7 @@ func (h *Handler) handleActivateBreakglassRequest(w http.ResponseWriter, r *http
 			resp["kube_token_expires_at"] = exp.Format(time.RFC3339Nano)
 			resp["kube_token"] = token
 		case breakglass.ScopeAWS:
-			creds, err := h.executor.AssumeBreakglassRole(r.Context(), req.RequestID, req.Name, remaining)
+			creds, err := h.executor.AssumeBreakglassRole(r.Context(), req.RequestID, req.Profile, remaining)
 			if err != nil {
 				if writeBreakglassGrantTooShort(w, err) {
 					return
@@ -337,7 +340,7 @@ func (h *Handler) handleActivateBreakglassRequest(w http.ResponseWriter, r *http
 		h.logger.Error("breakglass record activate", "error", err, "request_id", id)
 	}
 	writeJSON(w, http.StatusOK, resp)
-	h.recordAudit(r, http.StatusOK, AuditActionBreakglassActivate, id, withReason(req.Name))
+	h.recordAudit(r, http.StatusOK, AuditActionBreakglassActivate, id, withReason(req.Profile))
 }
 
 func mustParseRFC3339(s string) time.Time {

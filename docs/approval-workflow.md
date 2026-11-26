@@ -151,7 +151,7 @@ DynamoDB: same table and GSIs; only string values written to `status` and `targe
 - `decided_by` — peer actor
 - `decided_since` — post-filter on `decided_at`
 
-CLI: `zoa breakglass requests|history` with `--status`, `--approval`, `--decided-by`, `--decided-since`, optional `--target` / `-t` (same as `zoa runs`; default lists all targets in the deployment table).
+CLI: `zoa breakglass requests|history` with `--profile`, `--status`, `--approval`, `--decided-by`, `--decided-since`, optional `--target` / `-t` (same as `zoa runs`; default lists all targets in the deployment table).
 
 ### Trusted Actions (future)
 

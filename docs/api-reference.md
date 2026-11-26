@@ -81,7 +81,7 @@ Requires `BREAKGLASS_TABLE` on the target API Lambda. Identity and task-binding 
 | ------ | ------------------------------------------ | ------------------------------------------------ |
 | `GET`  | `/api/v0/breakglass/profiles`              | List profiles (`?scope=kube\|aws`, `?type=read\|write\|elevated`) |
 | `GET`  | `/api/v0/breakglass/profiles/{name}`       | Describe one profile (`kube_read`, …)            |
-| `POST` | `/api/v0/breakglass/requests`              | Create request JSON: `name`, `reason`            |
+| `POST` | `/api/v0/breakglass/requests`              | Create request JSON: `profile`, `reason`         |
 | `GET`  | `/api/v0/breakglass/requests`              | List requests (optional `?target=`; default all targets in table, like TA runs) |
 | `GET`  | `/api/v0/breakglass/requests/{id}`         | Get request                                      |
 | `POST` | `/api/v0/breakglass/requests/{id}/activate` | Provision access and return credentials (task-bound) |

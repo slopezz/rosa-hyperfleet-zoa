@@ -15,7 +15,7 @@ import (
 // BreakglassRequest is a single DynamoDB item for break-glass lifecycle (request + grant).
 type BreakglassRequest struct {
 	RequestID        string            `json:"id" dynamodbav:"requestId"`
-	Name             string            `json:"name" dynamodbav:"name"`
+	Profile          string            `json:"profile" dynamodbav:"profile"`
 	Reason           string            `json:"reason" dynamodbav:"reason"`
 	Operator         string            `json:"operator" dynamodbav:"operator"`
 	SignerARN        string            `json:"signer_arn,omitempty" dynamodbav:"signerARN,omitempty"`
@@ -47,6 +47,7 @@ type BreakglassRequest struct {
 type BreakglassFilter struct {
 	Operator     *string
 	Target       *string
+	Profile      *string
 	Status       *Status
 	Approval     *string // workflow approval column
 	DecidedBy    *string
@@ -341,6 +342,9 @@ func filterBreakglassItems(items []*BreakglassRequest, filter *BreakglassFilter)
 			continue
 		}
 		if filter.Target != nil && *filter.Target != "" && item.TargetCluster != *filter.Target {
+			continue
+		}
+		if filter.Profile != nil && *filter.Profile != "" && item.Profile != *filter.Profile {
 			continue
 		}
 		if filter.Before != nil && item.CreatedAt != "" {

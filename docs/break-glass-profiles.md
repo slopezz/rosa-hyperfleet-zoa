@@ -10,7 +10,7 @@ How to add or change **break-glass profile** definitions in Go (parallel to [Tru
 | Credential surface | `scope` | `kube`, `aws` |
 | Privilege | `type` | `read`, `write`, `elevated` |
 
-CLI: `zoa breakglass profiles`, `zoa breakglass request <profile> --reason <ticket>`. API: `GET /api/v0/breakglass/profiles`, POST body `{ "name", "reason" }`.
+CLI: `zoa breakglass profiles`, `zoa breakglass request <profile> --reason <ticket>`. API: `GET /api/v0/breakglass/profiles`, POST body `{ "profile", "reason" }`.
 
 ## Overview
 
