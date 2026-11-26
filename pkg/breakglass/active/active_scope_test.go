@@ -25,7 +25,7 @@ func TestActivate_WhenKubeWriteAfterKubeRead_ItShouldReplaceKubeStanza(t *testin
 	}
 }
 
-func TestActivate_WhenKubeAndAWS_ItShouldKeepBothPlanes(t *testing.T) {
+func TestActivate_WhenKubeAndAWS_ItShouldKeepBothScopes(t *testing.T) {
 	home := t.TempDir()
 	_ = Activate(home, Stanza{RequestID: "k1", Name: "kube_read"})
 	_ = Activate(home, Stanza{RequestID: "a1", Name: "aws_read"})
@@ -35,6 +35,6 @@ func TestActivate_WhenKubeAndAWS_ItShouldKeepBothPlanes(t *testing.T) {
 		t.Fatal(err)
 	}
 	if a.Kube == nil || a.AWS == nil {
-		t.Fatalf("expected both planes: %+v", a)
+		t.Fatalf("expected both scopes: %+v", a)
 	}
 }

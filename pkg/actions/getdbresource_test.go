@@ -16,7 +16,7 @@ func TestGetDBResource_Metadata_ItShouldBeAReadOnlyAWSAction(t *testing.T) {
 	if meta.Name != "get_db_resource" {
 		t.Errorf("expected name get_db_resource, got %q", meta.Name)
 	}
-	if meta.Scope != "aws" {
+	if meta.Scope != ScopeAWS {
 		t.Errorf("expected scope aws-api, got %q", meta.Scope)
 	}
 	if meta.Type != "read" {

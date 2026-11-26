@@ -12,12 +12,12 @@ import (
 	"github.com/openshift-online/rosa-seaplane-zoa/pkg/breakglass/active"
 )
 
-func validateBreakglassActivateArtifacts(home, requestID, plane string, resp *client.BreakglassActivateResponse) error {
+func validateBreakglassActivateArtifacts(home, requestID, scope string, resp *client.BreakglassActivateResponse) error {
 	dir := active.RequestDir(home, requestID)
-	switch plane {
+	switch scope {
 	case breakglass.ScopeKube:
 		if resp.KubeToken == "" {
-			return fmt.Errorf("activate: API returned no kube token for scope %q", resp.Name)
+			return fmt.Errorf("activate: API returned no kube token for profile %q", resp.Name)
 		}
 		kcfg := filepath.Join(dir, "kubeconfig")
 		if _, err := os.Stat(kcfg); err != nil {
@@ -25,7 +25,7 @@ func validateBreakglassActivateArtifacts(home, requestID, plane string, resp *cl
 		}
 	case breakglass.ScopeAWS:
 		if resp.AWS == nil || fmt.Sprint(resp.AWS["access_key_id"]) == "" {
-			return fmt.Errorf("activate: API returned no AWS credentials for scope %q (check BREAKGLASS_AWS_*_ROLE_ARN on API Lambda)", resp.Name)
+			return fmt.Errorf("activate: API returned no AWS credentials for profile %q (check BREAKGLASS_AWS_*_ROLE_ARN on API Lambda)", resp.Name)
 		}
 		creds := active.AWSCredentialsPath(home)
 		if _, err := os.Stat(creds); err != nil {
@@ -36,15 +36,15 @@ func validateBreakglassActivateArtifacts(home, requestID, plane string, resp *cl
 }
 
 // breakglassCredExpireNote returns a short line for when activate credentials expire (from API or platform max).
-func breakglassCredExpireNote(plane string, resp *client.BreakglassActivateResponse) string {
-	switch plane {
+func breakglassCredExpireNote(scope string, resp *client.BreakglassActivateResponse) string {
+	switch scope {
 	case breakglass.ScopeKube:
 		if resp.KubeTokenExpiresAt != "" {
 			if t, err := time.Parse(time.RFC3339Nano, resp.KubeTokenExpiresAt); err == nil {
 				return formatBreakglassCredTTL(time.Until(t))
 			}
 		}
-		return breakglass.CredentialMaxTTLDisplay(plane)
+		return breakglass.CredentialMaxTTLDisplay(scope)
 	case breakglass.ScopeAWS:
 		if resp.AWS != nil {
 			if raw, ok := resp.AWS["expiration"].(string); ok && raw != "" {
@@ -53,14 +53,14 @@ func breakglassCredExpireNote(plane string, resp *client.BreakglassActivateRespo
 				}
 			}
 		}
-		return breakglass.CredentialMaxTTLDisplay(plane)
+		return breakglass.CredentialMaxTTLDisplay(scope)
 	default:
-		return breakglass.CredentialMaxTTLDisplay(plane)
+		return breakglass.CredentialMaxTTLDisplay(scope)
 	}
 }
 
-func breakglassCredentialExpiresAt(plane string, resp *client.BreakglassActivateResponse) string {
-	switch plane {
+func breakglassCredentialExpiresAt(scope string, resp *client.BreakglassActivateResponse) string {
+	switch scope {
 	case breakglass.ScopeKube:
 		return resp.KubeTokenExpiresAt
 	case breakglass.ScopeAWS:
@@ -92,9 +92,9 @@ func formatBreakglassCredTTL(d time.Duration) string {
 }
 
 // printBreakglassActivateHints explains grant vs credential clocks (no manual export; shell wires env).
-func printBreakglassActivateHints(w io.Writer, home, requestID, plane string, resp *client.BreakglassActivateResponse) {
+func printBreakglassActivateHints(w io.Writer, home, requestID, scope string, resp *client.BreakglassActivateResponse) {
 	_ = home
-	credTTL := breakglassCredExpireNote(plane, resp)
+	credTTL := breakglassCredExpireNote(scope, resp)
 	grantLeft := breakglassTimeLeftShort(resp.GrantExpiresAt)
 	if resp.GrantExpiresAt != "" {
 		fmt.Fprintf(w, "  until %s", formatBreakglassTime(resp.GrantExpiresAt))

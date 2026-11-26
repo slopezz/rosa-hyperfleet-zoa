@@ -17,18 +17,18 @@ const shippedApproval = "none"
 var validScopes = map[string]bool{ScopeKube: true, ScopeAWS: true}
 var validTypes = map[string]bool{TypeRead: true, TypeWrite: true, TypeElevated: true}
 
-func TestAllRegisteredScopes_Conformance(t *testing.T) {
+func TestAllRegisteredProfiles_Conformance(t *testing.T) {
 	SetTargetType("")
 	defs := ListDefinitions()
 	if len(defs) == 0 {
-		t.Fatal("no scopes registered — init() functions likely not running")
+		t.Fatal("no profiles registered — init() functions likely not running")
 	}
 
 	for _, def := range defs {
 		meta := def.Metadata
 		t.Run(meta.Name, func(t *testing.T) {
 			if !validScopes[meta.Scope] {
-				t.Errorf("plane must be kube or aws, got %q", meta.Scope)
+				t.Errorf("scope must be kube or aws, got %q", meta.Scope)
 			}
 			if !validTypes[meta.Type] {
 				t.Errorf("type must be read, write, or elevated, got %q", meta.Type)
@@ -39,7 +39,7 @@ func TestAllRegisteredScopes_Conformance(t *testing.T) {
 			if meta.Authorization.Approval != shippedApproval {
 				t.Errorf("authorization.approval must be %q until workflow epic (got %q)", shippedApproval, meta.Authorization.Approval)
 			}
-			if err := ValidateScope(def); err != nil {
+			if err := ValidateProfile(def); err != nil {
 				t.Error(err)
 			}
 			if len(meta.Examples) == 0 {
@@ -57,13 +57,13 @@ func TestAllRegisteredScopes_Conformance(t *testing.T) {
 	}
 }
 
-func TestAllRegisteredScopes_RBACCompliance(t *testing.T) {
-	for _, err := range ValidateAllScopes() {
+func TestAllRegisteredProfiles_RBACCompliance(t *testing.T) {
+	for _, err := range ValidateAllProfiles() {
 		t.Error(err)
 	}
 }
 
-func TestAllRegisteredScopes_HaveTestFile(t *testing.T) {
+func TestAllRegisteredProfiles_HaveTestFile(t *testing.T) {
 	_, thisFile, _, _ := runtime.Caller(0)
 	dir := filepath.Dir(thisFile)
 	testFiles, err := filepath.Glob(filepath.Join(dir, "*_test.go"))
@@ -93,7 +93,7 @@ func TestAllRegisteredScopes_HaveTestFile(t *testing.T) {
 				}
 			}
 			if !found {
-				t.Errorf("scope %q expects pkg/breakglass/%s_test.go", meta.Name, wantStem)
+				t.Errorf("profile %q expects pkg/breakglass/%s_test.go", meta.Name, wantStem)
 			}
 		})
 	}
@@ -124,7 +124,7 @@ func TestAWSScopes_WhenRegistered_TheyShouldUseKnownProfileNames(t *testing.T) {
 			t.Errorf("name: want %q, got %q", id, def.Metadata.Name)
 		}
 		if def.Metadata.Scope != ScopeAWS {
-			t.Errorf("scope %q: plane want aws, got %q", id, def.Metadata.Scope)
+			t.Errorf("profile %q: scope want aws, got %q", id, def.Metadata.Scope)
 		}
 		if def.RBAC != nil {
 			t.Error("aws scope must not set RBAC func")
@@ -133,7 +133,7 @@ func TestAWSScopes_WhenRegistered_TheyShouldUseKnownProfileNames(t *testing.T) {
 }
 
 // Ensure authoring layout: one implementation file per scope id (underscore form).
-func TestScopeSourceFiles_WhenPresent_TheyShouldMatchCatalog(t *testing.T) {
+func TestProfileSourceFiles_WhenPresent_TheyShouldMatchCatalog(t *testing.T) {
 	_, thisFile, _, _ := runtime.Caller(0)
 	dir := filepath.Dir(thisFile)
 	entries, err := os.ReadDir(dir)
@@ -156,7 +156,7 @@ func TestScopeSourceFiles_WhenPresent_TheyShouldMatchCatalog(t *testing.T) {
 	for _, def := range ListDefinitions() {
 		stem := strings.ReplaceAll(def.Metadata.Name, "-", "_")
 		if !implStems[stem] {
-			t.Errorf("scope %q missing source file %s.go", def.Metadata.Name, stem)
+			t.Errorf("scope %q missing profile source file %s.go", def.Metadata.Name, stem)
 		}
 	}
 }

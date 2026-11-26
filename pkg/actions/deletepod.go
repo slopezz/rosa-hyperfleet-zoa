@@ -17,9 +17,9 @@ type deletePod struct{}
 func (d *deletePod) Metadata() ActionMetadata {
 	return ActionMetadata{
 		Name:                 "delete_pod",
-		Scope:                "kube",
-		Type:                 "write",
-		ExecutionMode:        "sync",
+		Scope:         ScopeKube,
+		Type:          TypeWrite,
+		ExecutionMode: ExecutionModeSync,
 		Description:          "Delete a pod and wait for it to terminate. Refuses to delete standalone pods without owner references.",
 		Authorization:        AuthorizationConfig{Approval: "none"},
 		TargetTypes:          []string{TargetTypeRC, TargetTypeMC},

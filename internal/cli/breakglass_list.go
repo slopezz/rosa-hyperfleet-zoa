@@ -21,9 +21,9 @@ func printBreakglassRequestTable(global *GlobalOptions, list *client.BreakglassR
 	wide := global.OutputFormat == output.FormatWide
 	tw := output.NewTable(os.Stdout)
 
-	rowHeader := "CREATED\tSESSION\tREQUEST\tSCOPE\tTARGET\tSTATUS\tAPPROVAL\tREQ_EXPIRES\tGRANT_EXPIRES\tEXPIRED_AT\tDECIDED_AT\tDECIDED_BY\tREASON"
+	rowHeader := "CREATED\tSESSION\tREQUEST\tPROFILE\tTARGET\tSTATUS\tAPPROVAL\tREQ_EXPIRES\tGRANT_EXPIRES\tEXPIRED_AT\tDECIDED_AT\tDECIDED_BY\tREASON"
 	if fleet {
-		rowHeader = "CREATED\tOPERATOR\tSESSION\tREQUEST\tSCOPE\tTARGET\tSTATUS\tAPPROVAL\tREQ_EXPIRES\tGRANT_EXPIRES\tEXPIRED_AT\tDECIDED_AT\tDECIDED_BY\tREASON"
+		rowHeader = "CREATED\tOPERATOR\tSESSION\tREQUEST\tPROFILE\tTARGET\tSTATUS\tAPPROVAL\tREQ_EXPIRES\tGRANT_EXPIRES\tEXPIRED_AT\tDECIDED_AT\tDECIDED_BY\tREASON"
 	}
 	if wide {
 		fmt.Fprintln(tw, rowHeader+"\tSIGNER\tTASK_ID\tACCOUNT\tACTIVATES\tNOTE")
@@ -36,7 +36,7 @@ func printBreakglassRequestTable(global *GlobalOptions, list *client.BreakglassR
 		created := formatBreakglassTime(r.CreatedAt)
 		session := breakglassSessionDisplay(r.SessionID, wide)
 		requestID := r.RequestID
-		scope := r.Name
+		profile := r.Name
 		target := output.Truncate(breakglassTargetCluster(r.TargetCluster), 25)
 		status := breakglassLifecycleStatus(r)
 		approval := breakglassWorkflowApproval(r)
@@ -52,12 +52,12 @@ func printBreakglassRequestTable(global *GlobalOptions, list *client.BreakglassR
 
 		if wide {
 			row := fmt.Sprintf("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s",
-				created, session, requestID, scope, target, status, approval,
+				created, session, requestID, profile, target, status, approval,
 				reqExp, grantExp, expiredAt, decidedAt, decidedBy, reason,
 			)
 			if fleet {
 				row = fmt.Sprintf("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s",
-					created, output.Dash(r.Operator), session, requestID, scope, target, status, approval,
+					created, output.Dash(r.Operator), session, requestID, profile, target, status, approval,
 					reqExp, grantExp, expiredAt, decidedAt, decidedBy, reason,
 				)
 			}
@@ -74,12 +74,12 @@ func printBreakglassRequestTable(global *GlobalOptions, list *client.BreakglassR
 
 		if fleet {
 			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-				created, output.Dash(r.Operator), session, requestID, scope, target, status, approval,
+				created, output.Dash(r.Operator), session, requestID, profile, target, status, approval,
 				reqExp, grantExp, expiredAt, decidedAt, decidedBy, reason,
 			)
 		} else {
 			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-				created, session, requestID, scope, target, status, approval,
+				created, session, requestID, profile, target, status, approval,
 				reqExp, grantExp, expiredAt, decidedAt, decidedBy, reason,
 			)
 		}

@@ -110,7 +110,7 @@ func TestKubeElevatedScope_WhenRegistered_ItShouldAllowExecWithinPolicy(t *testi
 	if !hasSecrets || !hasExec {
 		t.Fatal("elevated must include secrets read and pods/exec")
 	}
-	if err := ValidateScope(def); err != nil {
+	if err := ValidateProfile(def); err != nil {
 		t.Fatal(err)
 	}
 }

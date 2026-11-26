@@ -34,7 +34,7 @@ func TestGet_WhenScopeMissing_ItShouldError(t *testing.T) {
 	}
 }
 
-func TestClientScopeFromMetadata_WhenApprovalSet_ItShouldMapAuthorization(t *testing.T) {
+func TestClientProfileFromMetadata_WhenApprovalSet_ItShouldMapAuthorization(t *testing.T) {
 	meta := breakglass.ProfileMetadata{
 		Name: "kube_read",
 		Scope: breakglass.ScopeKube,
@@ -45,7 +45,7 @@ func TestClientScopeFromMetadata_WhenApprovalSet_ItShouldMapAuthorization(t *tes
 			DefaultRequestHours: 24,
 		},
 	}
-	out := ClientScopeFromMetadata(meta)
+	out := ClientProfileFromMetadata(meta)
 	if out.Authorization["approval"] != "none" {
 		t.Fatalf("approval: %v", out.Authorization["approval"])
 	}

@@ -109,7 +109,7 @@ func TestKubeReadScope_WhenRegistered_ItShouldNotAllowWriteVerbs(t *testing.T) {
 			}
 		}
 	}
-	if err := ValidateScope(def); err != nil {
+	if err := ValidateProfile(def); err != nil {
 		t.Fatal(err)
 	}
 }

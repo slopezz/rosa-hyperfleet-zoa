@@ -15,8 +15,8 @@ func TestDescribeProfile_WhenKubeWrite_ItShouldIncludeEffectiveRBAC(t *testing.T
 	if len(desc.RBAC) == 0 {
 		t.Fatal("expected rbac rules on describe")
 	}
-	if len(desc.Composition) == 0 {
-		t.Fatal("expected composition lines")
+	if len(desc.Capabilities) == 0 {
+		t.Fatal("expected capabilities")
 	}
 }
 

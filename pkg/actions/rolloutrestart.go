@@ -27,9 +27,9 @@ type rolloutRestart struct{}
 func (r *rolloutRestart) Metadata() ActionMetadata {
 	return ActionMetadata{
 		Name:                 "rollout_restart",
-		Scope:                "kube",
-		Type:                 "write",
-		ExecutionMode:        "sync",
+		Scope:         ScopeKube,
+		Type:          TypeWrite,
+		ExecutionMode: ExecutionModeSync,
 		Description:          "Restart a workload by patching the pod template annotation, equivalent to kubectl rollout restart. Supports deployments, daemonsets, and statefulsets.",
 		Authorization:        AuthorizationConfig{Approval: "none"},
 		TargetTypes:          []string{TargetTypeRC, TargetTypeMC},

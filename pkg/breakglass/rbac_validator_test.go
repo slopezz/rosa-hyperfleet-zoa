@@ -6,7 +6,7 @@ import (
 	"github.com/openshift-online/rosa-seaplane-zoa/pkg/actions"
 )
 
-func TestValidateScope_WhenReadScopeHasPatchVerb_ItShouldReject(t *testing.T) {
+func TestValidateProfile_WhenReadScopeHasPatchVerb_ItShouldReject(t *testing.T) {
 	def := &Definition{
 		Metadata: ProfileMetadata{
 			Name: "bad-read",
@@ -25,12 +25,12 @@ func TestValidateScope_WhenReadScopeHasPatchVerb_ItShouldReject(t *testing.T) {
 			}
 		},
 	}
-	if err := ValidateScope(def); err == nil {
+	if err := ValidateProfile(def); err == nil {
 		t.Fatal("expected error for write verb on read scope")
 	}
 }
 
-func TestValidateScope_WhenWriteScopeListsSecrets_ItShouldReject(t *testing.T) {
+func TestValidateProfile_WhenWriteScopeListsSecrets_ItShouldReject(t *testing.T) {
 	def := &Definition{
 		Metadata: ProfileMetadata{
 			Name: "bad-secrets",
@@ -49,12 +49,12 @@ func TestValidateScope_WhenWriteScopeListsSecrets_ItShouldReject(t *testing.T) {
 			}
 		},
 	}
-	if err := ValidateScope(def); err == nil {
+	if err := ValidateProfile(def); err == nil {
 		t.Fatal("expected error for secrets outside elevated scope")
 	}
 }
 
-func TestValidateScope_WhenElevatedScopeListsSecretRead_ItShouldAllow(t *testing.T) {
+func TestValidateProfile_WhenElevatedScopeListsSecretRead_ItShouldAllow(t *testing.T) {
 	def := &Definition{
 		Metadata: ProfileMetadata{
 			Name: "elevated-secrets",
@@ -75,7 +75,7 @@ func TestValidateScope_WhenElevatedScopeListsSecretRead_ItShouldAllow(t *testing
 			}
 		},
 	}
-	if err := ValidateScope(def); err != nil {
+	if err := ValidateProfile(def); err != nil {
 		t.Fatalf("expected elevated secret read to be allowed: %v", err)
 	}
 }
@@ -88,7 +88,7 @@ func elevatedTestAuth() Authorization {
 	}
 }
 
-func TestValidateScope_WhenElevatedGrantsDeleteWithStarResources_ItShouldReject(t *testing.T) {
+func TestValidateProfile_WhenElevatedGrantsDeleteWithStarResources_ItShouldReject(t *testing.T) {
 	def := &Definition{
 		Metadata: ProfileMetadata{
 			Name: "bad-elevated-star",
@@ -103,12 +103,12 @@ func TestValidateScope_WhenElevatedGrantsDeleteWithStarResources_ItShouldReject(
 			}
 		},
 	}
-	if err := ValidateScope(def); err == nil {
+	if err := ValidateProfile(def); err == nil {
 		t.Fatal("expected reject delete with resources *")
 	}
 }
 
-func TestValidateScope_WhenElevatedGrantsDeleteOnNamespaces_ItShouldReject(t *testing.T) {
+func TestValidateProfile_WhenElevatedGrantsDeleteOnNamespaces_ItShouldReject(t *testing.T) {
 	def := &Definition{
 		Metadata: ProfileMetadata{
 			Name: "bad-elevated-ns",
@@ -126,12 +126,12 @@ func TestValidateScope_WhenElevatedGrantsDeleteOnNamespaces_ItShouldReject(t *te
 			}
 		},
 	}
-	if err := ValidateScope(def); err == nil {
+	if err := ValidateProfile(def); err == nil {
 		t.Fatal("expected reject delete on namespaces")
 	}
 }
 
-func TestValidateScope_WhenWriteGrantsPodsExec_ItShouldReject(t *testing.T) {
+func TestValidateProfile_WhenWriteGrantsPodsExec_ItShouldReject(t *testing.T) {
 	def := &Definition{
 		Metadata: ProfileMetadata{
 			Name: "bad-exec",
@@ -150,12 +150,12 @@ func TestValidateScope_WhenWriteGrantsPodsExec_ItShouldReject(t *testing.T) {
 			}
 		},
 	}
-	if err := ValidateScope(def); err == nil {
+	if err := ValidateProfile(def); err == nil {
 		t.Fatal("expected reject pods/exec outside elevated")
 	}
 }
 
-func TestValidateScope_WhenElevatedGrantsSecretWrite_ItShouldReject(t *testing.T) {
+func TestValidateProfile_WhenElevatedGrantsSecretWrite_ItShouldReject(t *testing.T) {
 	def := &Definition{
 		Metadata: ProfileMetadata{
 			Name: "bad-secret-write",
@@ -172,12 +172,12 @@ func TestValidateScope_WhenElevatedGrantsSecretWrite_ItShouldReject(t *testing.T
 			}
 		},
 	}
-	if err := ValidateScope(def); err == nil {
+	if err := ValidateProfile(def); err == nil {
 		t.Fatal("expected reject secret write verbs")
 	}
 }
 
-func TestValidateScope_WhenKubeScopeMutatesClusterRoleBindings_ItShouldReject(t *testing.T) {
+func TestValidateProfile_WhenKubeScopeMutatesClusterRoleBindings_ItShouldReject(t *testing.T) {
 	def := &Definition{
 		Metadata: ProfileMetadata{
 			Name: "bad-bind",
@@ -196,12 +196,12 @@ func TestValidateScope_WhenKubeScopeMutatesClusterRoleBindings_ItShouldReject(t 
 			}
 		},
 	}
-	if err := ValidateScope(def); err == nil {
+	if err := ValidateProfile(def); err == nil {
 		t.Fatal("expected reject RBAC bind mutation")
 	}
 }
 
-func TestValidateScope_WhenRegisteredKubeScopes_TheyShouldPassValidateScope(t *testing.T) {
+func TestValidateProfile_WhenRegisteredKubeScopes_TheyShouldPassValidateProfile(t *testing.T) {
 	for _, id := range []string{"kube_read", "kube_write", "kube_elevated"} {
 		id := id
 		t.Run(id, func(t *testing.T) {
@@ -209,7 +209,7 @@ func TestValidateScope_WhenRegisteredKubeScopes_TheyShouldPassValidateScope(t *t
 			if !ok {
 				t.Fatal("not registered")
 			}
-			if err := ValidateScope(def); err != nil {
+			if err := ValidateProfile(def); err != nil {
 				t.Fatal(err)
 			}
 		})

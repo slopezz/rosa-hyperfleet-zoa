@@ -21,7 +21,7 @@ func TestKubeWriteScope_WhenRegistered_ItShouldGrantWorkloadMutate(t *testing.T)
 	if rulesIncludeVerbOnResource(rules, "apps", "deployments", "delete") {
 		t.Fatal("kube_write must not delete deployments")
 	}
-	if err := ValidateScope(def); err != nil {
+	if err := ValidateProfile(def); err != nil {
 		t.Fatal(err)
 	}
 }

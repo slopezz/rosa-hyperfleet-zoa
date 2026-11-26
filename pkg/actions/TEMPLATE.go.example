@@ -25,11 +25,13 @@ func (a *myAction) Metadata() ActionMetadata {
 		// TODO: Unique action name (snake_case, matches CLI: `zoa run my_action`)
 		Name: "my_action",
 
-		// Execution layer: "kube-api" (kubectl operations) or "aws-api" (AWS SDK calls)
-		Scope: "kube-api",
+		// Credential scope: ScopeKube or ScopeAWS (same vocabulary as break-glass --scope).
+		Scope: ScopeKube,
 
-		// Mutation level: "read" (no changes) or "write" (creates/modifies/deletes)
-		Type: "read",
+		// Privilege: TypeRead or TypeWrite.
+		Type: TypeRead,
+
+		ExecutionMode: ExecutionModeSync, // or ExecutionModeAsync
 
 		// Human-readable description (shown in `zoa describe my_action`)
 		Description: "Describe what this TA does in one sentence.",

@@ -19,14 +19,14 @@ Each profile is a `Definition` in `pkg/breakglass/`: `ProfileMetadata` (`name`, 
 - Self-registers via `init()` into the global registry (like `pkg/actions`)
 - Snapshotted onto DynamoDB at request create (in-flight requests do not change when code deploys)
 - Validated by `pkg/breakglass/conformance_test.go` on every PR
-- **Operator bullets** (`capabilities` / `restrictions` in each `*_read.go`, `*_write.go`, `*_elevated.go`) are what `zoa breakglass describe` shows as **composition** — keep them aligned with the RBAC/IAM builders in the same PR
+- **Operator bullets** (`capabilities` / `restrictions` in each `*_read.go`, `*_write.go`, `*_elevated.go`) are what `zoa breakglass describe` lists under **CAPABILITIES** — keep them aligned with the RBAC/IAM builders in the same PR
 
-## What RBAC each scope has (shipped today)
+## What RBAC each profile has (shipped today)
 
-**Start in code:** `kube_rbac.go` (verb vocabulary only), `kube_read.go` / `kube_write.go` / `kube_elevated.go` (each profile’s full RBAC including platform apiGroups), `aws_*.go` per scope.  
+**Start in code:** `kube_rbac.go` (verb vocabulary only), `kube_read.go` / `kube_write.go` / `kube_elevated.go` (each profile’s full RBAC including platform apiGroups), `aws_*.go` per profile.  
 **Live detail:** `zoa breakglass describe <profile> --target-type rc|mc` (capabilities + full rule list).
 
-| Scope | Plane | Where defined |
+| Profile | Scope | Where defined |
 | ----- | ----- | ------------- |
 | `kube_read` | kube | `kubeReadRBAC` in `kube_read.go` |
 | `kube_write` | kube | `kubeWriteRBAC` in `kube_write.go` |
@@ -41,9 +41,9 @@ Shared vocabulary (`kube_rbac.go` only): `verbsRead`, `verbsMutate`, `verbsMutat
 
 ## Shipped capabilities and restrictions (mirror Go metadata)
 
-Update this table when you change `Capabilities` / `Restrictions` in scope `init()` blocks.
+Update this table when you change `Capabilities` / `Restrictions` in profile `init()` blocks.
 
-| Scope | Capabilities (summary) | Restrictions (summary) |
+| Profile | Capabilities (summary) | Restrictions (summary) |
 | ----- | ------------------------ | ---------------------- |
 | `kube_read` | Core + storage/scheduling/admission read; platform operator apiGroups read (`*`) per RC/MC | No secrets; no `pods/exec`; serviceaccounts metadata-only |
 | `kube_write` | All kube_read; apps controllers create/patch/update; pods/configmaps/jobs full mutate | No secrets/exec; no RBAC bind writes; no platform CR mutate |
@@ -52,7 +52,7 @@ Update this table when you change `Capabilities` / `Restrictions` in scope `init
 | `aws_write` | Read + RC EC2/RDS/ElastiCache reboot-style mutations | MC same as read; no elevated |
 | `aws_elevated` | PowerUser (e.g. EC2 terminate on MC) + immutability Deny on ZOA control plane | IAM/org/secrets sidebar per Terraform |
 
-## Creating a new scope
+## Creating a new profile
 
 ### 1. Add files
 
@@ -61,7 +61,7 @@ pkg/breakglass/my_scope.go
 pkg/breakglass/my_scope_test.go   # when logic warrants tests beyond conformance
 ```
 
-Use underscores in the filename; the scope **id** uses hyphens (`my-custom`).
+Use underscores in the filename and in the profile **`name`** (`kube_read`, `aws_write`, …).
 
 ### 2. Register metadata and RBAC
 
@@ -74,13 +74,13 @@ import (
 
 func init() {
 	register(&Definition{
-		Metadata: ScopeMetadata{
-			ID:          "kube_read",
-			Plane:       PlaneKube,
+		Metadata: ProfileMetadata{
+			Name:        "kube_read",
+			Scope:       ScopeKube,
 			Type:        TypeRead,
 			Description: "Read-only kubectl (get/list/watch); no secrets or exec",
 			Capabilities: []string{
-				"…", // shown in describe composition — keep in sync with RBAC builder
+				"…", // shown in describe CAPABILITIES — keep in sync with RBAC builder
 			},
 			Restrictions: []string{
 				"…",
@@ -102,7 +102,7 @@ func kubeReadRBAC(targetType string) []actions.RBACRule {
 }
 ```
 
-AWS scopes have no `RBAC` func; the executor maps profile **`name`** to `BREAKGLASS_AWS_*_ROLE_ARN` (like TA `scope`+`type` → `AWS_*_ROLE_ARN`). IAM policy text lives in Terraform; **`iam_composition`** in Go is operator-facing only.
+AWS profiles have no `RBAC` func; the executor maps profile **`name`** to `BREAKGLASS_AWS_*_ROLE_ARN` (like TA `scope`+`type` → `AWS_*_ROLE_ARN`). IAM policy text lives in Terraform; **`iam_composition`** in Go is operator-facing only.
 
 ### 3. Approval metadata
 
@@ -112,21 +112,21 @@ Use the same `authorization.approval` field as Trusted Actions (`none` in v1). S
 
 `go test ./pkg/breakglass/...` is the PR gate (parallel to `pkg/actions/conformance_test.go`):
 
-- Subtest per registered scope id (catalog size is discovered from the registry, not hardcoded)
+- Subtest per registered profile id (catalog size is discovered from the registry, not hardcoded)
 - Metadata, authorization clocks, kube vs aws shape (`RBAC` vs `iam_composition`)
-- `ValidateScope` / `ValidateAllScopes` — reuses TA forbidden RBAC patterns plus break-glass type rules (secrets read only on **elevated**; read/write without write verbs on read; only elevated `pods/exec`; no RBAC bind mutations; `serviceaccounts` get/list/watch on read+)
-- One `*_test.go` per scope id (`kube_read_test.go` → `kube_read`)
-- One `.go` implementation file per scope id (`aws_write.go` → `aws_write`)
+- `ValidateProfile` / `ValidateAllProfiles` — reuses TA forbidden RBAC patterns plus break-glass type rules (secrets read only on **elevated**; read/write without write verbs on read; only elevated `pods/exec`; no RBAC bind mutations; `serviceaccounts` get/list/watch on read+)
+- One `*_test.go` per profile id (`kube_read_test.go` → `kube_read`)
+- One `.go` implementation file per profile id (`aws_write.go` → `aws_write`)
 
 Extend `shippedApproval` in `conformance_test.go` when the approval workflow epic adds peer approve to the catalog.
 
-## Scope dimensions
+## Catalog dimensions
 
 | Field | Values | Notes |
 | ----- | ------ | ----- |
-| `Plane` | `kube`, `aws` | Audit/metrics plane; align with TA scope labels when we drop the `-api` suffix |
-| `Type` | `read`, `write`, `elevated` | Same vocabulary as TA `type` |
-| `ID` | `kube_read`, … | CLI/API `--scope` and Dynamo `scope` |
+| `scope` | `kube`, `aws` | Credential surface; same meaning as TA list filter `--scope` |
+| `type` | `read`, `write`, `elevated` | Same vocabulary as TA `type` (TA API rejects `elevated`) |
+| `name` | `kube_read`, … | Profile id for CLI/API request body |
 
 ## Discovering profiles
 
@@ -136,7 +136,7 @@ From the boundary: `zoa breakglass profiles`, `zoa breakglass describe <profile>
 
 | Package | Role |
 | ------- | ---- |
-| `pkg/breakglass` | Scope catalog (this guide) |
+| `pkg/breakglass` | Profile catalog (this guide) |
 | `pkg/breakglass/active` | Boundary `active` JSON + credential paths |
 | `pkg/api/breakglass_*` | HTTP API |
 | `pkg/executor/breakglass_*` | RBAC + STS on activate |

@@ -36,7 +36,7 @@ func TestCredentialDurationForGrant_WhenGrantBelowKubeMin_ItShouldReturnGrantToo
 		t.Fatalf("expected *GrantTooShortError, got %T: %v", err, err)
 	}
 	if short.Scope != ScopeKube {
-		t.Fatalf("plane = %q", short.Scope)
+		t.Fatalf("scope = %q", short.Scope)
 	}
 	if !errors.Is(err, ErrGrantTooShortForCredential) {
 		t.Fatalf("expected ErrGrantTooShortForCredential in chain")
@@ -53,7 +53,7 @@ func TestCredentialDurationForGrant_WhenGrantBelowAWSMin_ItShouldReturnGrantTooS
 		t.Fatalf("expected *GrantTooShortError, got %T", err)
 	}
 	if short.Scope != ScopeAWS {
-		t.Fatalf("plane = %q", short.Scope)
+		t.Fatalf("scope = %q", short.Scope)
 	}
 }
 

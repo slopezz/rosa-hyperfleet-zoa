@@ -1,6 +1,6 @@
 # Break-Glass — Credential Architecture
 
-This document explains how **temporary** Kubernetes and AWS credentials are created, wired into the boundary shell, and torn down. It mirrors the structure of [Trusted Action execution flows](../architecture/implementation.md) (sync vs async there; **kube plane vs AWS plane** here).
+This document explains how **temporary** Kubernetes and AWS credentials are created, wired into the boundary shell, and torn down. It mirrors the structure of [Trusted Action execution flows](../architecture/implementation.md) (sync vs async there; **kube vs aws credential scope** here).
 
 | Audience       | Read instead                                                                          |
 | -------------- | ------------------------------------------------------------------------------------- |
@@ -48,11 +48,11 @@ sequenceDiagram
     Note over B: stock kubectl / aws (not zoa run)
 ```
 
-**Activate is not implicit:** `request --wait` and `get --wait` only poll **approval**; the operator must run `zoa breakglass activate` explicitly (`internal/cli/breakglass.go`).
+**Activate is not implicit:** `request --wait` and `get --wait` only poll **approval**; the operator must run `zoa breakglass activate` explicitly (`internal/cli/breakglass_flow.go`).
 
-## Activate flow (kube plane)
+## Activate flow (kube scope)
 
-Scope metadata `plane: kube` drives RBAC from `pkg/breakglass/` (same RBAC structs as TAs, but **per-request** identity, not per-execution).
+Profile metadata `scope: kube` drives RBAC from `pkg/breakglass/` (same RBAC structs as TAs, but **per-request** identity, not per-execution).
 
 ```mermaid
 sequenceDiagram
@@ -74,7 +74,7 @@ sequenceDiagram
 
 The API Lambda **control-plane client** creates resources; the boundary task role does **not** need permission to create cluster RBAC or to call `AssumeRole` for break-glass AWS roles.
 
-## Activate flow (AWS plane)
+## Activate flow (aws scope)
 
 AWS break-glass profiles (`aws_read`, `aws_write`, `aws_elevated`) select a **pre-provisioned** IAM role via profile **`name`** → `BREAKGLASS_AWS_*_ROLE_ARN` (Terraform `breakglass_iam.tf` in **rosa-seaplane**). The Lambda execution role may `sts:AssumeRole` only into those roles.
 
@@ -101,12 +101,12 @@ sequenceDiagram
 
 Parallel to [What Gets Created](../architecture/implementation.md#what-gets-created) for TAs — break-glass favors **interactive** stock CLIs over a single Lambda execution.
 
-### Kube plane
+### Kube scope
 
 | Artifact              | Name / location                                   | Lifetime                                  |
 | --------------------- | ------------------------------------------------- | ----------------------------------------- |
 | ServiceAccount        | `zoa-jobs/zoa-bg-<requestId>`                     | Until worker GC after grant expiry        |
-| ClusterRole + Binding | Rules from scope RBAC (`ClusterScoped: true`)     | Same                                      |
+| ClusterRole + Binding | Rules from profile RBAC (`ClusterScoped: true`)   | Same                                      |
 | Bearer token          | TokenRequest; not a long-lived Secret             | ≤ **1h** (also capped by grant time left) |
 | Boundary files        | `~/.config/zoa/breakglass/<requestId>/kubeconfig` | Operator disk in boundary home            |
 | Shell env             | `KUBECONFIG` via `active` + `PROMPT_COMMAND`      | While grant active and file present       |
@@ -115,13 +115,13 @@ Parallel to [What Gets Created](../architecture/implementation.md#what-gets-crea
 
 Code path: `EnsureBreakglassKube` → `createBreakglassResourcesIdempotent` (`pkg/executor/breakglass_resources.go`), token issue (`pkg/executor/breakglass_kube.go`), HTTP handler `handleActivateBreakglassRequest` (`pkg/api/breakglass.go`).
 
-### AWS plane
+### Aws scope
 
 | Artifact       | Name / location                                                 | Lifetime                                           |
 | -------------- | --------------------------------------------------------------- | -------------------------------------------------- |
 | IAM session    | Assumed role from `BREAKGLASS_AWS_*_ROLE_ARN` env on API Lambda | **15m–1h** STS session                             |
 | Session name   | `zoa-bg-<requestId>`                                            | Appears in CloudTrail `Username` / session context |
-| Boundary files | `~/.config/zoa/breakglass/aws-credentials` (`[default]`)        | Rewritten on each aws-scope activate               |
+| Boundary files | `~/.config/zoa/breakglass/aws-credentials` (`[default]`)        | Rewritten on each aws scope activate               |
 | Shell env      | `AWS_SHARED_CREDENTIALS_FILE` when aws grant active             | No `AWS_PROFILE`                                   |
 
 No S3 job, no async runner, and no per-activation K8s Job — credentials return in the **activate HTTP response** and are written locally by the CLI (`internal/cli/breakglass_activate.go`).
@@ -130,11 +130,11 @@ No S3 job, no async runner, and no per-activation K8s Job — credentials return
 
 | Clock           | Source                                                          | Effect                                                                                          |
 | --------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| **Request TTL** | Scope `default_request_hours` → `request_expires_at`            | Pending request expires without decision                                                          |
-| **Grant**       | Scope `default_grant_hours` at approve → `grant_expires_at`     | After expiry, `activate` returns gone; reconciler sets `status=expired`                          |
+| **Request TTL** | Profile `default_request_hours` → `request_expires_at`          | Pending request expires without decision                                                          |
+| **Grant**       | Profile `default_grant_hours` at approve → `grant_expires_at`   | After expiry, `activate` returns gone; reconciler sets `status=expired`                          |
 | **Credential**  | `pkg/breakglass/credential.go` max + `min(grant left, max)`     | `kubectl` / `aws` stop when creds expire **even if grant still valid**; **409** if grant left &lt; API min |
 
-Operators see grant + cred in PS1 (`grant~…`, `cred~…`); `active` stores `credentialExpiresAt`. Catalog: `zoa breakglass describe` / `scopes` (request, grant, credential TTL). Full UX: [README — Two clocks](README.md#two-clocks-grant-vs-credentials).
+Operators see grant + cred in PS1 (`grant~…`, `cred~…`); `active` stores `credentialExpiresAt`. Catalog: `zoa breakglass describe` / `profiles` (request, grant, credential TTL). Full UX: [README — Two clocks](README.md#two-clocks-grant-vs-credentials).
 
 **Refresh:** `zoa breakglass activate <same-request-id>` again from the **same boundary task** while `status=active`, `approval=approved`, and before `grant_expires_at`. Re-activate replaces tokens and STS keys; it does not create a new request.
 
@@ -199,7 +199,7 @@ Executor env mirrors TA EKS settings (`EKS_CLUSTER_*`, `ZOA_JOBS_NAMESPACE`) bec
 
 | Package                        | Role                                           |
 | ------------------------------ | ---------------------------------------------- |
-| `pkg/breakglass/`              | Scope catalog (plane, RBAC or IAM composition, TTL) |
+| `pkg/breakglass/`              | Profile catalog (scope kube\|aws, RBAC or IAM composition, TTL) |
 | `pkg/api/breakglass.go`        | HTTP: request, approve, activate, list         |
 | `pkg/executor/breakglass_*.go` | Kube RBAC + token, STS assume                  |
 | `pkg/store/`                   | Break-glass request persistence                |

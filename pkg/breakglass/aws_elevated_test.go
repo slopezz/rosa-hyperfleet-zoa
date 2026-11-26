@@ -9,12 +9,12 @@ func TestAwsElevatedScope_WhenRegistered_ItShouldMatchCatalogContract(t *testing
 	}
 	meta := def.Metadata
 	if meta.Scope != ScopeAWS || meta.Type != TypeElevated {
-		t.Fatalf("unexpected plane/type: %s %s", meta.Scope, meta.Type)
+		t.Fatalf("unexpected scope/type: %s %s", meta.Scope, meta.Type)
 	}
 	if meta.Authorization.DefaultGrantHours > 2 {
 		t.Fatalf("elevated grant hours must be <= 2, got %d", meta.Authorization.DefaultGrantHours)
 	}
-	if err := ValidateScope(def); err != nil {
+	if err := ValidateProfile(def); err != nil {
 		t.Fatal(err)
 	}
 }

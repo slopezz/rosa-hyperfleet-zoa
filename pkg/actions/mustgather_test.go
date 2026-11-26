@@ -111,7 +111,7 @@ func TestMustGatherMetadata(t *testing.T) {
 		if meta.TimeoutSeconds != mustGatherTimeout {
 			t.Errorf("expected timeout %d, got %d", mustGatherTimeout, meta.TimeoutSeconds)
 		}
-		if meta.Scope != "kube" {
+		if meta.Scope != ScopeKube {
 			t.Errorf("expected scope 'kube', got %q", meta.Scope)
 		}
 		if meta.Type != "read" {

@@ -45,9 +45,9 @@ type getDBResource struct{}
 func (a *getDBResource) Metadata() ActionMetadata {
 	return ActionMetadata{
 		Name:          "get_db_resource",
-		Scope:         "aws",
-		Type:          "read",
-		ExecutionMode: "sync",
+		Scope:         ScopeAWS,
+		Type:          TypeRead,
+		ExecutionMode: ExecutionModeSync,
 		Description:   "Get or list Seaplane control-plane resources directly from the seaplane-db (Aurora PostgreSQL) by GVK, namespace, and name.",
 		Authorization: AuthorizationConfig{Approval: "none"},
 		// RC only: seaplane-db lives in the regional cluster VPC.

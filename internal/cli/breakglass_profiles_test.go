@@ -52,30 +52,3 @@ func TestRenderBreakglassProfiles_WhenJSON_ItShouldEmitListEnvelope(t *testing.T
 		t.Fatalf("unexpected json: %+v", decoded)
 	}
 }
-
-func TestProfileCatalogApproval_WhenAuthorizationMissing_ItShouldReturnEmpty(t *testing.T) {
-	if profileCatalogApproval(client.ProfileMetadata{}) != "" {
-		t.Fatal("expected empty")
-	}
-}
-
-func TestProfileCatalogGrantTTL_WhenHoursPresent_ItShouldFormatDuration(t *testing.T) {
-	s := client.ProfileMetadata{Authorization: map[string]interface{}{"default_grant_hours": float64(1)}}
-	if profileCatalogGrantTTL(s) != "1h" {
-		t.Fatalf("got %q", profileCatalogGrantTTL(s))
-	}
-}
-
-func TestProfileCatalogRequestTTL_WhenHoursPresent_ItShouldFormatDuration(t *testing.T) {
-	s := client.ProfileMetadata{Authorization: map[string]interface{}{"default_request_hours": float64(8)}}
-	if profileCatalogRequestTTL(s) != "8h" {
-		t.Fatalf("got %q", profileCatalogRequestTTL(s))
-	}
-}
-
-func TestProfileCatalogCredentialTTL_WhenScopeSet_ItShouldUsePlatformMax(t *testing.T) {
-	s := client.ProfileMetadata{Scope: "kube"}
-	if profileCatalogCredentialTTL(s) != "1h" {
-		t.Fatalf("got %q", profileCatalogCredentialTTL(s))
-	}
-}

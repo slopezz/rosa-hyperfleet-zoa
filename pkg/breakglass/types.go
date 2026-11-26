@@ -1,14 +1,17 @@
 package breakglass
 
-import "github.com/openshift-online/rosa-seaplane-zoa/pkg/actions"
+import (
+	"github.com/openshift-online/rosa-seaplane-zoa/pkg/actions"
+	catalogpkg "github.com/openshift-online/rosa-seaplane-zoa/pkg/catalog"
+)
 
 const (
-	ScopeKube = "kube"
-	ScopeAWS  = "aws"
+	ScopeKube = catalogpkg.ScopeKube
+	ScopeAWS  = catalogpkg.ScopeAWS
 
-	TypeRead     = "read"
-	TypeWrite    = "write"
-	TypeElevated = "elevated"
+	TypeRead     = catalogpkg.TypeRead
+	TypeWrite    = catalogpkg.TypeWrite
+	TypeElevated = catalogpkg.TypeElevated
 )
 
 // Authorization mirrors profile approval workflow defaults (snapshotted on create).

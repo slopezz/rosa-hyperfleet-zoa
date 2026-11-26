@@ -40,9 +40,9 @@ func (e *GrantTooShortError) Error() string {
 
 func (e *GrantTooShortError) Unwrap() error { return ErrGrantTooShortForCredential }
 
-// CredentialMaxSeconds returns the platform max credential lifetime for activate on the given plane.
-func CredentialMaxSeconds(plane string) int64 {
-	switch plane {
+// CredentialMaxSeconds returns the platform max credential lifetime for activate on the given scope (kube or aws).
+func CredentialMaxSeconds(scope string) int64 {
+	switch scope {
 	case ScopeAWS:
 		return AWSCredentialMaxSeconds
 	case ScopeKube:
@@ -52,9 +52,9 @@ func CredentialMaxSeconds(plane string) int64 {
 	}
 }
 
-// CredentialMinSeconds returns the cloud API minimum credential lifetime for the plane.
-func CredentialMinSeconds(plane string) int64 {
-	switch plane {
+// CredentialMinSeconds returns the cloud API minimum credential lifetime for the scope (kube or aws).
+func CredentialMinSeconds(scope string) int64 {
+	switch scope {
 	case ScopeAWS:
 		return MinAWSCredentialSeconds
 	case ScopeKube:
@@ -65,34 +65,34 @@ func CredentialMinSeconds(plane string) int64 {
 }
 
 // CredentialMaxDuration returns the platform max credential lifetime as a time.Duration.
-func CredentialMaxDuration(plane string) time.Duration {
-	return time.Duration(CredentialMaxSeconds(plane)) * time.Second
+func CredentialMaxDuration(scope string) time.Duration {
+	return time.Duration(CredentialMaxSeconds(scope)) * time.Second
 }
 
 // CredentialMaxTTLDisplay formats the platform max for CLI/catalog (e.g. "1h").
-func CredentialMaxTTLDisplay(plane string) string {
-	return formatCredentialDuration(CredentialMaxDuration(plane))
+func CredentialMaxTTLDisplay(scope string) string {
+	return formatCredentialDuration(CredentialMaxDuration(scope))
 }
 
-// CredentialDurationForGrant returns how long to ask STS/TokenRequest for: min(remaining, plane max), or GrantTooShortError if below API min.
-func CredentialDurationForGrant(plane string, grantRemaining time.Duration) (time.Duration, error) {
+// CredentialDurationForGrant returns how long to ask STS/TokenRequest for: min(remaining, scope max), or GrantTooShortError if below API min.
+func CredentialDurationForGrant(scope string, grantRemaining time.Duration) (time.Duration, error) {
 	if grantRemaining <= 0 {
 		return 0, &GrantTooShortError{
-			Scope:         plane,
+			Scope:         scope,
 			Remaining:     grantRemaining,
-			MinCredential: time.Duration(CredentialMinSeconds(plane)) * time.Second,
-			MaxCredential: CredentialMaxDuration(plane),
+			MinCredential: time.Duration(CredentialMinSeconds(scope)) * time.Second,
+			MaxCredential: CredentialMaxDuration(scope),
 		}
 	}
 	secs := int64(grantRemaining.Seconds())
-	max := CredentialMaxSeconds(plane)
+	max := CredentialMaxSeconds(scope)
 	if secs > max {
 		secs = max
 	}
-	min := CredentialMinSeconds(plane)
+	min := CredentialMinSeconds(scope)
 	if secs < min {
 		return 0, &GrantTooShortError{
-			Scope:         plane,
+			Scope:         scope,
 			Remaining:     grantRemaining,
 			MinCredential: time.Duration(min) * time.Second,
 			MaxCredential: time.Duration(max) * time.Second,
@@ -102,12 +102,12 @@ func CredentialDurationForGrant(plane string, grantRemaining time.Duration) (tim
 }
 
 // ActivateGrantTooShortMessage is the user-facing API/CLI reason for HTTP 409 grant_too_short.
-func ActivateGrantTooShortMessage(plane string, grantRemaining time.Duration) string {
-	min := time.Duration(CredentialMinSeconds(plane)) * time.Second
+func ActivateGrantTooShortMessage(scope string, grantRemaining time.Duration) string {
+	min := time.Duration(CredentialMinSeconds(scope)) * time.Second
 	return fmt.Sprintf(
 		"remaining grant time (%s) is below the minimum %s break-glass credential lifetime (%s); submit a new break-glass request",
 		formatCredentialDuration(grantRemaining),
-		plane,
+		scope,
 		formatCredentialDuration(min),
 	)
 }

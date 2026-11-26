@@ -19,13 +19,13 @@ func FormatDescribeHuman(w io.Writer, p *client.ProfileMetadata) {
 	fmt.Fprintf(w, "NAME:        %s\n", p.Name)
 	fmt.Fprintf(w, "SCOPE:       %s\n", p.Scope)
 	fmt.Fprintf(w, "TYPE:        %s\n", p.Type)
-	if v := authString(p, "approval"); v != "" {
+	if v := AuthString(*p, "approval"); v != "" {
 		fmt.Fprintf(w, "APPROVAL:    %s\n", v)
 	}
-	if ttl := requestTTL(p); ttl != "" {
+	if ttl := requestTTLDescribe(p); ttl != "" {
 		fmt.Fprintf(w, "Request TTL: %s (decision must complete before request expires)\n", ttl)
 	}
-	if ttl := grantTTL(p); ttl != "" {
+	if ttl := grantTTLDescribe(p); ttl != "" {
 		fmt.Fprintf(w, "Grant TTL:   %s after approve\n", ttl)
 	}
 	if p.Scope != "" {
@@ -42,13 +42,9 @@ func FormatDescribeHuman(w io.Writer, p *client.ProfileMetadata) {
 		fmt.Fprintf(w, "  %-28s %s%s\n", m.Flags, m.Description, req)
 	}
 
-	composition := p.Composition
-	if len(composition) == 0 {
-		composition = p.Capabilities
-	}
-	if len(composition) > 0 {
+	if len(p.Capabilities) > 0 {
 		fmt.Fprintf(w, "\nCAPABILITIES:\n")
-		for _, c := range composition {
+		for _, c := range p.Capabilities {
 			fmt.Fprintf(w, "  • %s\n", c)
 		}
 	}
@@ -93,7 +89,7 @@ func FormatCatalogMarkdown(p *client.ProfileMetadata, targetTypes []string) stri
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "## %s\n\n", p.Name)
-	approval := authString(p, "approval")
+	approval := AuthString(*p, "approval")
 	if approval == "" {
 		approval = "—"
 	}
@@ -103,17 +99,13 @@ func FormatCatalogMarkdown(p *client.ProfileMetadata, targetTypes []string) stri
 	}
 	fmt.Fprintf(&b, "- %s\n\n", p.Description)
 
-	composition := p.Composition
-	if len(composition) == 0 {
-		composition = p.Capabilities
-	}
-	for _, c := range composition {
+	for _, c := range p.Capabilities {
 		fmt.Fprintf(&b, "- %s\n", c)
 	}
 	for _, r := range p.Restrictions {
 		fmt.Fprintf(&b, "- ✗ %s\n", r)
 	}
-	if len(composition) > 0 || len(p.Restrictions) > 0 {
+	if len(p.Capabilities) > 0 || len(p.Restrictions) > 0 {
 		b.WriteString("\n")
 	}
 
@@ -129,52 +121,16 @@ func FormatCatalogMarkdown(p *client.ProfileMetadata, targetTypes []string) stri
 	return b.String()
 }
 
-func authString(p *client.ProfileMetadata, key string) string {
-	if p.Authorization == nil {
+func requestTTLDescribe(p *client.ProfileMetadata) string {
+	if p == nil {
 		return ""
 	}
-	raw, ok := p.Authorization[key]
-	if !ok || raw == nil {
-		return ""
-	}
-	if v, ok := raw.(string); ok {
-		return v
-	}
-	return fmt.Sprint(raw)
+	return RequestTTL(*p)
 }
 
-func requestTTL(p *client.ProfileMetadata) string {
-	h := authInt(p, "default_request_hours")
-	if h <= 0 {
+func grantTTLDescribe(p *client.ProfileMetadata) string {
+	if p == nil {
 		return ""
 	}
-	return fmt.Sprintf("%dh", h)
-}
-
-func grantTTL(p *client.ProfileMetadata) string {
-	h := authInt(p, "default_grant_hours")
-	if h <= 0 {
-		return ""
-	}
-	return fmt.Sprintf("%dh", h)
-}
-
-func authInt(p *client.ProfileMetadata, key string) int {
-	if p.Authorization == nil {
-		return 0
-	}
-	raw, ok := p.Authorization[key]
-	if !ok || raw == nil {
-		return 0
-	}
-	switch v := raw.(type) {
-	case int:
-		return v
-	case int64:
-		return int(v)
-	case float64:
-		return int(v)
-	default:
-		return 0
-	}
+	return GrantTTL(*p)
 }

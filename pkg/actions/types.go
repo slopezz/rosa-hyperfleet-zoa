@@ -9,6 +9,8 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+
+	catalogpkg "github.com/openshift-online/rosa-seaplane-zoa/pkg/catalog"
 )
 
 type Action interface {
@@ -24,6 +26,14 @@ type Params = map[string]string
 const (
 	TargetTypeRC = "rc"
 	TargetTypeMC = "mc"
+
+	ScopeKube = catalogpkg.ScopeKube
+	ScopeAWS  = catalogpkg.ScopeAWS
+	TypeRead  = catalogpkg.TypeRead
+	TypeWrite = catalogpkg.TypeWrite
+
+	ExecutionModeSync  = "sync"
+	ExecutionModeAsync = "async"
 )
 
 type ActionMetadata struct {

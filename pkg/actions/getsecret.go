@@ -30,9 +30,9 @@ type getSecretAction struct{}
 func (a *getSecretAction) Metadata() ActionMetadata {
 	return ActionMetadata{
 		Name:           "get_secret",
-		Scope:          "kube",
-		Type:           "read",
-		ExecutionMode:  "sync",
+		Scope:         ScopeKube,
+		Type:          TypeRead,
+		ExecutionMode: ExecutionModeSync,
 		Description:    "Get Kubernetes secrets with HCP namespace protection. Shows secret metadata and data keys by default; use verbose for base64 values.",
 		Authorization:  AuthorizationConfig{Approval: "none"},
 		TargetTypes:    []string{TargetTypeRC, TargetTypeMC},

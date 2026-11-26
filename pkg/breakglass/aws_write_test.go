@@ -9,9 +9,9 @@ func TestAwsWriteScope_WhenRegistered_ItShouldMatchCatalogContract(t *testing.T)
 	}
 	meta := def.Metadata
 	if meta.Scope != ScopeAWS || meta.Type != TypeWrite {
-		t.Fatalf("unexpected plane/type: %s %s", meta.Scope, meta.Type)
+		t.Fatalf("unexpected scope/type: %s %s", meta.Scope, meta.Type)
 	}
-	if err := ValidateScope(def); err != nil {
+	if err := ValidateProfile(def); err != nil {
 		t.Fatal(err)
 	}
 }

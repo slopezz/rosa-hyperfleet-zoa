@@ -26,7 +26,7 @@ func register(def *Definition) {
 	defer mu.Unlock()
 	id := def.Metadata.Name
 	if _, exists := catalog[id]; exists {
-		panic(fmt.Sprintf("scope %q already registered", id))
+		panic(fmt.Sprintf("profile %q already registered", id))
 	}
 	catalog[id] = def
 }

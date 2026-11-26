@@ -54,15 +54,15 @@ zoa_breakglass_expire_stanzas() {
   fi
   now="$(zoa_breakglass_now_epoch)"
   changed=0
-  for plane in kube aws; do
+  for scope in kube aws; do
     local exp epoch
-    exp="$(jq -r --arg p "${plane}" '.[$p].grantExpiresAt // empty' "${active}")"
+    exp="$(jq -r --arg p "${scope}" '.[$p].grantExpiresAt // empty' "${active}")"
     if [[ -z "${exp}" ]]; then
       continue
     fi
     epoch="$(zoa_breakglass_expire_to_epoch "${exp}")"
     if [[ -n "${epoch}" && "${epoch}" -le "${now}" ]]; then
-      jq --arg p "${plane}" 'del(.[$p])' "${active}" > "${active}.tmp" \
+      jq --arg p "${scope}" 'del(.[$p])' "${active}" > "${active}.tmp" \
         && mv "${active}.tmp" "${active}"
       changed=1
     fi
@@ -100,18 +100,18 @@ zoa_breakglass_apply_env() {
 }
 
 zoa_breakglass_ps1_part() {
-  local plane="$1"
+  local scope="$1"
   local active="$2"
-  local scope exp grant_left credential_exp cred_left part
-  scope="$(jq -r --arg p "${plane}" '.[$p].name // empty' "${active}")"
-  if [[ -z "${scope}" ]]; then
+  local profile exp grant_left credential_exp cred_left part
+  profile="$(jq -r --arg p "${scope}" '.[$p].name // empty' "${active}")"
+  if [[ -z "${profile}" ]]; then
     return 0
   fi
-  exp="$(jq -r --arg p "${plane}" '.[$p].grantExpiresAt // empty' "${active}")"
+  exp="$(jq -r --arg p "${scope}" '.[$p].grantExpiresAt // empty' "${active}")"
   grant_left="$(zoa_breakglass_time_left "${exp}")"
-  credential_exp="$(jq -r --arg p "${plane}" '.[$p].credentialExpiresAt // empty' "${active}")"
+  credential_exp="$(jq -r --arg p "${scope}" '.[$p].credentialExpiresAt // empty' "${active}")"
   cred_left="$(zoa_breakglass_time_left "${credential_exp}")"
-  part="${plane}=${scope}"
+  part="${scope}=${profile}"
   if [[ -n "${grant_left}" ]]; then
     part="${part} grant${grant_left}"
   fi

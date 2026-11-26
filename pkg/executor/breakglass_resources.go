@@ -32,7 +32,7 @@ func (e *Executor) EnsureBreakglassKube(ctx context.Context, requestID, scopeID 
 		return "", fmt.Errorf("unknown kube scope %q", scopeID)
 	}
 	if def.Metadata.Scope != breakglass.ScopeKube {
-		return "", fmt.Errorf("scope %q is not a kube plane scope", scopeID)
+		return "", fmt.Errorf("profile %q is not a kube-scope profile", scopeID)
 	}
 	if err := e.ensureNamespace(ctx); err != nil {
 		return "", fmt.Errorf("ensuring namespace: %w", err)

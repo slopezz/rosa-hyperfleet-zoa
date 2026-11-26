@@ -51,7 +51,6 @@ type ProfileMetadata struct {
 	Authorization   map[string]interface{} `json:"authorization,omitempty"`
 	Capabilities    []string               `json:"capabilities,omitempty"`
 	Restrictions    []string               `json:"restrictions,omitempty"`
-	Composition     []string               `json:"composition,omitempty"`
 	IAMComposition  []string               `json:"iam_composition,omitempty"`
 	RBAC            []ProfileRBACRule      `json:"rbac,omitempty"`
 	TargetType      string                 `json:"target_type,omitempty"`

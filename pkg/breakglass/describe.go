@@ -4,10 +4,9 @@ import (
 	"github.com/openshift-online/rosa-seaplane-zoa/pkg/actions"
 )
 
-// ProfileDescribe is the operator-facing scope detail (list endpoints omit rbac/composition).
+// ProfileDescribe is operator-facing profile detail (list endpoints omit rbac).
 type ProfileDescribe struct {
 	ProfileMetadata
-	Composition    []string           `json:"composition,omitempty"`
 	IAMComposition []string           `json:"iam_composition,omitempty"`
 	RBAC           []actions.RBACRule `json:"rbac,omitempty"`
 	TargetType     string             `json:"target_type,omitempty"`
@@ -20,7 +19,6 @@ func DescribeProfile(def *Definition, targetType string) ProfileDescribe {
 	}
 	out := ProfileDescribe{
 		ProfileMetadata: def.Metadata,
-		Composition:     append([]string(nil), def.Metadata.Capabilities...),
 		IAMComposition:  append([]string(nil), def.Metadata.IAMComposition...),
 		TargetType:      targetType,
 	}
@@ -36,4 +34,12 @@ func EffectiveRBAC(def *Definition, targetType string) []actions.RBACRule {
 		return nil
 	}
 	return def.RBAC(targetType)
+}
+
+// DefaultDescribeTargetType picks rc or mc when rendering RBAC on describe without Lambda target context.
+func DefaultDescribeTargetType(meta ProfileMetadata) string {
+	if len(meta.TargetTypes) == 1 {
+		return meta.TargetTypes[0]
+	}
+	return actions.TargetTypeMC
 }

@@ -12,7 +12,7 @@ import (
 	"github.com/openshift-online/rosa-seaplane-zoa/pkg/breakglass"
 )
 
-// Stanza is one active grant on a credential surface (kube or aws).
+// Stanza is one active grant on a credential scope (kube or aws).
 type Stanza struct {
 	RequestID           string `json:"requestId"`
 	Name                string `json:"name"`
@@ -20,7 +20,7 @@ type Stanza struct {
 	CredentialExpiresAt string `json:"credentialExpiresAt,omitempty"`
 }
 
-// Active holds at most one grant per plane.
+// Active holds at most one grant per scope (kube and aws stanzas).
 type Active struct {
 	Kube *Stanza `json:"kube,omitempty"`
 	AWS  *Stanza `json:"aws,omitempty"`
@@ -41,18 +41,18 @@ func AWSCredentialsPath(home string) string {
 	return filepath.Join(ConfigDir(home), "aws-credentials")
 }
 
-// ScopeForProfile resolves kube vs aws from the scope catalog.
-func ScopeForProfile(scopeID string) (string, error) {
-	if def, ok := breakglass.Get(scopeID); ok {
+// ScopeForProfile resolves credential scope (kube or aws) from the profile catalog.
+func ScopeForProfile(profileID string) (string, error) {
+	if def, ok := breakglass.Get(profileID); ok {
 		return def.Metadata.Scope, nil
 	}
 	switch {
-	case strings.HasPrefix(scopeID, "aws-"):
+	case strings.HasPrefix(profileID, "aws_"):
 		return breakglass.ScopeAWS, nil
-	case strings.HasPrefix(scopeID, "kube-"):
+	case strings.HasPrefix(profileID, "kube_"):
 		return breakglass.ScopeKube, nil
 	default:
-		return "", fmt.Errorf("active: unknown scope %q", scopeID)
+		return "", fmt.Errorf("active: unknown profile %q", profileID)
 	}
 }
 
@@ -97,10 +97,10 @@ func Write(home string, a *Active) error {
 	return os.WriteFile(ActivePath(home), data, 0o600)
 }
 
-// Activate merges one stanza for the scope's plane (replaces prior grant on that plane).
+// Activate merges one stanza for the profile's scope (replaces prior grant on that scope).
 // At most one active kube and one active aws grant; e.g. kube_write replaces kube_read in active + PS1.
 func Activate(home string, stanza Stanza) error {
-	plane, err := ScopeForProfile(stanza.Name)
+	scope, err := ScopeForProfile(stanza.Name)
 	if err != nil {
 		return err
 	}
@@ -108,13 +108,13 @@ func Activate(home string, stanza Stanza) error {
 	if err != nil {
 		return err
 	}
-	switch plane {
+	switch scope {
 	case breakglass.ScopeKube:
 		a.Kube = &stanza
 	case breakglass.ScopeAWS:
 		a.AWS = &stanza
 	default:
-		return fmt.Errorf("active: unsupported plane %q", plane)
+		return fmt.Errorf("active: unsupported scope %q", scope)
 	}
 	return Write(home, a)
 }

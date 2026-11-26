@@ -156,7 +156,7 @@ func renderBreakglassGetHuman(w io.Writer, req *client.BreakglassRequest, timedO
 	next := breakglassRequestNextStep(req, deployment, timedOut)
 
 	fmt.Fprintf(w, "ID:        %s\n", req.RequestID)
-	fmt.Fprintf(w, "SCOPE:     %s\n", req.Name)
+	fmt.Fprintf(w, "PROFILE:   %s\n", req.Name)
 	fmt.Fprintf(w, "TARGET:    %s\n", breakglassTargetCluster(req.TargetCluster))
 	fmt.Fprintf(w, "STATUS:    %s\n", breakglassLifecycleStatus(req))
 	fmt.Fprintf(w, "APPROVAL:  %s\n", breakglassWorkflowApproval(req))
