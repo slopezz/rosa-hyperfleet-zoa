@@ -141,4 +141,4 @@ From the boundary: `zoa breakglass profiles`, `zoa breakglass describe <profile>
 | `pkg/api/breakglass_*` | HTTP API |
 | `pkg/executor/breakglass_*` | RBAC + STS on activate |
 
-**Design archive:** long-form RBAC tables in [break-glass/proposal.md](break-glass/proposal.md) §5.8.3 are not the implementation source of truth — trust `pkg/breakglass/` + this guide.
+**Source of truth:** `pkg/breakglass/` and this guide — not historical design drafts.

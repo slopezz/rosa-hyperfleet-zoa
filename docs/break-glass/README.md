@@ -9,7 +9,6 @@ Emergency scoped `kubectl` / `aws` from the **boundary** only. Same patterns as 
 | [Approval workflow (TA + BG)](../approval-workflow.md)         | Approval policy (`none` today; gist/OPA planned)                                                               |
 | [API reference — break-glass](../api-reference.md#break-glass) | HTTP routes                                                                                                    |
 | [CLI reference — break-glass](../cli-reference.md#break-glass) | Operator commands                                                                                              |
-| [Feature proposal](proposal.md)                                | Long-form design archive only — **not** merged with operator docs                                              |
 
 ## Quick flow
 
