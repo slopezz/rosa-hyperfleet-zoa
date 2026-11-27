@@ -308,18 +308,19 @@ Read [Trusted Actions guide](../trusted-actions.md) for authoring; [CLAUDE.md](h
 **Break-glass (last resort):** prefer **`zoa run`**. When no TA fits the operation, use break-glass once, then add a TA so the next incident does not need raw access.
 
 ```bash
-# 1) Confirm nothing in the catalog covers the task
+# 1) Check the registered Trusted Actions first
 zoa actions
-zoa describe get_resource   # example — pick the closest read TA first
+zoa describe get_resource
+zoa describe delete_pod
 
-# 2) Escalate only when stuck (e.g. no delete_pod TA for a one-off finalizer)
+# 2) Break-glass only when no TA in the catalog covers the operation
 zoa breakglass profiles --scope kube
 zoa breakglass describe kube_write
 zoa breakglass request kube_write --reason ROSAENG-1234 --wait
 
 # 3) Activate in THIS boundary target (RC grant from RC session, MC grant from that MC)
 zoa breakglass activate <request-id>
-kubectl …   # PS1 shows kube=kube_write | grant countdown
+kubectl get pods -n kube-system
 
 # 4) Laptop peer approve only when profile policy is not approval: none (v1: skip)
 # zoa approve <deployment>/<request-id>

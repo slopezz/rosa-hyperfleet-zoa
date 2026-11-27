@@ -341,7 +341,8 @@ zoa audit --since 2026-08-01 --until 2026-08-15
 ```bash
 # Last resort after checking the catalog (same boundary session as the incident)
 zoa actions
-zoa describe delete_stuck_finalizer   # hypothetical — if missing, consider break-glass
+zoa describe get_resource
+# If no registered TA covers the operation, use break-glass (see break-glass/README.md).
 
 zoa breakglass profiles
 zoa breakglass describe kube_write
