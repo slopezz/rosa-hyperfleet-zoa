@@ -2,12 +2,63 @@ package cli
 
 import (
 	"bytes"
+	"context"
+	"net/url"
 	"strings"
 	"testing"
 
 	"github.com/openshift-online/rosa-seaplane-zoa/internal/client"
 	"github.com/openshift-online/rosa-seaplane-zoa/internal/output"
 )
+
+func TestListSessions_WhenCalled_ItShouldSetMineTrue(t *testing.T) {
+	mock := &mockClient{
+		listSessionsFn: func(_ context.Context, query url.Values) (*client.SessionList, error) {
+			if query.Get("mine") != "true" {
+				t.Fatal("list command must set mine=true")
+			}
+			if query.Get("scope") != "mine" {
+				t.Fatal("list command must set scope=mine for legacy Access")
+			}
+			return &client.SessionList{Items: []client.Session{}}, nil
+		},
+	}
+	global := newMockGlobalOpts(mock)
+	err := listSessions(context.Background(), global, sessionListOpts{
+		deployment: "us-east-1",
+		mine:       true,
+		since:      "24h",
+		limit:      50,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestListSessionsHistory_WhenCalled_ItShouldNotSetMine(t *testing.T) {
+	mock := &mockClient{
+		listSessionsFn: func(_ context.Context, query url.Values) (*client.SessionList, error) {
+			if query.Get("mine") != "" {
+				t.Fatal("history must not set mine=true")
+			}
+			if query.Get("operator") != "alice" {
+				t.Fatalf("expected operator filter, got %q", query.Get("operator"))
+			}
+			return &client.SessionList{Items: []client.Session{}}, nil
+		},
+	}
+	global := newMockGlobalOpts(mock)
+	err := listSessions(context.Background(), global, sessionListOpts{
+		deployment: "us-east-1",
+		fleetView:  true,
+		operator:   "alice",
+		since:      "24h",
+		limit:      50,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
 
 func TestFormatExecSessionsForTable(t *testing.T) {
 	tests := []struct {
@@ -114,64 +165,5 @@ func TestPrintSessionTable_WhenWide_ItShouldIncludeIdentityColumns(t *testing.T)
 		if !strings.Contains(out, want) {
 			t.Fatalf("expected output to contain %q, got:\n%s", want, out)
 		}
-	}
-}
-
-func TestResolveSessionStartArgs(t *testing.T) {
-	tests := []struct {
-		name           string
-		args           []string
-		flagDeployment string
-		flagTarget     string
-		wantDeployment string
-		wantTarget     string
-	}{
-		{
-			name:           "When both positional args are given it should use them",
-			args:           []string{"us-east-1", "mc01"},
-			wantDeployment: "us-east-1",
-			wantTarget:     "mc01",
-		},
-		{
-			name:           "When positional args are given they should override flags",
-			args:           []string{"us-east-1", "mc01"},
-			flagDeployment: "eu-west-1",
-			flagTarget:     "mc02",
-			wantDeployment: "us-east-1",
-			wantTarget:     "mc01",
-		},
-		{
-			name:           "When one positional arg is given it should be deployment with flag target",
-			args:           []string{"us-east-1"},
-			flagTarget:     "mc01",
-			wantDeployment: "us-east-1",
-			wantTarget:     "mc01",
-		},
-		{
-			name:           "When no positional args are given it should fall back to flags",
-			args:           []string{},
-			flagDeployment: "us-east-1",
-			flagTarget:     "mc01",
-			wantDeployment: "us-east-1",
-			wantTarget:     "mc01",
-		},
-		{
-			name:           "When nothing is provided it should return empty strings",
-			args:           []string{},
-			wantDeployment: "",
-			wantTarget:     "",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			deployment, target := resolveSessionStartArgs(tt.args, tt.flagDeployment, tt.flagTarget)
-			if deployment != tt.wantDeployment {
-				t.Errorf("deployment = %q, want %q", deployment, tt.wantDeployment)
-			}
-			if target != tt.wantTarget {
-				t.Errorf("target = %q, want %q", target, tt.wantTarget)
-			}
-		})
 	}
 }

@@ -81,7 +81,7 @@ TTL attribute: **`ttl`** (Unix epoch), set on write from **`DYNAMODB_TTL_DAYS`**
 | GSI                   | Keys                                                              | Used by                                                                                                                                                        |
 | --------------------- | ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `target-status-index` | PK `targetCluster`, SK `targetStatusKey` (`{status}#{timestamp}`) | Worker **`breakglassExpireGrants`** (`pending`, `active`), **`breakglassGarbageCollect`** (`expired`) per `TARGET_CLUSTER` ([worker routes](worker-routes.md)) |
-| `date-bucket-index`   | PK `dateBucket`, SK `createdAt`                                   | API **`ListAll`** / **`ListByOperator`** — `zoa breakglass` list/history/requests (`pkg/store/breakglass.go`)                                                  |
+| `date-bucket-index`   | PK `dateBucket`, SK `createdAt`                                   | API **`ListAll`** / **`ListByOperator`** — `zoa breakglass list` / `history` (`pkg/store/breakglass.go`)                                                        |
 
 **`targetStatusKey` suffix rules** (`BreakglassTargetStatusKey` in `pkg/store/breakglass.go`):
 
@@ -95,7 +95,7 @@ No **`task-id-index`**: break-glass does not use the identity-bridge path (opera
 
 ### List query pattern
 
-`zoa runs`, `zoa audit`, `zoa session list/history`, and **`zoa breakglass` list/history/requests** iterate **`date-bucket-index`** day-by-day from newest to oldest, with optional **FilterExpression** (target, operator, status, profile, etc.). CLI defaults **`--since 24h`** so queries stay bounded.
+`zoa runs`, `zoa audit`, `zoa session list/history`, and **`zoa breakglass list/history`** iterate **`date-bucket-index`** day-by-day from newest to oldest, with optional **FilterExpression** (target, operator, status, profile, etc.). CLI defaults **`--since 24h`** so queries stay bounded.
 
 ## S3 artifact bucket
 

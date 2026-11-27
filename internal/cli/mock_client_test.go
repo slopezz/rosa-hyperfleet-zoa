@@ -10,21 +10,23 @@ import (
 )
 
 type mockClient struct {
-	dispatchFn         func(ctx context.Context, action string, req *client.DispatchRequest) (*client.DispatchResponse, error)
-	getExecutionFn     func(ctx context.Context, id string, include string) (*client.Execution, error)
-	listExecutionsFn   func(ctx context.Context, query url.Values) (*client.ExecutionList, error)
-	getActionFn        func(ctx context.Context, name string) (*client.Action, error)
-	listActionsFn      func(ctx context.Context) (*client.ActionList, error)
-	listAuditFn        func(ctx context.Context, query url.Values) (*client.AuditList, error)
-	serverVersionFn    func(ctx context.Context) (*client.ServerVersionInfo, error)
-	rawGetFn           func(ctx context.Context, path string) (*http.Response, error)
-	listTargetsFn      func(ctx context.Context) (*client.TargetList, error)
-	listTargetsByDepFn func(ctx context.Context, deployment string) (*client.TargetList, error)
-	sessionStartFn     func(ctx context.Context, req *client.SessionStartRequest) (*client.SessionStartResponse, error)
-	sessionStopFn      func(ctx context.Context, sessionID string) error
-	sessionJoinFn      func(ctx context.Context, sessionID string) (*client.SessionJoinResponse, error)
-	listSessionsFn     func(ctx context.Context, query url.Values) (*client.SessionList, error)
-	createBreakglassFn func(ctx context.Context, scope, reason string) (*client.BreakglassRequest, error)
+	dispatchFn             func(ctx context.Context, action string, req *client.DispatchRequest) (*client.DispatchResponse, error)
+	getExecutionFn         func(ctx context.Context, id string, include string) (*client.Execution, error)
+	listExecutionsFn       func(ctx context.Context, query url.Values) (*client.ExecutionList, error)
+	getActionFn            func(ctx context.Context, name string) (*client.Action, error)
+	listActionsFn          func(ctx context.Context) (*client.ActionList, error)
+	listAuditFn            func(ctx context.Context, query url.Values) (*client.AuditList, error)
+	serverVersionFn        func(ctx context.Context) (*client.ServerVersionInfo, error)
+	rawGetFn               func(ctx context.Context, path string) (*http.Response, error)
+	listTargetsFn          func(ctx context.Context) (*client.TargetList, error)
+	listTargetsByDepFn     func(ctx context.Context, deployment string) (*client.TargetList, error)
+	sessionStartFn         func(ctx context.Context, req *client.SessionStartRequest) (*client.SessionStartResponse, error)
+	sessionStopFn          func(ctx context.Context, sessionID string) error
+	sessionJoinFn          func(ctx context.Context, sessionID string) (*client.SessionJoinResponse, error)
+	listSessionsFn         func(ctx context.Context, query url.Values) (*client.SessionList, error)
+	createBreakglassFn     func(ctx context.Context, scope, reason string) (*client.BreakglassRequest, error)
+	listBreakglassFn       func(ctx context.Context, params *client.BreakglassListParams) (*client.BreakglassRequestList, error)
+	getBreakglassProfileFn func(ctx context.Context, name string) (*client.ProfileMetadata, error)
 }
 
 func (m *mockClient) Dispatch(ctx context.Context, action string, req *client.DispatchRequest) (*client.DispatchResponse, error) {
@@ -133,7 +135,10 @@ func (m *mockClient) ListBreakglassProfiles(context.Context, url.Values) (*clien
 	return nil, fmt.Errorf("ListBreakglassProfiles not mocked")
 }
 
-func (m *mockClient) GetBreakglassProfile(context.Context, string) (*client.ProfileMetadata, error) {
+func (m *mockClient) GetBreakglassProfile(ctx context.Context, name string) (*client.ProfileMetadata, error) {
+	if m.getBreakglassProfileFn != nil {
+		return m.getBreakglassProfileFn(ctx, name)
+	}
 	return nil, fmt.Errorf("GetBreakglassProfile not mocked")
 }
 
@@ -148,7 +153,10 @@ func (m *mockClient) GetBreakglassRequest(context.Context, string) (*client.Brea
 	return nil, fmt.Errorf("GetBreakglassRequest not mocked")
 }
 
-func (m *mockClient) ListBreakglassRequests(context.Context, *client.BreakglassListParams) (*client.BreakglassRequestList, error) {
+func (m *mockClient) ListBreakglassRequests(ctx context.Context, params *client.BreakglassListParams) (*client.BreakglassRequestList, error) {
+	if m.listBreakglassFn != nil {
+		return m.listBreakglassFn(ctx, params)
+	}
 	return nil, fmt.Errorf("ListBreakglassRequests not mocked")
 }
 

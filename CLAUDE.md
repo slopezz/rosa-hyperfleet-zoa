@@ -65,7 +65,7 @@ Start at **`docs/README.md`**. Do not duplicate long architecture in agent promp
 | `cmd/zoa/`                                                               | CLI (`session`, `run`, `audit`, …)                            |
 | `cmd/zoa-lambda/`                                                        | Lambda entry (`HANDLER_MODE=api\|worker\|access`)             |
 | `cmd/zoa-runner/`                                                        | Async Job entrypoint in target EKS                            |
-| `internal/cli/`                                                          | Cobra + `APIClient` / Access client for tests                 |
+| `internal/cli/`                                                          | Cobra wiring (TA: `run`/`get`/`runs`/`actions`/`describe`; sessions: `session.go` + `session_<cmd>.go` + `listSessions` in `session_list.go`; break-glass: `breakglass.go` + one `breakglass_<cmd>.go` per subcommand (`list`+table in `breakglass_list.go`); poll/--wait in `breakglass_get.go` like `run.go`) |
 | `internal/client/`                                                       | SigV4 HTTP to Function URLs                                   |
 | `pkg/api/`                                                               | HTTP routes: TA plane (`api`) and session plane (`access.go`) |
 | `pkg/handler/`                                                           | Lambda event router (HTTP, schedules, execute events)         |
@@ -74,7 +74,7 @@ Start at **`docs/README.md`**. Do not duplicate long architecture in agent promp
 | `pkg/scheduler/`                                                         | Reconciler, GC, **reaper** (`reaper.go`)                      |
 | `pkg/actions/`                                                           | TA framework + implementations; `conformance_test.go` gate    |
 | `pkg/breakglass/`                                                        | Break-glass profile catalog; `conformance_test.go` gate — [docs/break-glass-profiles.md](docs/break-glass-profiles.md) |
-| `pkg/breakglass/active/`                                                 | Boundary `~/.config/zoa/breakglass/active` kube/aws stanzas   |
+| `internal/cli/breakglassactivegrants/`                                   | `active` JSON + paths; shell PS1 reads it (`11-zoa-breakglass-prompt.bashrc`) |
 | `pkg/boundaryexec/`, `pkg/accesscross/`, `pkg/awsecs/`, `pkg/execcreds/` | Boundary / ECS Exec / cross-account session helpers           |
 | `pkg/config/`                                                            | Env config; validates mode-specific required vars             |
 | `Containerfile`                                                          | `zoa-lambda` image                                            |

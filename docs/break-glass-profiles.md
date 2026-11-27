@@ -137,7 +137,7 @@ From the boundary: `zoa breakglass profiles`, `zoa breakglass describe <profile>
 | Package | Role |
 | ------- | ---- |
 | `pkg/breakglass` | Profile catalog (this guide) |
-| `pkg/breakglass/active` | Boundary `active` JSON + credential paths |
+| `internal/cli/breakglassactivegrants` | Boundary `active` JSON; written on activate, read by shell PS1 |
 | `pkg/api/breakglass_*` | HTTP API |
 | `pkg/executor/breakglass_*` | RBAC + STS on activate |
 

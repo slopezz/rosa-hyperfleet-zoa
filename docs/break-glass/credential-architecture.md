@@ -147,7 +147,7 @@ Break-glass credentials are **deliberately separate** from the ECS task role use
 | `aws`     | `AWS_SHARED_CREDENTIALS_FILE` → break-glass file when an aws grant is active; unset without aws grant |
 | `zoa`     | Task role only (Lambda / TA plane); **ignores** break-glass files                                     |
 
-At most one active **kube** and one active **aws** grant are tracked under `pkg/breakglass/active/` (symlinks + metadata). The boundary image `PROMPT_COMMAND` applies env vars so operators do not hand-export keys.
+At most one active **kube** and one active **aws** grant are tracked in `~/.config/zoa/breakglass/active` (written by `internal/cli/breakglassactivegrants` on `zoa breakglass activate`). The boundary image `PROMPT_COMMAND` reads that JSON and applies `KUBECONFIG` / `AWS_SHARED_CREDENTIALS_FILE` so operators do not hand-export keys.
 
 ## Audit and attribution
 
@@ -201,5 +201,5 @@ Executor env mirrors TA EKS settings (`EKS_CLUSTER_*`, `ZOA_JOBS_NAMESPACE`) bec
 | `pkg/api/breakglass.go`        | HTTP: request, approve, activate, list                          |
 | `pkg/executor/breakglass_*.go` | Kube RBAC + token, STS assume                                   |
 | `pkg/store/`                   | Break-glass request persistence                                 |
-| `pkg/breakglass/active/`       | Boundary active grant files and paths                           |
+| `internal/cli/breakglassactivegrants/` | Go side of `active` + credential paths (shell prompt consumes `active`) |
 | `internal/cli/breakglass*.go`  | Operator commands and activate artifact writes                  |
