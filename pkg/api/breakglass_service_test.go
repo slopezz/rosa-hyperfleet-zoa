@@ -96,3 +96,73 @@ func TestApproveBreakglassRequest_WhenPeerApprove_ItShouldSetDecidedFields(t *te
 		t.Fatalf("decided: by=%q at=%q", st.req.DecidedBy, st.req.DecidedAt)
 	}
 }
+
+func TestBreakglassGrantActivatable_WhenAWSGrantRemainingBelowMin_ItShouldReturnFalse(t *testing.T) {
+	req := &store.BreakglassRequest{
+		Status:         store.StatusActive,
+		Approval:       store.WorkflowApprovalApproved,
+		Profile:        "aws_read",
+		GrantExpiresAt: time.Now().Add(13 * time.Minute).Format(time.RFC3339Nano),
+	}
+	if breakglassGrantActivatable(req) {
+		t.Fatal("expected grant below AWS min credential lifetime to be non-activatable")
+	}
+}
+
+func TestBreakglassGrantActivatable_WhenAWSGrantRemainingAboveMin_ItShouldReturnTrue(t *testing.T) {
+	req := &store.BreakglassRequest{
+		Status:         store.StatusActive,
+		Approval:       store.WorkflowApprovalApproved,
+		Profile:        "aws_read",
+		GrantExpiresAt: time.Now().Add(20 * time.Minute).Format(time.RFC3339Nano),
+	}
+	if !breakglassGrantActivatable(req) {
+		t.Fatal("expected grant with enough remaining time to be activatable")
+	}
+}
+
+type mockBreakglassActiveQueryStore struct {
+	active []*store.BreakglassRequest
+}
+
+func (m *mockBreakglassActiveQueryStore) Create(context.Context, *store.BreakglassRequest) error {
+	return nil
+}
+func (m *mockBreakglassActiveQueryStore) Get(context.Context, string) (*store.BreakglassRequest, error) {
+	return nil, nil
+}
+func (m *mockBreakglassActiveQueryStore) ListByOperator(context.Context, string, *store.BreakglassFilter) ([]*store.BreakglassRequest, error) {
+	return nil, nil
+}
+func (m *mockBreakglassActiveQueryStore) ListAll(context.Context, *store.BreakglassFilter) ([]*store.BreakglassRequest, error) {
+	return nil, nil
+}
+func (m *mockBreakglassActiveQueryStore) Transition(context.Context, string, store.Status, store.Status, map[string]interface{}) error {
+	return nil
+}
+func (m *mockBreakglassActiveQueryStore) QueryByTargetAndStatus(context.Context, string, store.Status) ([]*store.BreakglassRequest, error) {
+	return m.active, nil
+}
+func (m *mockBreakglassActiveQueryStore) MarkCleaned(context.Context, string) error { return nil }
+func (m *mockBreakglassActiveQueryStore) AppendActivateEvent(context.Context, string, store.ActivateEvent) error {
+	return nil
+}
+
+func TestFindActiveBreakglassGrant_WhenOnlyNonActivatableGrant_ItShouldReturnNil(t *testing.T) {
+	st := &mockBreakglassActiveQueryStore{active: []*store.BreakglassRequest{{
+		RequestID:      "8862acae-7930-4fb7-869e-d0c99e74aa89",
+		Operator:       "slopezma",
+		Profile:        "aws_read",
+		TargetCluster:  "eph-regional",
+		Status:         store.StatusActive,
+		Approval:       store.WorkflowApprovalApproved,
+		GrantExpiresAt: time.Now().Add(13 * time.Minute).Format(time.RFC3339Nano),
+	}}}
+	got, err := findActiveBreakglassGrant(context.Background(), st, "slopezma", "aws_read", "eph-regional")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != nil {
+		t.Fatalf("expected no blocking grant, got %s", got.RequestID)
+	}
+}

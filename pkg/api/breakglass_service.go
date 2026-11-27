@@ -96,6 +96,31 @@ func breakglassGrantStillValid(req *store.BreakglassRequest) bool {
 	return time.Now().Before(exp)
 }
 
+func breakglassGrantRemaining(req *store.BreakglassRequest) time.Duration {
+	if req == nil || req.GrantExpiresAt == "" {
+		return 4 * time.Hour
+	}
+	exp, err := time.Parse(time.RFC3339Nano, req.GrantExpiresAt)
+	if err != nil {
+		return 0
+	}
+	return time.Until(exp)
+}
+
+// breakglassGrantActivatable is true when activate could issue credentials (same floor as grant_too_short).
+func breakglassGrantActivatable(req *store.BreakglassRequest) bool {
+	if !breakglassGrantStillValid(req) {
+		return false
+	}
+	def, ok := breakglass.Get(req.Profile)
+	if !ok {
+		return true
+	}
+	remaining := breakglassGrantRemaining(req)
+	_, err := breakglass.CredentialDurationForGrant(def.Metadata.Scope, remaining)
+	return err == nil
+}
+
 func findActiveBreakglassGrant(ctx context.Context, bgStore store.BreakglassStore, operator, profile, target string) (*store.BreakglassRequest, error) {
 	items, err := bgStore.QueryByTargetAndStatus(ctx, target, store.StatusActive)
 	if err != nil {
@@ -105,7 +130,7 @@ func findActiveBreakglassGrant(ctx context.Context, bgStore store.BreakglassStor
 		if req.Operator != operator || req.Profile != profile {
 			continue
 		}
-		if breakglassGrantStillValid(req) {
+		if breakglassGrantActivatable(req) {
 			return req, nil
 		}
 	}
