@@ -73,20 +73,9 @@ Served by the Access Lambda (`HANDLER_MODE=access`) in the RC account (no VPC at
 | `POST` | `/api/v0/sessions/join/{id}`          | Join a session (provisions boundary task if needed, returns ECS Exec credentials)           |
 | `POST` | `/api/v0/sessions/exec-attached/{id}` | Record ECS Exec session attachment (called by CLI after `session-manager-plugin` connects)  |
 
-### Break-glass (API Lambda — boundary)
+### Break-glass approval (laptop only)
 
-`BREAKGLASS_TABLE` is required on every API Lambda (wired with `ExecutionStore` in `api.New`). Identity and task-binding match TA dispatch. Profiles declare **`authorization.approval`**; v1 is **`none`** for all profiles → create runs `ApproveBreakglassRequest` with approver `auto` (see [approval-workflow.md](approval-workflow.md)). Profile catalog `GET` routes are not audited; cross-operator request list is (`breakglass_history`).
-
-| Method | Path                                       | Description                                      |
-| ------ | ------------------------------------------ | ------------------------------------------------ |
-| `GET`  | `/api/v0/breakglass/profiles`              | List profiles (`?scope=kube\|aws`, `?type=read\|write\|elevated`) |
-| `GET`  | `/api/v0/breakglass/profiles/{name}`       | Describe one profile (`kube_read`, …)            |
-| `POST` | `/api/v0/breakglass/requests`              | Create request JSON: `profile`, `reason`         |
-| `GET`  | `/api/v0/breakglass/requests`              | List requests (optional `?target=`; default all targets in table, like TA runs) |
-| `GET`  | `/api/v0/breakglass/requests/{id}`         | Get request                                      |
-| `POST` | `/api/v0/breakglass/requests/{id}/activate` | Provision access for this deployment’s target only (`403 target_mismatch` if grant `target_cluster` ≠ Lambda `TARGET_CLUSTER`) |
-| `GET`  | `/api/v0/breakglass/requests?mine=true`    | Your requests only (not audited) |
-| `GET`  | `/api/v0/breakglass/requests` (no `mine=true`) | Cross-operator history (audited `breakglass_history`) |
+Peer approve/reject for break-glass requests. The handler resolves `{id}` (or `{deployment}/{id}` on Access) against the break-glass table first, then TA executions (TA approve returns **501** today). See [approval-workflow.md](approval-workflow.md).
 
 ### Approval
 
@@ -300,6 +289,25 @@ Served by the API Lambda (`HANDLER_MODE=api`) in each target VPC.
 | `GET`  | `/api/v0/trusted-actions/runs/{id}/output` | Download execution output (streaming) |
 | `GET`  | `/api/v0/trusted-actions/runs/{id}/logs`   | Download execution logs (streaming)   |
 
+<a id="break-glass"></a>
+
+### Break-glass
+
+Served on the **API Lambda** in each target VPC (`BREAKGLASS_TABLE` required). Identity and task binding match TA dispatch ([identity bridge](boundary/identity-bridge.md)). v1 profiles use **`authorization.approval: none`** → create auto-approves in the same HTTP request ([approval-workflow.md](approval-workflow.md)).
+
+| Method | Path                                        | Description |
+| ------ | ------------------------------------------- | ----------- |
+| `GET`  | `/api/v0/breakglass/profiles`               | List profiles (`?scope=kube\|aws`, `?type=read\|write\|elevated`) — not audited |
+| `GET`  | `/api/v0/breakglass/profiles/{name}`        | Describe one profile — not audited |
+| `POST` | `/api/v0/breakglass/requests`               | Create request (JSON `profile`, `reason`) |
+| `GET`  | `/api/v0/breakglass/requests`               | List requests — see query params below |
+| `GET`  | `/api/v0/breakglass/requests/{id}`          | Get one request |
+| `POST` | `/api/v0/breakglass/requests/{id}/activate` | Provision kube/AWS creds for **this Lambda's target only** |
+
+**List semantics:** `GET …/requests?mine=true` returns only the authenticated operator's rows (CLI `zoa breakglass list`; **not** audited). Without `mine=true`, cross-operator history (`breakglass_history`; audited). Optional `?target=` filters `target_cluster`. **Default (no `target`)** returns **all targets** in the deployment table (RC + MCs) — filter on the CLI with `-t` when your boundary session is on one MC.
+
+**Naming:** JSON responses use **snake_case** (`request_id`, `req_session_id`, `grant_expires_at`, …). CLI **table / wide / human `get`** uses **UPPER_SNAKE** column labels (`REQ_SESSION_ID`, `GRANT_EXPIRES`, …) for the same fields.
+
 ---
 
 ## GET /api/v0/audit
@@ -337,8 +345,13 @@ The `action` field is a **stable event type** for filtering (`zoa audit --action
 | No       | API    | `GET …/trusted-actions` · `zoa actions`                       | — (read-only catalog)                         |
 | No       | API    | `GET …/trusted-actions/{action}` · `zoa describe`             | — (read-only catalog)                         |
 | No       | API    | `GET /health`, `GET /version`                                 | —                                             |
+| Yes      | API    | `POST …/breakglass/requests` · `zoa breakglass request`       | `breakglass_request`                          |
+| Yes      | API    | `POST …/breakglass/requests/{id}/activate` · `activate`       | `breakglass_activate`                         |
+| Yes      | API    | `GET …/breakglass/requests` without `mine=true` · `history` | `breakglass_history`                          |
+| No       | API    | `GET …/breakglass/requests?mine=true` · `list`                | — (self-service)                              |
+| No       | API    | `GET …/breakglass/profiles` · `describe`                      | — (read-only catalog)                         |
 
-**Families:** `session_*` = Access session plane; TA name = Trusted Action dispatch; `runs_*` / `run_*` = execution reads; `audit_query` = querying the audit index itself.
+**Families:** `session_*` = Access session plane; TA name = Trusted Action dispatch; `runs_*` / `run_*` = execution reads; `breakglass_*` = break-glass lifecycle; `audit_query` = querying the audit index itself.
 
 ### Response
 
@@ -556,3 +569,112 @@ Describe a specific TA including parameters, RBAC, and metadata.
   }
 }
 ```
+
+---
+
+## POST /api/v0/breakglass/requests
+
+Create a break-glass request from the boundary. Target cluster and type come from the API Lambda config (`TARGET_CLUSTER`, `ZOA_TARGET_TYPE`), not from the JSON body.
+
+### Request Body
+
+```json
+{
+  "profile": "kube_read",
+  "reason": "ROSAENG-12345"
+}
+```
+
+| Field     | Type   | Required | Description                                      |
+| --------- | ------ | -------- | ------------------------------------------------ |
+| `profile` | string | Yes      | Catalog profile name (`kube_read`, `aws_elevated`, …) |
+| `reason`  | string | Yes      | Jira / PagerDuty ticket (same rules as TA `reason`) |
+
+### Response (201)
+
+Returns the request row (snake_case JSON). When the profile catalog has `approval: none`, the same request transitions to `status=active` and `approval=approved` before the response is sent.
+
+Key fields: `request_id`, `profile`, `target_cluster`, `target_type`, `status`, `approval`, `request_expires_at`, `grant_expires_at` (after approve), `req_session_id`, `req_task_id`, `req_signer_arn`, `activate_events` (empty until activate).
+
+---
+
+## GET /api/v0/breakglass/requests
+
+List break-glass requests.
+
+### Query Parameters
+
+| Param           | Type   | Description |
+| --------------- | ------ | ----------- |
+| `mine`          | bool   | `true` — caller's requests only (required for self-service list) |
+| `target`        | string | Filter `target_cluster` |
+| `profile`       | string | Filter profile name |
+| `status`        | string | Lifecycle: `pending`, `active`, `expired`, `denied`, or `all` |
+| `approval`      | string | Workflow: `pending`, `approved`, `rejected`, or `all` |
+| `operator`      | string | Filter operator (history only; forbidden with `mine=true`) |
+| `decided_by`    | string | Peer approver |
+| `since`         | string | `created_at` lower bound (RFC3339 or relative) |
+| `decided_since` | string | `decided_at` lower bound |
+| `until`         | string | `created_at` upper bound |
+| `limit`         | int    | Max rows (default 50, cap 200) |
+
+---
+
+## POST /api/v0/breakglass/requests/{id}/activate
+
+Provision scoped **kube** and/or **aws** credentials for interactive use. Caller must be the **same operator** who created the request. Grant must be `status=active`, `approval=approved`, and `now < grant_expires_at`. Grant `target_cluster` must equal this Lambda's `TARGET_CLUSTER`.
+
+### Response (200)
+
+JSON includes `kind: "breakglass"`, `status: "ready"`, credential expiry fields, and optional nested `kube` / `aws` objects (tokens and keys — treat as secrets). Appends one entry to `activate_events` on the stored row.
+
+Re-running activate before credential expiry refreshes kube token / STS session while the grant remains active (CLI: `zoa breakglass activate <same-id>`).
+
+---
+
+<a id="break-glass-http-errors"></a>
+
+## Break-glass HTTP errors
+
+All errors use the shared envelope: `{ "error": { "code": "<reason>", "message": "…" } }`. CLI surfaces the same `code` in stderr.
+
+### Create / get / list (API Lambda)
+
+| Code | HTTP | When |
+| ---- | ---- | ---- |
+| `invalid_request` | 400 | Bad JSON or missing `profile` |
+| `missing_reason` / `invalid_reason` | 400 | Reason validation (`pkg/reason`) |
+| `invalid_query` | 400 | `operator` filter with `mine=true` |
+| `unauthorized` | 401 | Could not resolve operator identity |
+| `not_found` | 404 | Unknown profile or request id |
+| `grant_already_active` | 409 | Same operator already has an activatable grant for this profile+target — response includes existing `request_id` and `next_step` hint |
+| `internal_error` | 500 | Store or auto-approve failure |
+
+### Activate (API Lambda)
+
+| Code | HTTP | When |
+| ---- | ---- | ---- |
+| `not_found` | 404 | Unknown request id |
+| `grant_not_active` | 409 | Lifecycle not `active` (pending, expired, denied) |
+| `not_approved` | 409 | `approval` ≠ `approved` |
+| `grant_too_short` | 409 | Remaining grant time below minimum for kube (10m) or aws (15m) credential issuance |
+| `operator_mismatch` | 403 | Authenticated operator ≠ request owner |
+| `target_mismatch` | 403 | Grant `target_cluster` ≠ this API Lambda target (e.g. RC grant from MC boundary) |
+| `grant_expired` | 410 | Past `grant_expires_at` |
+| `provision_failed` | 500 | RBAC / STS / token issuance error |
+
+### Approve / reject (Access Lambda — laptop)
+
+| Code | HTTP | When |
+| ---- | ---- | ---- |
+| `invalid_request` | 400 | Missing id |
+| `deployment_mismatch` | 400 | Compound id deployment ≠ Access deployment |
+| `not_found` | 404 | No break-glass row (and no TA row for legacy `/approve/{id}`) |
+| `invalid_status` | 409 | Not `pending` |
+| `request_expired` | 410 | Past `request_expires_at` while still pending |
+| `self_approval` | 403 | Requester cannot approve own request (peer workflow) |
+| `note_required` | 400 | Profile policy requires decision note |
+| `unauthorized` | 401 | Could not resolve approver identity |
+| `not_implemented` | 501 | TA execution approve/reject (not break-glass) |
+
+See also [approval-workflow.md](approval-workflow.md) for lifecycle vs approval columns and worker expiry.

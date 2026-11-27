@@ -173,6 +173,10 @@ List/history UX mirrors break-glass:
 
 Until the workflow epic, TA rows keep a single lifecycle `status`; only break-glass ships the split.
 
+### HTTP errors (operator-facing)
+
+Do not duplicate per-route tables here — the **canonical matrix** lives in [API reference — break-glass HTTP errors](api-reference.md#break-glass-http-errors) (create, activate, approve/reject). Common mistakes: **`target_mismatch`** (activate RC grant from MC boundary), **`grant_already_active`** (open a second request instead of re-activating), **`grant_too_short`** (grant nearly expired — request a fresh profile grant).
+
 ## Code map
 
 | Location                         | Role                                               |

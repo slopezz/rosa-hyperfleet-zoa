@@ -52,6 +52,7 @@ Emergency scoped access from the boundary (see [break-glass/README.md](break-gla
 | ------------------------------------------------------------------------------- | -------------------------------------------------------- |
 | [Break-glass — credential architecture](break-glass/credential-architecture.md) | Kube vs AWS activate flows, audit ids, contrast with TAs |
 | [Break-glass operator index](break-glass/README.md)                             | Quick flow, two clocks, shell wiring                     |
+| [Break-glass data-plane evidence](break-glass/data-plane-evidence.md)           | CloudTrail / EKS audit queries by `zoa-bg-<request-id>`  |
 | [Break-glass profiles authoring](break-glass-profiles.md)                       | Adding profiles in `pkg/breakglass/`, conformance, RBAC  |
 
 **Policy:** break-glass is a one-time escape hatch. Every break-glass use must produce a follow-up TA that automates the same operation — the TA catalog grows monotonically so the same emergency never requires raw access twice.

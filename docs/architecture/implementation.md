@@ -160,7 +160,8 @@ See [observability.md](../observability.md) for the full EMF catalog and metrics
 Routes incoming HTTP requests to the appropriate handler. Uses Go 1.22+ `net/http` ServeMux with method-based routing.
 
 - **`router.go` / `dispatch.go`** — TA plane (`HANDLER_MODE=api`): `sessionStore` is always wired; `ResolveIdentity` maps boundary task role ARN → operator + `session_id` before audit/execution writes. Design: [identity bridge](../boundary/identity-bridge.md).
-- **`access.go`** — Session plane (`HANDLER_MODE=access`): DynamoDB sessions, SSM targets, `ecs:RunTask`; no TA dispatch.
+- **`breakglass.go` / `breakglass_service.go` / `breakglass_workflow.go`** — Break-glass HTTP (profiles, create, list, get, activate) on the same API router as TAs; shares identity bridge and audit helpers (`AuditActionBreakglass*`).
+- **`access.go` / `access_breakglass.go`** — Session plane (`HANDLER_MODE=access`): DynamoDB sessions, SSM targets, `ecs:RunTask`; laptop break-glass approve/reject.
 
 ### `pkg/handler` — Lambda Event Router
 

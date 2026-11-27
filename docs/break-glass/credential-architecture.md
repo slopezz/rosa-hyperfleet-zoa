@@ -159,7 +159,7 @@ At most one active **kube** and one active **aws** grant are tracked in `~/.conf
 
 The apiserver never sees the human username; attribution chains **boundary task** → identity bridge → **request row** → **SA or STS session name**.
 
-**Data-plane forensics:** copy-paste CloudTrail and CloudWatch Logs Insights recipes keyed on `zoa-bg-<request-id>` → [forensics-evidence.md](forensics-evidence.md).
+**Data-plane forensics:** copy-paste CloudTrail and CloudWatch Logs Insights recipes keyed on `zoa-bg-<request-id>` → [data-plane-evidence.md](data-plane-evidence.md).
 
 ## Contrast with Trusted Actions
 

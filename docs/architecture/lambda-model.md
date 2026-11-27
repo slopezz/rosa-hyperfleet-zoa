@@ -7,10 +7,12 @@ ZOA deploys **multiple Lambda functions per deployment**:
 | Lambda     | Trigger                   | Purpose                                                                                 |
 | ---------- | ------------------------- | --------------------------------------------------------------------------------------- |
 | **API**    | Function URL (IAM auth)   | CLI requests, sync TAs, streaming downloads (per VPC: RC + each MC)                     |
-| **Worker** | EventBridge + self-invoke | Reconciler (1m), GC (5m), **boundary session reaper** (5m), async/approved TA execution |
+| **Worker** | EventBridge + self-invoke | Reconciler (1m), GC (5m), **boundary session reaper** (5m), break-glass expiry/GC, async/approved TA execution |
 | **Access** | Function URL (IAM auth)   | ZOA boundary session lifecycle, target discovery (RC account, no VPC)                   |
 
 API, Worker, and Access use the **same container image** (`zoa-lambda`), differentiated by the `HANDLER_MODE` environment variable (`api`, `worker`, `access`).
+
+**Break-glass** lives on the **API** Lambda (per target VPC): `BREAKGLASS_TABLE`, handlers under `pkg/api/breakglass*.go`, credentials via `pkg/executor` + `pkg/breakglass`. The **Worker** runs `breakglassExpireGrants` and RBAC GC (`pkg/scheduler/breakglass_gc.go`). **Access** serves laptop `approve` / `reject` only (no break-glass list from the laptop API). One regional DynamoDB table holds grants for all targets in the deployment; each API Lambda still enforces `TARGET_CLUSTER` on activate.
 
 ## Why Separate Functions
 

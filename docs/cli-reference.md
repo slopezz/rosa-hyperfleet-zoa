@@ -13,6 +13,7 @@ The `zoa` CLI communicates with ZOA via SigV4-signed HTTPS (Access Lambda for se
 - [Examples](#examples)
   - [Sessions](#session-examples)
   - [Trusted Actions](#trusted-action-examples)
+  - [Break-glass](#break-glass-examples)
 - [Special actions](#special-actions)
   - [Seaplane DB](#seaplane-db-actions)
 - [Command flags reference](#command-flags-reference)
@@ -84,11 +85,12 @@ zoa session start us-east-1 regional --reason ROSAENG-1234
 
 Use your normal **Jump/Central** AWS login (same default credential chain as `aws` CLI). ZOA reads `/zoa/deployments/<name>` from **Central account SSM** (default: **`us-east-1`**, then **`eu-west-1`** if the first read fails; no `[default] region` or `AWS_REGION` required for discovery). It assumes the Access **invoker** role and calls the Access Lambda. **Target** metadata (`/zoa/targets/...`) is read by that Lambda in the deployment’s AWS region (RC account), not from your laptop. ECS Exec uses **scoped credentials** returned on `session join` — not deployment-account admin roles.
 
-### Boundary (Trusted Actions)
+### Boundary (Trusted Actions and break-glass)
 
 ```bash
 # ZOA_API_URL is pre-set by the ECS task definition — no manual config
 zoa run get_resource --reason ROSAENG-1234 --resource pods
+zoa breakglass list -t "$ZOA_TARGET"   # optional: filter list to this target
 ```
 
 Inside the boundary, `ZOA_API_URL` points to the **API Lambda** in the target VPC. **`ZOA_TARGET_TYPE`** (`rc` or `mc`) is injected when the session task starts (and is already set on the API Lambda in Terraform). Operators do not configure either.
@@ -167,19 +169,6 @@ These apply to **every** subcommand (`session`, `run`, `runs`, `audit`, …). Wh
 
 **Access control (server-side):** the Access Lambda binds each session to the **operator** from your SigV4 identity (IAM role session name). **`session join`** and **`session terminate`** return **403** if you are not the owner. **`session list`** sends **`mine=true`** and **`scope=mine`** (both) so older Access Lambdas still filter to your rows; break-glass uses **`mine=true`** only. You only see your own sessions, not another operator's. **`session history`** is the deliberate exception: it lists **all operators** for audit/situational awareness (and those queries are audited). You cannot join someone else's boundary shell even if you know their session id; Exec credentials are vended only after an ownership check. See [Operator workflow — ownership](guides/operator-workflow.md#4-start-session-join-exec-and-ownership) and [Access API — sessions](api-reference.md#get-apiv0sessions).
 
-### Break-glass (boundary — API Lambda)
-
-| Command                                             | Description                                                                                                                                                                              |
-| --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `breakglass profiles [--offline]`                   | List profiles (`--scope`, `--type` filter credential scope / privilege; `--offline` uses embedded catalog)                                                                                |
-| `breakglass request <profile> --reason <ticket>`    | Create a pending request (reason or `ZOA_REASON`, like `zoa run`)                                                                                                                        |
-| `breakglass list`                                   | List your requests (`mine=true`; not audited). Table includes **REQUEST_EXPIRES** (pending approval window) and **GRANT_EXPIRES** (active cred window). RC+MC in deployment; optional `-t` / `--target`; filters; `-o wide` adds provenance columns |
-| `breakglass get <request-id>`                       | Get request metadata on stdout (`zoa get` style); `--wait` polls with stderr spinner until terminal decision                                                                             |
-| `breakglass request … --wait`                       | Create ack on stderr, poll like `zoa run --wait`, then stdout metadata; operator runs `activate` separately                                                                              |
-| `breakglass describe <profile>`                     | Profile details (like `zoa describe <action>`)                                                                                                                                           |
-| `breakglass history`                                | All operators (`OPERATOR` column); same filters as `list` plus `--operator`. Audited.                                                                                                    |
-| `breakglass activate <request-id>`                  | Provision creds under `~/.config/zoa/breakglass/`; hints show grant vs credential TTL. Re-run **same id** before credentials expire while grant valid. **409 `grant_too_short`** if remaining grant is below kube/aws API minimum. |
-
 ### Laptop approval (Access Lambda)
 
 | Command                                           | Description                 |
@@ -200,6 +189,24 @@ These apply to **every** subcommand (`session`, `run`, `runs`, `audit`, …). Wh
 | `actions`           | List all available Trusted Actions (`catalog` is an alias) |
 | `describe <action>` | Show TA details (params, scope, timeout)                   |
 | `audit`             | View audit trail                                           |
+
+<a id="break-glass"></a>
+
+### Break-glass (boundary — API Lambda)
+
+Prefer **`zoa run`** first. Break-glass is for operations no TA covers yet; every use should drive a follow-up TA ([break-glass/README.md](break-glass/README.md)).
+
+| Command                                             | Description                                                                                                                                                                              |
+| --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `breakglass profiles [--offline]`                   | List profiles (`--scope`, `--type`; `--offline` = embedded catalog)                                                                                                                      |
+| `breakglass describe <profile>`                     | Profile details (RBAC / IAM notes; like `zoa describe <action>`)                                                                                                                         |
+| `breakglass request <profile> --reason <ticket>`    | Create request (`ZOA_REASON` default; v1 auto-approve when catalog `approval: none`)                                                                                                     |
+| `breakglass list`                                   | Your requests (`mine=true`; not audited). **REQUEST_EXPIRES** / **GRANT_EXPIRES** columns. Default = **all targets** (RC+MC); use **`-t` / `--target`** on MC sessions to narrow the view |
+| `breakglass history`                                | All operators (audited); same filters as `list` plus `--operator`                                                                                                                        |
+| `breakglass get <request-id>`                       | Human metadata on stdout (`ID`, `REQ_SESSION_ID`, …); **`--wait`** polls approval only (no activate)                                                                                    |
+| `breakglass activate <request-id>`                  | Write creds under `~/.config/zoa/breakglass/`; re-run same id to refresh before cred TTL. Errors: [HTTP matrix](api-reference.md#break-glass-http-errors)                                 |
+
+Human **`get` / `-o wide` list** labels use **UPPER_SNAKE** (`REQ_SESSION_ID`). **`-o json`** uses API **snake_case** (`req_session_id`).
 
 ### Offline catalog
 
@@ -329,6 +336,30 @@ zoa audit --action audit_query
 zoa audit --since 2026-08-01 --until 2026-08-15
 ```
 
+### Break-glass examples
+
+```bash
+# Last resort after checking the catalog (same boundary session as the incident)
+zoa actions
+zoa describe delete_stuck_finalizer   # hypothetical — if missing, consider break-glass
+
+zoa breakglass profiles
+zoa breakglass describe kube_write
+zoa breakglass request kube_write --reason ROSAENG-1234 --wait
+# v1: auto-approved → status active; then:
+zoa breakglass activate <request-id>
+kubectl get pods -n cluster-38ae9f84-aa1f-48bd-89e8-2d4611404fa1
+# Re-activate before cred expiry while grant still active:
+zoa breakglass activate <request-id>
+
+# MC boundary: list only this management cluster's rows
+zoa breakglass list -t eph-3e7264d0-mc01
+zoa breakglass get <request-id> -o json | jq '.req_session_id'
+
+# Laptop (when peer approval is required — not v1 with approval: none)
+zoa approve us-east-1/<request-id> --comment "INC verified"
+```
+
 ## Special actions
 
 Focused guides for Trusted Actions that need extra context beyond `zoa describe`.
@@ -440,6 +471,41 @@ When wrapping the CLI from Go (or any test harness), capture **combined stdout+s
 | `--since`    |       | Start of time window (default: `24h`). See [Time Formats](#time-formats). |
 | `--until`    |       | End of time window (default: now). See [Time Formats](#time-formats).     |
 | `--limit`    |       | Max results (max 200, default 50)                                         |
+
+### `breakglass profiles` / `describe`
+
+Same catalog flags as `actions` / `describe` for offline mode (`--offline`, `--target-type` / `ZOA_TARGET_TYPE`). Live API uses boundary-injected target type automatically.
+
+| Flag            | Description                                      |
+| --------------- | ------------------------------------------------ |
+| `--scope`       | Filter: `kube` or `aws`                          |
+| `--type`        | Filter: `read`, `write`, or `elevated`           |
+| `--offline`     | Embedded profile catalog (no API call)             |
+| `--target-type` | Required with `--offline` on laptop unless env set |
+
+### `breakglass list` / `history`
+
+| Flag              | Short | Description |
+| ----------------- | ----- | ----------- |
+| `--target`        | `-t`  | Filter `target_cluster` (default: all targets in deployment table) |
+| `--profile`       |       | Filter profile name |
+| `--since`         |       | `created_at` window start (default `24h`) |
+| `--until`         |       | `created_at` window end |
+| `--status`        |       | Lifecycle: `pending`, `active`, `expired`, `denied` |
+| `--approval`      |       | Workflow: `pending`, `approved`, `rejected` |
+| `--decided-by`    |       | Peer approver / rejecter |
+| `--decided-since` |       | `decided_at` lower bound |
+| `--limit`         |       | Max rows (default 50, max 200) |
+| `--operator`      |       | **`history` only** — filter by requester |
+
+### `breakglass request` / `get`
+
+| Flag                   | Description |
+| ---------------------- | ----------- |
+| `--reason`             | Ticket (required unless `ZOA_REASON`) |
+| `--wait`               | Poll until lifecycle `active`, `denied`, or `expired` (does **not** call activate) |
+| `--wait-timeout`       | Max poll duration (default `5m`) |
+| `--wait-poll-interval` | Poll interval (default `30s`) |
 
 ### `zoa run` — TA parameters
 

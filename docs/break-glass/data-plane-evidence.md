@@ -1,11 +1,11 @@
-# Break-glass forensic evidence (by request id)
+# Break-glass data-plane evidence (by request id)
 
-Until we ship a Trusted Action (or similar) to wrap these queries, use the **break-glass request UUID** as the single correlation key. Platform identity is always prefixed `zoa-bg-` — never the operator’s human name in CloudTrail or the Kubernetes apiserver audit.
+Until we ship a Trusted Action (or similar) to wrap these queries, use the **break-glass request UUID** as the single correlation key. Platform identity is always prefixed `zoa-bg-` — never the operator's human name in CloudTrail or the Kubernetes apiserver audit.
 
 | Grant `scope` | Where API calls show up | Search key |
 | ------------- | ----------------------- | ---------- |
 | **aws**       | CloudTrail (management events in the **target account**) | `Username` = `zoa-bg-<request-id>` (STS `RoleSessionName`) |
-| **kube**      | EKS control plane audit log group for **that target’s cluster** | `user.username` contains `zoa-bg-<request-id>` (SA `zoa-jobs/zoa-bg-<request-id>`) |
+| **kube**      | EKS control plane audit log group for **that target's cluster** | `user.username` contains `zoa-bg-<request-id>` (SA `zoa-jobs/zoa-bg-<request-id>`) |
 
 **ZOA audit** (`zoa audit`, DynamoDB audit table) records **decision** events (`request`, `approve`, `activate`, …) and boundary attribution. It does **not** include every `kubectl` verb or `aws` API call — use the queries below for **data-plane** evidence.
 
@@ -42,7 +42,7 @@ If nothing returns, widen `--start-time` or confirm the grant was **aws** scope,
 
 ## Kube scope — CloudWatch Logs Insights (EKS audit)
 
-EKS sends apiserver audit records to `/aws/eks/<cluster-name>/cluster`. Use the **cluster name** for the grant’s target (for example the regional or management cluster name shown as `TARGET` on the grant).
+EKS sends apiserver audit records to `/aws/eks/<cluster-name>/cluster`. Use the **cluster name** for the grant's target (for example the regional or management cluster name shown as `TARGET` on the grant).
 
 ```bash
 export AWS_PROFILE=<profile-for-target-account>

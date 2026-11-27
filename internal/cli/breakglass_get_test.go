@@ -29,6 +29,24 @@ func TestRenderBreakglassGetHuman_WhenApproved_ItShouldPrintStdoutMetadata(t *te
 	}
 }
 
+func TestRenderBreakglassGetHuman_WhenProvenance_ItShouldUseUpperSnakeLabels(t *testing.T) {
+	req := &client.BreakglassRequest{
+		RequestID:     "abc",
+		ReqSessionID:  "sess-1",
+		ReqSignerARN:  "arn:aws:sts::123:assumed-role/x/y",
+		ReqTaskID:     "task-1",
+	}
+	var buf bytes.Buffer
+	renderBreakglassGetHuman(&buf, req, false)
+	out := buf.String()
+	if strings.Contains(out, "req_session_id:") {
+		t.Fatalf("expected REQ_SESSION_ID label, got:\n%s", out)
+	}
+	if !strings.Contains(out, "REQ_SESSION_ID: sess-1") {
+		t.Fatalf("expected provenance uppercase label, got:\n%s", out)
+	}
+}
+
 func TestBreakglassWaitApprovalError_WhenRejected_ItShouldFail(t *testing.T) {
 	req := &client.BreakglassRequest{RequestID: "x", Status: "denied"}
 	if err := breakglassWaitApprovalError(req, false); err == nil {

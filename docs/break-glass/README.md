@@ -5,11 +5,16 @@ Emergency scoped `kubectl` / `aws` from the **boundary** only. Same patterns as 
 | Document                                                       | Purpose                                                                                                        |
 | -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
 | **[Credential architecture](credential-architecture.md)**      | How activate provisions kube/AWS creds (diagrams; like TA [implementation](../architecture/implementation.md)) |
-| [Forensic evidence (by request id)](forensics-evidence.md)     | CloudTrail + EKS audit queries keyed on `zoa-bg-<request-id>` (interim until a TA wraps this)                  |
+| [Data-plane evidence (by request id)](data-plane-evidence.md)  | CloudTrail + EKS audit queries keyed on `zoa-bg-<request-id>` (interim until a TA wraps this)                  |
 | [Profile authoring guide](../break-glass-profiles.md)          | `pkg/breakglass/` catalog — **capabilities/restrictions** + RBAC/IAM (like [trusted-actions.md](../trusted-actions.md)) |
 | [Approval workflow (TA + BG)](../approval-workflow.md)         | Approval policy (`none` today; gist/OPA planned)                                                               |
 | [API reference — break-glass](../api-reference.md#break-glass) | HTTP routes                                                                                                    |
 | [CLI reference — break-glass](../cli-reference.md#break-glass) | Operator commands                                                                                              |
+| [HTTP errors (break-glass)](../api-reference.md#break-glass-http-errors) | Consolidated operator error matrix (create, activate, approve)                                       |
+
+## List and target (deployment table)
+
+`zoa breakglass list` and `history` read the **regional DynamoDB table** for the whole deployment. By default you see rows for **every target** (RC and all MCs) unless you pass **`-t` / `--target`**. That is not an IAM leak — activate still runs only on the API Lambda for **your** boundary target (**403 `target_mismatch`** if the grant's `target_cluster` does not match). From an MC session, filter with `-t <mc-target-id>` when you only care about that cluster.
 
 ## Quick flow
 
