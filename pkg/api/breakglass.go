@@ -251,6 +251,12 @@ func (h *Handler) handleActivateBreakglassRequest(w http.ResponseWriter, r *http
 		writeError(w, http.StatusForbidden, "operator_mismatch", "operator does not match request")
 		return
 	}
+	if req.TargetCluster != "" && h.cfg.TargetCluster != "" && req.TargetCluster != h.cfg.TargetCluster {
+		writeError(w, http.StatusForbidden, "target_mismatch",
+			fmt.Sprintf("grant is for target %q; activate from a boundary session for that target (this deployment is %q)",
+				req.TargetCluster, h.cfg.TargetCluster))
+		return
+	}
 	if req.GrantExpiresAt != "" {
 		exp, err := time.Parse(time.RFC3339Nano, req.GrantExpiresAt)
 		if err == nil && time.Now().After(exp) {

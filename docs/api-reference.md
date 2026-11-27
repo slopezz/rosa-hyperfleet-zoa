@@ -84,7 +84,7 @@ Served by the Access Lambda (`HANDLER_MODE=access`) in the RC account (no VPC at
 | `POST` | `/api/v0/breakglass/requests`              | Create request JSON: `profile`, `reason`         |
 | `GET`  | `/api/v0/breakglass/requests`              | List requests (optional `?target=`; default all targets in table, like TA runs) |
 | `GET`  | `/api/v0/breakglass/requests/{id}`         | Get request                                      |
-| `POST` | `/api/v0/breakglass/requests/{id}/activate` | Provision access and return credentials (task-bound) |
+| `POST` | `/api/v0/breakglass/requests/{id}/activate` | Provision access for this deployment’s target only (`403 target_mismatch` if grant `target_cluster` ≠ Lambda `TARGET_CLUSTER`) |
 | `GET`  | `/api/v0/breakglass/requests?mine=true`    | Your requests only (not audited) |
 | `GET`  | `/api/v0/breakglass/requests` (no `mine=true`) | Cross-operator history (audited `breakglass_history`) |
 

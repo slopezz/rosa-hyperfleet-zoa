@@ -14,7 +14,7 @@ Emergency scoped `kubectl` / `aws` from the **boundary** only. Same patterns as 
 
 1. **Boundary:** `zoa breakglass request kube_read --reason ROSAENG-…` (all v1 profiles use **`approval: none`** → immediate approve via same workflow as future peer approve)
 2. **Laptop:** `zoa approve <deployment>/<request-id>` — for future workflows; not required while profiles stay `none` ([approval workflow](../approval-workflow.md))
-3. **Boundary:** `zoa breakglass activate <request-id>` then stock `kubectl` / `aws` (see **Two clocks** — re-activate same id ~hourly while grant valid; at most one active kube + one active aws in `~/.config/zoa/breakglass/active`)
+3. **Boundary:** `zoa breakglass activate <request-id>` **in the same target** you used for `request` (RC grant → RC boundary session; MC grant → that MC’s boundary). The API Lambda in each VPC only issues credentials for its own cluster; cross-target activate returns **403 `target_mismatch`**. Then stock `kubectl` / `aws` (see **Two clocks** — re-activate same id ~hourly while grant valid; at most one active kube + one active aws in `~/.config/zoa/breakglass/active`)
 4. **Discovery:** `zoa breakglass describe <profile>` shows composition bullets plus effective **RBAC** (kube) or **IAM** notes (aws) — same data the API returns for that target type
 5. **Expiry:** worker reconciler marks expired grants and GCs `zoa-bg-<id>` RBAC
 
