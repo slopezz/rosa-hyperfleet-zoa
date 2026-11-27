@@ -18,9 +18,9 @@ type BreakglassRequest struct {
 	Profile          string            `json:"profile" dynamodbav:"profile"`
 	Reason           string            `json:"reason" dynamodbav:"reason"`
 	Operator         string            `json:"operator" dynamodbav:"operator"`
-	SignerARN        string            `json:"signer_arn,omitempty" dynamodbav:"signerARN,omitempty"`
-	SessionID        string            `json:"session_id,omitempty" dynamodbav:"sessionId,omitempty"`
-	CreatorTaskID    string            `json:"creator_task_id,omitempty" dynamodbav:"creatorTaskId,omitempty"`
+	ReqSignerARN     string            `json:"req_signer_arn,omitempty" dynamodbav:"reqSignerARN,omitempty"`
+	ReqSessionID     string            `json:"req_session_id,omitempty" dynamodbav:"reqSessionId,omitempty"`
+	ReqTaskID        string            `json:"req_task_id,omitempty" dynamodbav:"reqTaskId,omitempty"`
 	TargetCluster    string            `json:"target_cluster" dynamodbav:"targetCluster"`
 	TargetType       string            `json:"target_type" dynamodbav:"targetType"`
 	AccountID        string            `json:"account_id" dynamodbav:"accountId"`
@@ -33,7 +33,7 @@ type BreakglassRequest struct {
 	ExpiredAt        string            `json:"expired_at,omitempty" dynamodbav:"expiredAt,omitempty"`
 	DecidedAt        string            `json:"decided_at,omitempty" dynamodbav:"decidedAt,omitempty"`
 	DecidedBy        string            `json:"decided_by,omitempty" dynamodbav:"decidedBy,omitempty"`
-	ActivateAt       []string          `json:"activate_at,omitempty" dynamodbav:"activateAt,omitempty"`
+	ActivateEvents   []ActivateEvent   `json:"activate_events,omitempty" dynamodbav:"activateEvents,omitempty"`
 	DecisionNote     string            `json:"decision_note,omitempty" dynamodbav:"decisionNote,omitempty"`
 	Cleaned          bool              `json:"cleaned" dynamodbav:"cleaned"`
 	CleanedAt        string            `json:"cleaned_at,omitempty" dynamodbav:"cleanedAt,omitempty"`
@@ -41,6 +41,13 @@ type BreakglassRequest struct {
 	DateBucket       string            `json:"-" dynamodbav:"dateBucket,omitempty"`
 	TTL              int64             `json:"-" dynamodbav:"ttl,omitempty"`
 	Labels           map[string]string `json:"-" dynamodbav:"-"`
+}
+
+// ActivateEvent records one successful POST …/activate (credential issue).
+type ActivateEvent struct {
+	At        string `json:"at" dynamodbav:"at"`
+	TaskID    string `json:"task_id" dynamodbav:"taskId"`
+	SessionID string `json:"session_id,omitempty" dynamodbav:"sessionId,omitempty"`
 }
 
 // BreakglassFilter filters list queries.
@@ -66,7 +73,7 @@ type BreakglassStore interface {
 	Transition(ctx context.Context, requestID string, from, to Status, updates map[string]interface{}) error
 	QueryByTargetAndStatus(ctx context.Context, target string, status Status) ([]*BreakglassRequest, error)
 	MarkCleaned(ctx context.Context, requestID string) error
-	AppendActivateAt(ctx context.Context, requestID string, at string) error
+	AppendActivateEvent(ctx context.Context, requestID string, ev ActivateEvent) error
 }
 
 // DynamoDBBreakglassStore implements BreakglassStore.
@@ -366,9 +373,9 @@ func filterBreakglassItems(items []*BreakglassRequest, filter *BreakglassFilter)
 	return out
 }
 
-func (s *DynamoDBBreakglassStore) AppendActivateAt(ctx context.Context, requestID string, at string) error {
-	if at == "" {
-		at = time.Now().Format(time.RFC3339Nano)
+func (s *DynamoDBBreakglassStore) AppendActivateEvent(ctx context.Context, requestID string, ev ActivateEvent) error {
+	if ev.At == "" {
+		ev.At = time.Now().Format(time.RFC3339Nano)
 	}
 	req, err := s.Get(ctx, requestID)
 	if err != nil {
@@ -377,10 +384,10 @@ func (s *DynamoDBBreakglassStore) AppendActivateAt(ctx context.Context, requestI
 	if req == nil {
 		return fmt.Errorf("breakglass request not found")
 	}
-	req.ActivateAt = append(req.ActivateAt, at)
+	req.ActivateEvents = append(req.ActivateEvents, ev)
 	item, err := attributevalue.MarshalMap(map[string]interface{}{
-		"requestId":  requestID,
-		"activateAt": req.ActivateAt,
+		"requestId":      requestID,
+		"activateEvents": req.ActivateEvents,
 	})
 	if err != nil {
 		return err
@@ -389,7 +396,7 @@ func (s *DynamoDBBreakglassStore) AppendActivateAt(ctx context.Context, requestI
 		"requestId": item["requestId"],
 	}
 	delete(item, "requestId")
-	update := expression.Set(expression.Name("activateAt"), expression.Value(req.ActivateAt))
+	update := expression.Set(expression.Name("activateEvents"), expression.Value(req.ActivateEvents))
 	expr, err := expression.NewBuilder().WithUpdate(update).Build()
 	if err != nil {
 		return fmt.Errorf("building activate append: %w", err)
@@ -402,7 +409,7 @@ func (s *DynamoDBBreakglassStore) AppendActivateAt(ctx context.Context, requestI
 		ExpressionAttributeValues: expr.Values(),
 	})
 	if err != nil {
-		return fmt.Errorf("appending activateAt: %w", err)
+		return fmt.Errorf("appending activateEvents: %w", err)
 	}
 	return nil
 }

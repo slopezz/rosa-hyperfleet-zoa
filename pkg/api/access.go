@@ -291,7 +291,8 @@ func (h *AccessHandler) handleSessionStart(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	h.recordAccessAudit(r, http.StatusOK, "session_start", sessionID, reasonValue, req.Target)
+	h.recordAccessAudit(r, http.StatusOK, "session_start", sessionID, reasonValue, req.Target,
+		withAccessAuditPath(sessionAuditPath("start")))
 
 	writeJSON(w, http.StatusOK, sessionStartResponse{
 		SessionID: sessionID,
@@ -444,7 +445,8 @@ func (h *AccessHandler) handleSessionList(w http.ResponseWriter, r *http.Request
 
 	// Audit cross-operator queries (session history) but not self-service list (mine=true / scope=mine).
 	if !sessionListSelfService(q) {
-		h.recordAccessAudit(r, http.StatusOK, "session_history", "", "", q.Get("target"))
+		h.recordAccessAudit(r, http.StatusOK, "session_history", "", "", q.Get("target"),
+			withAccessAuditPath(V0Prefix+"/sessions"))
 	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{"items": sessions, "count": len(sessions)})
@@ -517,7 +519,8 @@ func (h *AccessHandler) handleSessionTerminate(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	h.recordAccessAudit(r, http.StatusOK, "session_terminate", sessionID, session.Reason, session.TargetCluster)
+	h.recordAccessAudit(r, http.StatusOK, "session_terminate", sessionID, session.Reason, session.TargetCluster,
+		withAccessAuditPath(sessionAuditPath("terminate")))
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "terminated", "session_id": sessionID})
 }
@@ -596,7 +599,8 @@ func (h *AccessHandler) handleSessionJoin(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	h.recordAccessAudit(r, http.StatusOK, "session_join", sessionID, session.Reason, session.TargetCluster)
+	h.recordAccessAudit(r, http.StatusOK, "session_join", sessionID, session.Reason, session.TargetCluster,
+		withAccessAuditPath(sessionAuditPath("join")))
 
 	writeJSON(w, http.StatusOK, sessionJoinResponse{
 		SessionID:       sessionID,
@@ -669,7 +673,8 @@ func (h *AccessHandler) handleSessionExecAttached(w http.ResponseWriter, r *http
 		return
 	}
 
-	h.recordAccessAudit(r, http.StatusOK, "session_exec_attached", sessionID, session.Reason, session.TargetCluster)
+	h.recordAccessAudit(r, http.StatusOK, "session_exec_attached", sessionID, session.Reason, session.TargetCluster,
+		withAccessAuditPath(sessionAuditPath("exec-attached")))
 
 	writeJSON(w, http.StatusOK, map[string]string{
 		"status":          "ok",
@@ -691,9 +696,23 @@ func (h *AccessHandler) handleTargetList(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, map[string]interface{}{"items": targets, "count": len(targets)})
 }
 
-func (h *AccessHandler) recordAccessAudit(r *http.Request, statusCode int, action, sessionID, reasonValue, targetCluster string) {
+type accessAuditOpts struct {
+	auditPath string
+}
+
+type AccessAuditOption func(*accessAuditOpts)
+
+func withAccessAuditPath(path string) AccessAuditOption {
+	return func(o *accessAuditOpts) { o.auditPath = path }
+}
+
+func (h *AccessHandler) recordAccessAudit(r *http.Request, statusCode int, action, sessionID, reasonValue, targetCluster string, opts ...AccessAuditOption) {
 	if h.auditStore == nil {
 		return
+	}
+	var o accessAuditOpts
+	for _, opt := range opts {
+		opt(&o)
 	}
 	signerARN := authenticatedCallerARN(r)
 	operator := signerARN
@@ -711,11 +730,15 @@ func (h *AccessHandler) recordAccessAudit(r *http.Request, statusCode int, actio
 		operator = username
 	}
 	accountID := authenticatedAccountID(r)
+	auditPath := r.URL.Path
+	if o.auditPath != "" {
+		auditPath = o.auditPath
+	}
 	entry := &store.AuditEntry{
 		AccountID:     accountID,
 		Timestamp:     time.Now().Format(time.RFC3339Nano),
 		Method:        r.Method,
-		Path:          r.URL.Path,
+		Path:          auditPath,
 		StatusCode:    statusCode,
 		Operator:      operator,
 		SignerARN:     signerARN,

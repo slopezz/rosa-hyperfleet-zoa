@@ -48,7 +48,7 @@ func (m *mockBreakglassStore) MarkCleaned(_ context.Context, requestID string) e
 	return nil
 }
 
-func (m *mockBreakglassStore) AppendActivateAt(_ context.Context, _ string, _ string) error {
+func (m *mockBreakglassStore) AppendActivateEvent(_ context.Context, _ string, _ store.ActivateEvent) error {
 	return nil
 }
 

@@ -65,7 +65,8 @@ func (h *Handler) handleApproveBreakglass(w http.ResponseWriter, r *http.Request
 		return
 	}
 	writeJSON(w, http.StatusOK, updated)
-	h.recordAudit(r, http.StatusOK, AuditActionBreakglassApprove, req.RequestID, withReason(note))
+	h.recordAudit(r, http.StatusOK, AuditActionBreakglassApprove, req.RequestID,
+		withReason(req.Reason), withAuditPath(breakglassAuditPath(req.Profile, "approve")))
 }
 
 func (h *Handler) handleRejectBreakglass(w http.ResponseWriter, r *http.Request, req *store.BreakglassRequest) {
@@ -81,7 +82,8 @@ func (h *Handler) handleRejectBreakglass(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	writeJSON(w, http.StatusOK, updated)
-	h.recordAudit(r, http.StatusOK, AuditActionBreakglassReject, req.RequestID, withReason(note))
+	h.recordAudit(r, http.StatusOK, AuditActionBreakglassReject, req.RequestID,
+		withReason(req.Reason), withAuditPath(breakglassAuditPath(req.Profile, "reject")))
 }
 
 func decodeApprovalNote(r *http.Request) string {

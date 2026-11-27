@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -79,6 +80,48 @@ func RejectBreakglassRequest(ctx context.Context, bgStore store.BreakglassStore,
 		"decisionNote": note,
 	}
 	return bgStore.Transition(ctx, req.RequestID, req.Status, store.StatusDenied, updates)
+}
+
+func breakglassGrantStillValid(req *store.BreakglassRequest) bool {
+	if req == nil || req.Status != store.StatusActive || req.Approval != store.WorkflowApprovalApproved {
+		return false
+	}
+	if req.GrantExpiresAt == "" {
+		return true
+	}
+	exp, err := time.Parse(time.RFC3339Nano, req.GrantExpiresAt)
+	if err != nil {
+		return false
+	}
+	return time.Now().Before(exp)
+}
+
+func findActiveBreakglassGrant(ctx context.Context, bgStore store.BreakglassStore, operator, profile, target string) (*store.BreakglassRequest, error) {
+	items, err := bgStore.QueryByTargetAndStatus(ctx, target, store.StatusActive)
+	if err != nil {
+		return nil, err
+	}
+	for _, req := range items {
+		if req.Operator != operator || req.Profile != profile {
+			continue
+		}
+		if breakglassGrantStillValid(req) {
+			return req, nil
+		}
+	}
+	return nil, nil
+}
+
+func writeBreakglassGrantAlreadyActive(w http.ResponseWriter, existing *store.BreakglassRequest) {
+	id := existing.RequestID
+	msg := fmt.Sprintf("request active id %s; activate with: zoa breakglass activate %s", id, id)
+	writeJSON(w, http.StatusConflict, map[string]interface{}{
+		"kind":             "Error",
+		"code":             "grant_already_active",
+		"reason":           msg,
+		"request_id":       id,
+		"grant_expires_at": existing.GrantExpiresAt,
+	})
 }
 
 func writeBreakglassDecisionError(w http.ResponseWriter, err error) {

@@ -29,7 +29,7 @@ func (m *mockBreakglassServiceStore) QueryByTargetAndStatus(context.Context, str
 }
 func (m *mockBreakglassServiceStore) MarkCleaned(context.Context, string) error { return nil }
 
-func (m *mockBreakglassServiceStore) AppendActivateAt(context.Context, string, string) error {
+func (m *mockBreakglassServiceStore) AppendActivateEvent(context.Context, string, store.ActivateEvent) error {
 	return nil
 }
 

@@ -38,7 +38,8 @@ func (h *AccessHandler) handleApprove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, updated)
-	h.recordAccessAudit(r, http.StatusOK, AuditActionBreakglassApprove, req.RequestID, note, req.TargetCluster)
+	h.recordAccessAudit(r, http.StatusOK, AuditActionBreakglassApprove, req.RequestID, req.Reason, req.TargetCluster,
+		withAccessAuditPath(breakglassAuditPath(req.Profile, "approve")))
 }
 
 func (h *AccessHandler) handleReject(w http.ResponseWriter, r *http.Request) {
@@ -72,7 +73,8 @@ func (h *AccessHandler) handleReject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, updated)
-	h.recordAccessAudit(r, http.StatusOK, AuditActionBreakglassReject, req.RequestID, note, req.TargetCluster)
+	h.recordAccessAudit(r, http.StatusOK, AuditActionBreakglassReject, req.RequestID, req.Reason, req.TargetCluster,
+		withAccessAuditPath(breakglassAuditPath(req.Profile, "reject")))
 }
 
 // tryApproveExecution attempts TA manual approval when enabled (ROSAENG epic); not wired on Access yet.

@@ -41,7 +41,7 @@ sequenceDiagram
         API->>API: STS AssumeRole (standing BG role)
         API-->>B: access key + session token
     end
-    API->>DDB: append activate_at
+    API->>DDB: append activate_events
     API->>Audit: breakglass activate
     B->>B: Write kubeconfig / aws-credentials, update active symlinks
     Note over B: stock kubectl / aws (not zoa run)
@@ -61,11 +61,11 @@ sequenceDiagram
     participant DDB as DynamoDB
 
     B->>API: POST …/activate (approved grant)
-    API->>API: task_id + operator match creator
+    API->>API: operator match request
     API->>EKS: Ensure namespace zoa-jobs
     API->>EKS: SA zoa-bg-{requestId} + ClusterRole(Binding)
     API->>EKS: TokenRequest (audience, TTL capped ≤1h)
-    API->>DDB: append activate_at
+    API->>DDB: append activate_events
     API-->>B: token, server, CA, kube_token_expires_at
     B->>B: kubeconfig under ~/.config/zoa/breakglass/{requestId}/
     B->>B: active → set KUBECONFIG for shell
@@ -85,10 +85,10 @@ sequenceDiagram
     participant DDB as DynamoDB
 
     B->>API: POST …/activate (approved grant)
-    API->>API: task_id + operator match creator
+    API->>API: operator match request
     API->>STS: AssumeRole(role_arn, RoleSessionName=zoa-bg-{requestId})
     Note over STS: Duration min 15m, max 1h, capped by grant remaining
-    API->>DDB: append activate_at
+    API->>DDB: append activate_events
     API-->>B: access_key_id, secret, session_token, expiration, region
     B->>B: ~/.config/zoa/breakglass/aws-credentials [default]
     B->>B: active → set AWS_SHARED_CREDENTIALS_FILE
@@ -135,7 +135,7 @@ No S3 job, no async runner, and no per-activation K8s Job — credentials return
 
 Operators see grant + cred in PS1 (`grant~…`, `cred~…`); `active` stores `credentialExpiresAt`. Catalog: `zoa breakglass describe` / `profiles` (request, grant, credential TTL). Full UX: [README — Two clocks](README.md#two-clocks-grant-vs-credentials).
 
-**Refresh:** `zoa breakglass activate <same-request-id>` again from the **same boundary task** while `status=active`, `approval=approved`, and before `grant_expires_at`. Re-activate replaces tokens and STS keys; it does not create a new request.
+**Refresh:** `zoa breakglass activate <same-request-id>` again from any boundary session while `status=active`, `approval=approved`, and before `grant_expires_at`. Re-activate replaces tokens and STS keys; it does not create a new request.
 
 ## Boundary shell wiring
 
@@ -153,7 +153,7 @@ At most one active **kube** and one active **aws** grant are tracked in `~/.conf
 
 | Store                         | What to search                                                      |
 | ----------------------------- | ------------------------------------------------------------------- |
-| ZOA audit / break-glass table | `request_id`, `operator`, `scope`, `activate_at` timestamps         |
+| ZOA audit / break-glass table | `request_id`, `operator`, `scope`, `activate_events` (at, task, session) |
 | EKS audit                     | `user.username` ~ `zoa-bg-<requestId>`                              |
 | CloudTrail                    | Session / user name `zoa-bg-<requestId>` for assumed-role API calls |
 

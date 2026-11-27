@@ -73,8 +73,9 @@ TTL attribute: **`ttl`** (Unix epoch), set on write from **`DYNAMODB_TTL_DAYS`**
 | `grantExpiresAt`   | `grant_expires_at`   | Active grant window end (post-approve)                 |
 | `cleaned`          | `cleaned`            | Worker set after kube RBAC teardown for expired grants |
 | `dateBucket`       | —                    | `YYYY-MM-DD` from `createdAt` for list/history         |
-| `sessionId`        | `session_id`         | Optional link to boundary session                      |
-| `creatorTaskId`    | `creator_task_id`    | Boundary task that created the request                 |
+| `reqSessionId`     | `req_session_id`     | Boundary session at request create                     |
+| `reqTaskId`        | `req_task_id`        | Boundary ECS task id at request create                 |
+| `reqSignerARN`     | `req_signer_arn`     | Identity-bridge signer at request create               |
 
 #### Break-glass — GSIs
 

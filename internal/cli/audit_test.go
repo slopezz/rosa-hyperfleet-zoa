@@ -263,7 +263,10 @@ func TestFormatAuditPathForTable_WhenV0Paths_ItShouldStripPrefixOnly(t *testing.
 		{"/api/v0/trusted-actions/list_eks_clusters/run", "trusted-actions/list_eks_clusters/run"},
 		{"/api/v0/audit", "audit"},
 		{"/api/v0/sessions/start", "sessions/start"},
-		{"/api/v0/sessions/join/abc", "sessions/join/abc"},
+		{"/api/v0/sessions/join/fcd8cbfb-961d-4ff9-adab-b566c0fdf7fb", "sessions/join"},
+		{"/api/v0/breakglass/aws_elevated/activate", "breakglass/aws_elevated/activate"},
+		{"/api/v0/breakglass/requests/3ae9b650-7aaf-42be-b9aa-3f45f2f01439/activate", "breakglass/requests/activate"},
+		{"/api/v0/approve/eph-regional%2F3ae9b650-7aaf-42be-b9aa-3f45f2f01439", "approve"},
 		{"/health", "/health"},
 	}
 	for _, tc := range tests {

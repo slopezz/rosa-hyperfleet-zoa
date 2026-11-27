@@ -176,14 +176,14 @@ func renderBreakglassGetHuman(w io.Writer, req *client.BreakglassRequest, timedO
 	fmt.Fprintf(w, "APPROVAL:  %s\n", breakglassWorkflowApproval(req))
 	fmt.Fprintf(w, "REASON:    %s\n", output.Dash(req.Reason))
 	fmt.Fprintf(w, "OPERATOR:  %s\n", output.Dash(req.Operator))
-	if req.SessionID != "" {
-		fmt.Fprintf(w, "SESSION:   %s\n", req.SessionID)
+	if req.ReqSessionID != "" {
+		fmt.Fprintf(w, "req_session_id: %s\n", req.ReqSessionID)
 	}
-	if req.SignerARN != "" {
-		fmt.Fprintf(w, "SIGNER:    %s\n", req.SignerARN)
+	if req.ReqSignerARN != "" {
+		fmt.Fprintf(w, "req_signer_arn: %s\n", req.ReqSignerARN)
 	}
-	if req.CreatorTaskID != "" {
-		fmt.Fprintf(w, "TASK:      %s\n", req.CreatorTaskID)
+	if req.ReqTaskID != "" {
+		fmt.Fprintf(w, "req_task_id:    %s\n", req.ReqTaskID)
 	}
 	if req.TargetType != "" {
 		fmt.Fprintf(w, "TYPE:      %s\n", req.TargetType)
@@ -204,8 +204,9 @@ func renderBreakglassGetHuman(w io.Writer, req *client.BreakglassRequest, timedO
 	if by := breakglassDecidedBy(req); by != "" {
 		fmt.Fprintf(w, "DECIDED_BY:%s\n", by)
 	}
-	if len(req.ActivateAt) > 0 {
-		fmt.Fprintf(w, "ACTIVATES: %s\n", breakglassActivatesSummary(req))
+	for i, ev := range req.ActivateEvents {
+		fmt.Fprintf(w, "ACTIVATE[%d]: %s task=%s session=%s\n",
+			i+1, formatBreakglassTime(ev.At), output.Dash(ev.TaskID), output.Dash(ev.SessionID))
 	}
 	if req.DecisionNote != "" {
 		fmt.Fprintf(w, "NOTE:      %s\n", req.DecisionNote)

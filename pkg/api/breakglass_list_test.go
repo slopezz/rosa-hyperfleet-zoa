@@ -36,7 +36,7 @@ func (m *filterCapturingBreakglassStore) QueryByTargetAndStatus(context.Context,
 	return nil, nil
 }
 func (m *filterCapturingBreakglassStore) MarkCleaned(context.Context, string) error { return nil }
-func (m *filterCapturingBreakglassStore) AppendActivateAt(context.Context, string, string) error {
+func (m *filterCapturingBreakglassStore) AppendActivateEvent(context.Context, string, store.ActivateEvent) error {
 	return nil
 }
 

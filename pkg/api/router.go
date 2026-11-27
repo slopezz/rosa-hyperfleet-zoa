@@ -491,6 +491,7 @@ type auditOpts struct {
 	dryRun                         bool
 	operator, signerARN, sessionID string
 	identityResolved               bool
+	auditPath                      string
 }
 
 type AuditOption func(*auditOpts)
@@ -516,6 +517,10 @@ func withResolvedIdentity(operator, signerARN, sessionID string) AuditOption {
 	}
 }
 
+func withAuditPath(path string) AuditOption {
+	return func(o *auditOpts) { o.auditPath = path }
+}
+
 // recordAudit persists an audit entry for the request. Identity is resolved
 // via the identity bridge (task UUID → sessions table for boundary callers,
 // direct ARN extraction for laptop callers). Both the resolved operator and
@@ -535,11 +540,15 @@ func (h *Handler) recordAudit(r *http.Request, statusCode int, action, execution
 	} else {
 		operator, signerARN, sessionID = h.resolveIdentity(r)
 	}
+	auditPath := r.URL.Path
+	if o.auditPath != "" {
+		auditPath = o.auditPath
+	}
 	entry := &store.AuditEntry{
 		AccountID:     accountID,
 		Timestamp:     time.Now().Format(time.RFC3339Nano),
 		Method:        r.Method,
-		Path:          r.URL.Path,
+		Path:          auditPath,
 		StatusCode:    statusCode,
 		Operator:      operator,
 		SignerARN:     signerARN,

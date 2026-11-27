@@ -87,6 +87,14 @@ func (h *Handler) handleCreateBreakglassRequest(w http.ResponseWriter, r *http.R
 		writeError(w, http.StatusUnauthorized, "unauthorized", "could not resolve operator identity")
 		return
 	}
+	if existing, err := findActiveBreakglassGrant(r.Context(), h.breakglassStore, operator, body.Profile, h.cfg.TargetCluster); err != nil {
+		h.logger.Error("find active breakglass grant", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal_error", "failed to create break-glass request")
+		return
+	} else if existing != nil {
+		writeBreakglassGrantAlreadyActive(w, existing)
+		return
+	}
 	now := time.Now()
 	requestExpires := now.Add(time.Duration(def.Metadata.Authorization.DefaultRequestHours) * time.Hour)
 
@@ -96,9 +104,9 @@ func (h *Handler) handleCreateBreakglassRequest(w http.ResponseWriter, r *http.R
 		Profile:          body.Profile,
 		Reason:           reasonValue,
 		Operator:         operator,
-		SignerARN:        signerARN,
-		SessionID:        sessionID,
-		CreatorTaskID:    taskID,
+		ReqSignerARN:     signerARN,
+		ReqSessionID:     sessionID,
+		ReqTaskID:        taskID,
 		TargetCluster:    h.cfg.TargetCluster,
 		TargetType:       h.cfg.TargetType,
 		AccountID:        authenticatedAccountID(r),
@@ -114,7 +122,8 @@ func (h *Handler) handleCreateBreakglassRequest(w http.ResponseWriter, r *http.R
 		writeError(w, http.StatusInternalServerError, "internal_error", "failed to create break-glass request")
 		return
 	}
-	h.recordAudit(r, http.StatusCreated, AuditActionBreakglassRequest, req.RequestID, withReason(reasonValue))
+	h.recordAudit(r, http.StatusCreated, AuditActionBreakglassRequest, req.RequestID,
+		withReason(reasonValue), withAuditPath(breakglassAuditPath(body.Profile, "requests")))
 
 	resp, err := ApproveBreakglassOnCreateWhenNoPeerWorkflow(r.Context(), h.breakglassStore, req, def)
 	if err != nil {
@@ -123,7 +132,8 @@ func (h *Handler) handleCreateBreakglassRequest(w http.ResponseWriter, r *http.R
 		return
 	}
 	if resp != nil && resp.Status == store.StatusActive {
-		h.recordAudit(r, http.StatusOK, AuditActionBreakglassApprove, resp.RequestID, withReason(breakglassAutoApproveNote))
+		h.recordAudit(r, http.StatusOK, AuditActionBreakglassApprove, resp.RequestID,
+			withReason(reasonValue), withAuditPath(breakglassAuditPath(resp.Profile, "approve")))
 		req = resp
 	}
 
@@ -235,12 +245,8 @@ func (h *Handler) handleActivateBreakglassRequest(w http.ResponseWriter, r *http
 		writeError(w, http.StatusConflict, "not_approved", "request approval is not approved")
 		return
 	}
-	operator, signerARN, _ := h.resolveIdentity(r)
+	operator, signerARN, sessionID := h.resolveIdentity(r)
 	taskID, _ := extractTaskIDFromSigner(signerARN)
-	if taskID == "" || req.CreatorTaskID == "" || taskID != req.CreatorTaskID {
-		writeError(w, http.StatusForbidden, "task_mismatch", "activate is only allowed from the boundary task that created the request")
-		return
-	}
 	if req.Operator != "" && operator != "" && req.Operator != operator {
 		writeError(w, http.StatusForbidden, "operator_mismatch", "operator does not match request")
 		return
@@ -309,12 +315,17 @@ func (h *Handler) handleActivateBreakglassRequest(w http.ResponseWriter, r *http
 			}
 		}
 	}
-	activateAt := time.Now().Format(time.RFC3339Nano)
-	if err := h.breakglassStore.AppendActivateAt(r.Context(), id, activateAt); err != nil {
+	ev := store.ActivateEvent{
+		At:        time.Now().Format(time.RFC3339Nano),
+		TaskID:    taskID,
+		SessionID: sessionID,
+	}
+	if err := h.breakglassStore.AppendActivateEvent(r.Context(), id, ev); err != nil {
 		h.logger.Error("breakglass record activate", "error", err, "request_id", id)
 	}
 	writeJSON(w, http.StatusOK, resp)
-	h.recordAudit(r, http.StatusOK, AuditActionBreakglassActivate, id, withReason(req.Profile))
+	h.recordAudit(r, http.StatusOK, AuditActionBreakglassActivate, id,
+		withReason(req.Reason), withAuditPath(breakglassAuditPath(req.Profile, "activate")))
 }
 
 func mustParseRFC3339(s string) time.Time {

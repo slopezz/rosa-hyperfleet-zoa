@@ -7,6 +7,12 @@ import (
 	"net/url"
 )
 
+type BreakglassActivateEvent struct {
+	At        string `json:"at"`
+	TaskID    string `json:"task_id"`
+	SessionID string `json:"session_id,omitempty"`
+}
+
 type BreakglassRequest struct {
 	RequestID        string   `json:"id"`
 	Profile          string   `json:"profile"`
@@ -16,9 +22,9 @@ type BreakglassRequest struct {
 	TargetCluster    string   `json:"target_cluster"`
 	TargetType       string   `json:"target_type,omitempty"`
 	Approval         string   `json:"approval,omitempty"`
-	SignerARN        string   `json:"signer_arn,omitempty"`
-	SessionID        string   `json:"session_id,omitempty"`
-	CreatorTaskID    string   `json:"creator_task_id,omitempty"`
+	ReqSignerARN     string   `json:"req_signer_arn,omitempty"`
+	ReqSessionID     string   `json:"req_session_id,omitempty"`
+	ReqTaskID        string   `json:"req_task_id,omitempty"`
 	AccountID        string   `json:"account_id,omitempty"`
 	Revision         string   `json:"revision,omitempty"`
 	CreatedAt        string   `json:"created_at,omitempty"`
@@ -27,7 +33,7 @@ type BreakglassRequest struct {
 	ExpiredAt        string   `json:"expired_at,omitempty"`
 	DecidedAt        string   `json:"decided_at,omitempty"`
 	DecidedBy        string   `json:"decided_by,omitempty"`
-	ActivateAt       []string `json:"activate_at,omitempty"`
+	ActivateEvents   []BreakglassActivateEvent `json:"activate_events,omitempty"`
 	DecisionNote     string   `json:"decision_note,omitempty"`
 	Kind             string   `json:"kind,omitempty"`
 }

@@ -46,7 +46,7 @@ func (m *mockBreakglassAccessStore) QueryByTargetAndStatus(context.Context, stri
 }
 func (m *mockBreakglassAccessStore) MarkCleaned(context.Context, string) error { return nil }
 
-func (m *mockBreakglassAccessStore) AppendActivateAt(context.Context, string, string) error {
+func (m *mockBreakglassAccessStore) AppendActivateEvent(context.Context, string, store.ActivateEvent) error {
 	return nil
 }
 

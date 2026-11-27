@@ -236,13 +236,3 @@ func listAudit(ctx context.Context, global *GlobalOptions, opts *auditOptions) e
 	return nil
 }
 
-// formatAuditPathForTable normalizes stored paths for human tables: drop /api/v0/
-// so PATH shows the route family (audit, sessions/..., trusted-actions/..., future breakglass/...).
-// JSON output keeps the full path from the API.
-func formatAuditPathForTable(path string) string {
-	const prefix = "/api/v0/"
-	if strings.HasPrefix(path, prefix) {
-		return path[len(prefix):]
-	}
-	return path
-}

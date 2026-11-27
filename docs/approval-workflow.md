@@ -112,7 +112,7 @@ Each **request row** stores two axes:
 
 | Rule                          | Meaning                                                                                                    |
 | ----------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| Activate                      | `approval=approved` **and** `status=active` **and** `now < grant_expires_at` **and** task/operator binding |
+| Activate                      | `approval=approved` **and** `status=active` **and** `now < grant_expires_at` **and** same `operator` as the request |
 | Reject                        | `approval=rejected`, `status=denied` — never `active` or `expired`                                         |
 | Grant timeout                 | `status=expired`, `approval` unchanged (typically still `approved`)                                        |
 | Request timeout (no decision) | `status=expired`, `approval` often still `pending`                                                         |
@@ -126,13 +126,14 @@ Shared timestamps (break-glass today; **same shape planned for TA** when the wor
 | `grant_expires_at`         | Peer or auto approve                                          |
 | `decided_at`, `decided_by` | Peer approve/reject only (empty for catalog `none` auto path) |
 | `expired_at`               | Worker when `status` → `expired`                              |
-| `activate_at[]`            | Each successful `POST …/activate`                             |
+| `activate_events[]`        | Each successful `POST …/activate` (`at`, `task_id`, `session_id`) |
 | `decision_note`            | Peer approve/reject when required                             |
 
 ### Expiry (worker vs HTTP activate)
 
 - **Worker** (`breakglassExpireGrants` in `pkg/scheduler/breakglass_gc.go`, ~1m + 5m GC ticks — [worker routes](architecture/worker-routes.md)): queries `target-status-index` for lifecycle `pending` and `active`, compares `request_expires_at` / `grant_expires_at`, sets `status=expired` and `expired_at`. Does **not** change `approval` or `decided_*`.
-- **Activate HTTP** (`POST /breakglass/requests/{id}/activate`): rejects if `status` ≠ `active` (`grant_not_active`), `approval` ≠ `approved` (`not_approved`), grant is past `grant_expires_at`, or **identity binding** fails (operator, session/task id from signer ARN, `creator_task_id` on the row).
+- **Activate HTTP** (`POST /breakglass/requests/{id}/activate`): rejects if `status` ≠ `active` (`grant_not_active`), `approval` ≠ `approved` (`not_approved`), grant is past `grant_expires_at`, or **operator** does not match the request. Each success appends an `activate_events` entry (boundary task + session at activate time). Request-time `req_session_id`, `req_task_id`, and `req_signer_arn` are create provenance only.
+- **Create HTTP** (`POST /breakglass/requests`): if the same `operator` already has an **approved active** grant for the same `profile` and `target_cluster` with `grant_expires_at` still in the future, returns **409** `grant_already_active` with `request_id` and a hint to `zoa breakglass activate <id>`.
 
 Example after grant timeout:
 

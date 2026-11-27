@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -156,14 +157,26 @@ func breakglassDecidedSummary(req *client.BreakglassRequest) string {
 	return ts
 }
 
-func breakglassActivatesSummary(req *client.BreakglassRequest) string {
-	if req == nil || len(req.ActivateAt) == 0 {
+// formatBreakglassActivationsForTable renders activate task ids (full detail in -o json).
+func formatBreakglassActivationsForTable(events []client.BreakglassActivateEvent) string {
+	if len(events) == 0 {
+		return output.Dash("")
+	}
+	if len(events) == 1 {
+		tid := events[0].TaskID
+		if tid == "" {
+			return formatBreakglassTime(events[0].At)
+		}
+		return output.Truncate(tid, 28)
+	}
+	return strconv.Itoa(len(events)) + " activates"
+}
+
+func breakglassActivationsSummary(req *client.BreakglassRequest) string {
+	if req == nil {
 		return "-"
 	}
-	if len(req.ActivateAt) == 1 {
-		return formatBreakglassTime(req.ActivateAt[0])
-	}
-	return fmt.Sprintf("%d activates", len(req.ActivateAt))
+	return formatBreakglassActivationsForTable(req.ActivateEvents)
 }
 
 func breakglassSessionDisplay(sessionID string, wide bool) string {
@@ -234,12 +247,12 @@ func printBreakglassRequestTable(global *GlobalOptions, list *client.BreakglassR
 	wide := global.OutputFormat == output.FormatWide
 	tw := output.NewTable(os.Stdout)
 
-	rowHeader := "CREATED\tSESSION\tID\tPROFILE\tTARGET\tSTATUS\tAPPROVAL\tREQ_EXPIRES\tGRANT_EXPIRES\tEXPIRED_AT\tDECIDED_AT\tDECIDED_BY\tREASON"
+	rowHeader := "CREATED\tID\tPROFILE\tTARGET\tSTATUS\tAPPROVAL\tGRANT_EXPIRES\tACTIVATIONS\tREASON"
 	if fleet {
-		rowHeader = "CREATED\tOPERATOR\tSESSION\tID\tPROFILE\tTARGET\tSTATUS\tAPPROVAL\tREQ_EXPIRES\tGRANT_EXPIRES\tEXPIRED_AT\tDECIDED_AT\tDECIDED_BY\tREASON"
+		rowHeader = "CREATED\tOPERATOR\tID\tPROFILE\tTARGET\tSTATUS\tAPPROVAL\tGRANT_EXPIRES\tACTIVATIONS\tREASON"
 	}
 	if wide {
-		fmt.Fprintln(tw, rowHeader+"\tSIGNER\tTASK_ID\tACCOUNT\tACTIVATES\tNOTE")
+		fmt.Fprintln(tw, rowHeader+"\treq_session_id\treq_task_id\treq_signer_arn\taccount_id\trequest_expires\texpired_at\tdecided_at\tdecided_by\tnote")
 	} else {
 		fmt.Fprintln(tw, rowHeader)
 	}
@@ -247,53 +260,50 @@ func printBreakglassRequestTable(global *GlobalOptions, list *client.BreakglassR
 	for i := range list.Items {
 		r := &list.Items[i]
 		created := formatBreakglassTime(r.CreatedAt)
-		session := breakglassSessionDisplay(r.SessionID, wide)
 		requestID := r.RequestID
 		profile := r.Profile
 		target := output.Truncate(breakglassTargetCluster(r.TargetCluster), 25)
 		status := breakglassLifecycleStatus(r)
 		approval := breakglassWorkflowApproval(r)
-		reqExp := formatBreakglassTime(r.RequestExpiresAt)
 		grantExp := formatBreakglassTime(r.GrantExpiresAt)
-		expiredAt := formatBreakglassTime(r.ExpiredAt)
-		decidedAt := formatBreakglassTime(breakglassDecidedAt(r))
-		decidedBy := output.Dash(breakglassDecidedBy(r))
+		activations := breakglassActivationsSummary(r)
 		reason := output.Truncate(output.Dash(r.Reason), 40)
 		if !wide && !fleet {
 			reason = output.Truncate(output.Dash(r.Reason), 30)
 		}
 
 		if wide {
-			row := fmt.Sprintf("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s",
-				created, session, requestID, profile, target, status, approval,
-				reqExp, grantExp, expiredAt, decidedAt, decidedBy, reason,
+			reqExp := formatBreakglassTime(r.RequestExpiresAt)
+			expiredAt := formatBreakglassTime(r.ExpiredAt)
+			decidedAt := formatBreakglassTime(breakglassDecidedAt(r))
+			decidedBy := output.Dash(breakglassDecidedBy(r))
+			row := fmt.Sprintf("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s",
+				created, requestID, profile, target, status, approval, grantExp, activations, reason,
 			)
 			if fleet {
-				row = fmt.Sprintf("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s",
-					created, output.Dash(r.Operator), session, requestID, profile, target, status, approval,
-					reqExp, grantExp, expiredAt, decidedAt, decidedBy, reason,
+				row = fmt.Sprintf("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s",
+					created, output.Dash(r.Operator), requestID, profile, target, status, approval, grantExp, activations, reason,
 				)
 			}
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 				row,
-				output.Truncate(breakglassSignerShort(r.SignerARN), 24),
-				output.Dash(r.CreatorTaskID),
+				breakglassSessionDisplay(r.ReqSessionID, true),
+				output.Dash(r.ReqTaskID),
+				output.Truncate(breakglassSignerShort(r.ReqSignerARN), 24),
 				output.Dash(r.AccountID),
-				breakglassActivatesSummary(r),
+				reqExp, expiredAt, decidedAt, decidedBy,
 				output.Truncate(output.Dash(r.DecisionNote), 30),
 			)
 			continue
 		}
 
 		if fleet {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-				created, output.Dash(r.Operator), session, requestID, profile, target, status, approval,
-				reqExp, grantExp, expiredAt, decidedAt, decidedBy, reason,
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+				created, output.Dash(r.Operator), requestID, profile, target, status, approval, grantExp, activations, reason,
 			)
 		} else {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-				created, session, requestID, profile, target, status, approval,
-				reqExp, grantExp, expiredAt, decidedAt, decidedBy, reason,
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+				created, requestID, profile, target, status, approval, grantExp, activations, reason,
 			)
 		}
 	}
