@@ -8,10 +8,6 @@ func (h *AccessHandler) handleApprove(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_request", "id is required")
 		return
 	}
-	if h.breakglassStore == nil {
-		writeError(w, http.StatusServiceUnavailable, "breakglass_disabled", "break-glass is not enabled")
-		return
-	}
 	req, err := h.breakglassStore.Get(r.Context(), rawID)
 	if err != nil {
 		h.logger.Error("access approve get breakglass", "error", err)
@@ -49,10 +45,6 @@ func (h *AccessHandler) handleReject(w http.ResponseWriter, r *http.Request) {
 	deployment, rawID := resolveCompoundResource(r.PathValue("id"))
 	if rawID == "" {
 		writeError(w, http.StatusBadRequest, "invalid_request", "id is required")
-		return
-	}
-	if h.breakglassStore == nil {
-		writeError(w, http.StatusServiceUnavailable, "breakglass_disabled", "break-glass is not enabled")
 		return
 	}
 	req, err := h.breakglassStore.Get(r.Context(), rawID)

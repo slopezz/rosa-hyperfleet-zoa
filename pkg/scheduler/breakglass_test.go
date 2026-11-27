@@ -81,9 +81,7 @@ func newReconcilerWithBreakglass(t *testing.T, mock store.BreakglassStore, exec 
 	t.Helper()
 	cfg := testConfig()
 	cfg.TargetCluster = targetCluster
-	r := NewReconciler(&mockExecutionStore{}, nil, nil, exec, cfg, slog.Default())
-	r.SetBreakglassStore(mock)
-	return r
+	return NewReconciler(&mockExecutionStore{}, mock, nil, nil, exec, cfg, slog.Default())
 }
 
 func TestBreakglassExpireGrants_WhenPendingExpired_ItShouldMarkExpired(t *testing.T) {

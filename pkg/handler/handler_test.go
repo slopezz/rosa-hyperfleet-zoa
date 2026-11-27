@@ -247,7 +247,7 @@ func TestHandleEvent_WhenExecutionEventWithNonexistentExec_ItShouldReturnError(t
 func TestHandleEvent_WhenExecutionEventWithUnregisteredAction_ItShouldFail(t *testing.T) {
 	mockStore := &mockExecStore{
 		getResult: &store.Execution{
-			ID: "exec-bad-action",
+			ID:            "exec-bad-action",
 			Action:        "nonexistent_action_xyz",
 			Status:        store.StatusDispatched,
 			ExecutionMode: "sync",
@@ -298,7 +298,7 @@ func TestHandleEvent_WhenHTTPEventWithBody_ItShouldParseCorrectly(t *testing.T) 
 func TestHandleEvent_WhenExecutionAlreadySucceeded_ItShouldSkipDuplicate(t *testing.T) {
 	mockStore := &mockExecStore{
 		getResult: &store.Execution{
-			ID: "exec-already-done",
+			ID:            "exec-already-done",
 			Action:        "get_resource",
 			Status:        store.StatusSucceeded,
 			ExecutionMode: "sync",
@@ -327,7 +327,7 @@ func TestHandleEvent_WhenExecutionAlreadySucceeded_ItShouldSkipDuplicate(t *test
 func TestHandleEvent_WhenExecutionAlreadyFailed_ItShouldSkipDuplicate(t *testing.T) {
 	mockStore := &mockExecStore{
 		getResult: &store.Execution{
-			ID: "exec-already-failed",
+			ID:            "exec-already-failed",
 			Action:        "delete_pod",
 			Status:        store.StatusFailed,
 			ExecutionMode: "sync",

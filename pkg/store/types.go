@@ -15,7 +15,7 @@ const (
 	// StatusActive is break-glass lifecycle: grant window open (activate allowed when approval=approved).
 	StatusActive Status = "active"
 	// StatusDenied is break-glass lifecycle: closed by rejection (approval=rejected; never active or expired).
-	StatusDenied Status = "denied"
+	StatusDenied     Status = "denied"
 	StatusDispatched Status = "dispatched"
 	StatusSucceeded  Status = "succeeded"
 	StatusFailed     Status = "failed"

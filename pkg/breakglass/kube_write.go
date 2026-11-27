@@ -8,9 +8,9 @@ import "github.com/openshift-online/rosa-seaplane-zoa/pkg/actions"
 func init() {
 	register(&Definition{
 		Metadata: ProfileMetadata{
-			Name:  "kube_write",
-			Scope: ScopeKube,
-			Type:  TypeWrite,
+			Name:        "kube_write",
+			Scope:       ScopeKube,
+			Type:        TypeWrite,
 			Description: "Workload read/write: get/list/watch cluster-wide plus surgical mutate on apps controllers, pods, configmaps, and jobs",
 			Capabilities: []string{
 				"Cluster-wide get/list/watch (same coverage as kube_read)",

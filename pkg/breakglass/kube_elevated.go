@@ -8,9 +8,9 @@ import "github.com/openshift-online/rosa-seaplane-zoa/pkg/actions"
 func init() {
 	register(&Definition{
 		Metadata: ProfileMetadata{
-			Name:  "kube_elevated",
-			Scope: ScopeKube,
-			Type:  TypeElevated,
+			Name:        "kube_elevated",
+			Scope:       ScopeKube,
+			Type:        TypeElevated,
 			Description: "Near-admin kube: broad workload mutate, platform operator CR patch (no platform * delete), secrets read, and exec",
 			Capabilities: []string{
 				"Full kube_write coverage plus elevated workload and platform mutate",

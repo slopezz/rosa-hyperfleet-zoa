@@ -31,45 +31,29 @@ type S3Getter interface {
 type Handler struct {
 	cfg             *config.Config
 	executionStore  store.ExecutionStore
+	sessionStore    store.SessionStore
 	breakglassStore store.BreakglassStore
 	auditStore      store.AuditStore
-	sessionStore    store.SessionStore
 	executor        *executor.Executor
 	s3Client        S3Getter
 	logger          *slog.Logger
 	mux             *http.ServeMux
 }
 
-func New(cfg *config.Config, execStore store.ExecutionStore, auditStore store.AuditStore, exec *executor.Executor, s3Client S3Getter, logger *slog.Logger, opts ...HandlerOption) *Handler {
+func New(cfg *config.Config, execStore store.ExecutionStore, sessionStore store.SessionStore, breakglassStore store.BreakglassStore, auditStore store.AuditStore, exec *executor.Executor, s3Client S3Getter, logger *slog.Logger) *Handler {
 	h := &Handler{
-		cfg:            cfg,
-		executionStore: execStore,
-		auditStore:     auditStore,
-		executor:       exec,
-		s3Client:       s3Client,
-		logger:         logger,
-		mux:            http.NewServeMux(),
-	}
-	for _, opt := range opts {
-		opt(h)
+		cfg:             cfg,
+		executionStore:  execStore,
+		sessionStore:    sessionStore,
+		breakglassStore: breakglassStore,
+		auditStore:      auditStore,
+		executor:        exec,
+		s3Client:        s3Client,
+		logger:          logger,
+		mux:             http.NewServeMux(),
 	}
 	h.registerRoutes()
 	return h
-}
-
-// HandlerOption configures optional Handler dependencies.
-type HandlerOption func(*Handler)
-
-// WithSessionStore enables the identity bridge — resolves ECS task ARN to SRE
-// identity via DynamoDB session lookup. Required when boundary containers call
-// the per-VPC Lambda.
-func WithSessionStore(s store.SessionStore) HandlerOption {
-	return func(h *Handler) { h.sessionStore = s }
-}
-
-// WithBreakglassStore enables break-glass HTTP routes when BREAKGLASS_TABLE is set.
-func WithBreakglassStore(s store.BreakglassStore) HandlerOption {
-	return func(h *Handler) { h.breakglassStore = s }
 }
 
 // resolveIdentityResult resolves attribution from the IAM authorizer caller ARN and emits bridge metrics once.

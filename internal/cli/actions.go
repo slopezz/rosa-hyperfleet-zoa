@@ -8,9 +8,9 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/openshift-online/rosa-seaplane-zoa/internal/cli/actioncatalog"
-	"github.com/openshift-online/rosa-seaplane-zoa/pkg/catalog"
 	"github.com/openshift-online/rosa-seaplane-zoa/internal/cli/parambind"
 	"github.com/openshift-online/rosa-seaplane-zoa/internal/output"
+	"github.com/openshift-online/rosa-seaplane-zoa/pkg/catalog"
 )
 
 func newActionsCommand(global *GlobalOptions) *cobra.Command {

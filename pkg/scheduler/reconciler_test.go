@@ -179,7 +179,7 @@ func TestDispatchApproved_WhenApprovedExecutionsExist_ItShouldSelfInvokeWorkerLa
 	cfg := testConfig()
 
 	kubeClient := fake.NewSimpleClientset() //nolint:staticcheck // NewClientset requires generated apply configs
-	r := NewReconciler(execStore, kubeClient, lambdaClient, nil, cfg, noopLogger())
+	r := NewReconciler(execStore, &mockBreakglassStore{}, kubeClient, lambdaClient, nil, cfg, noopLogger())
 
 	err := r.dispatchApproved(context.Background())
 	if err != nil {
@@ -214,7 +214,7 @@ func TestDispatchApproved_WhenNoApprovedExecutions_ItShouldDoNothing(t *testing.
 	cfg := testConfig()
 
 	kubeClient := fake.NewSimpleClientset() //nolint:staticcheck // NewClientset requires generated apply configs
-	r := NewReconciler(execStore, kubeClient, lambdaClient, nil, cfg, noopLogger())
+	r := NewReconciler(execStore, &mockBreakglassStore{}, kubeClient, lambdaClient, nil, cfg, noopLogger())
 
 	err := r.dispatchApproved(context.Background())
 	if err != nil {
@@ -243,7 +243,7 @@ func TestDispatchApproved_WhenBatchLimitReached_ItShouldStopProcessing(t *testin
 	cfg.MaxBatchPerTick = 5
 
 	kubeClient := fake.NewSimpleClientset() //nolint:staticcheck // NewClientset requires generated apply configs
-	r := NewReconciler(execStore, kubeClient, lambdaClient, nil, cfg, noopLogger())
+	r := NewReconciler(execStore, &mockBreakglassStore{}, kubeClient, lambdaClient, nil, cfg, noopLogger())
 
 	err := r.dispatchApproved(context.Background())
 	if err != nil {
@@ -265,7 +265,7 @@ func TestDispatchApproved_WhenInvokeFails_ItShouldRollBackToApproved(t *testing.
 	cfg := testConfig()
 
 	kubeClient := fake.NewSimpleClientset() //nolint:staticcheck // NewClientset requires generated apply configs
-	r := NewReconciler(execStore, kubeClient, lambdaClient, nil, cfg, noopLogger())
+	r := NewReconciler(execStore, &mockBreakglassStore{}, kubeClient, lambdaClient, nil, cfg, noopLogger())
 
 	err := r.dispatchApproved(context.Background())
 	if err != nil {
@@ -298,7 +298,7 @@ func TestDispatchApproved_WhenContextCancelled_ItShouldStopEarly(t *testing.T) {
 	cancel() // Immediately cancelled
 
 	kubeClient := fake.NewSimpleClientset() //nolint:staticcheck // NewClientset requires generated apply configs
-	r := NewReconciler(execStore, kubeClient, lambdaClient, nil, cfg, noopLogger())
+	r := NewReconciler(execStore, &mockBreakglassStore{}, kubeClient, lambdaClient, nil, cfg, noopLogger())
 
 	err := r.dispatchApproved(ctx)
 	if err != nil {
@@ -315,7 +315,7 @@ func TestTimeoutDispatched_WhenExecutionExceedsTimeout_ItShouldMarkTimedOut(t *t
 	execStore := &mockExecutionStore{
 		executions: []*store.Execution{
 			{
-				ID: "exec-timeout",
+				ID:             "exec-timeout",
 				Action:         "get-resource",
 				Status:         store.StatusDispatched,
 				TimeoutSeconds: 60,
@@ -327,7 +327,7 @@ func TestTimeoutDispatched_WhenExecutionExceedsTimeout_ItShouldMarkTimedOut(t *t
 	cfg := testConfig()
 
 	kubeClient := fake.NewSimpleClientset() //nolint:staticcheck // NewClientset requires generated apply configs
-	r := NewReconciler(execStore, kubeClient, nil, nil, cfg, noopLogger())
+	r := NewReconciler(execStore, &mockBreakglassStore{}, kubeClient, nil, nil, cfg, noopLogger())
 
 	err := r.timeoutDispatched(context.Background())
 	if err != nil {
@@ -347,7 +347,7 @@ func TestTimeoutDispatched_WhenExecutionWithinTimeout_ItShouldNotTransition(t *t
 	execStore := &mockExecutionStore{
 		executions: []*store.Execution{
 			{
-				ID: "exec-recent",
+				ID:             "exec-recent",
 				Action:         "get-resource",
 				Status:         store.StatusDispatched,
 				TimeoutSeconds: 120,
@@ -359,7 +359,7 @@ func TestTimeoutDispatched_WhenExecutionWithinTimeout_ItShouldNotTransition(t *t
 	cfg := testConfig()
 
 	kubeClient := fake.NewSimpleClientset() //nolint:staticcheck // NewClientset requires generated apply configs
-	r := NewReconciler(execStore, kubeClient, nil, nil, cfg, noopLogger())
+	r := NewReconciler(execStore, &mockBreakglassStore{}, kubeClient, nil, nil, cfg, noopLogger())
 
 	err := r.timeoutDispatched(context.Background())
 	if err != nil {
@@ -375,7 +375,7 @@ func TestPollAsyncJobs_WhenJobCompleted_ItShouldTransitionToSucceeded(t *testing
 	execStore := &mockExecutionStore{
 		executions: []*store.Execution{
 			{
-				ID: "async-ok",
+				ID:            "async-ok",
 				Action:        "get-resource",
 				Status:        store.StatusDispatched,
 				ExecutionMode: "async",
@@ -406,7 +406,7 @@ func TestPollAsyncJobs_WhenJobCompleted_ItShouldTransitionToSucceeded(t *testing
 	}
 	_, _ = kubeClient.BatchV1().Jobs(cfg.JobsNamespace).Create(ctx, job, metav1.CreateOptions{})
 
-	r := NewReconciler(execStore, kubeClient, nil, nil, cfg, noopLogger())
+	r := NewReconciler(execStore, &mockBreakglassStore{}, kubeClient, nil, nil, cfg, noopLogger())
 
 	err := r.pollAsyncJobs(ctx)
 	if err != nil {
@@ -425,7 +425,7 @@ func TestPollAsyncJobs_WhenJobFailed_ItShouldTransitionToFailed(t *testing.T) {
 	execStore := &mockExecutionStore{
 		executions: []*store.Execution{
 			{
-				ID: "async-fail",
+				ID:            "async-fail",
 				Action:        "delete-pod",
 				Status:        store.StatusDispatched,
 				ExecutionMode: "async",
@@ -455,7 +455,7 @@ func TestPollAsyncJobs_WhenJobFailed_ItShouldTransitionToFailed(t *testing.T) {
 	}
 	_, _ = kubeClient.BatchV1().Jobs(cfg.JobsNamespace).Create(ctx, job, metav1.CreateOptions{})
 
-	r := NewReconciler(execStore, kubeClient, nil, nil, cfg, noopLogger())
+	r := NewReconciler(execStore, &mockBreakglassStore{}, kubeClient, nil, nil, cfg, noopLogger())
 
 	err := r.pollAsyncJobs(ctx)
 	if err != nil {
@@ -474,7 +474,7 @@ func TestPollAsyncJobs_WhenJobStillRunning_ItShouldNotTransition(t *testing.T) {
 	execStore := &mockExecutionStore{
 		executions: []*store.Execution{
 			{
-				ID: "async-running",
+				ID:            "async-running",
 				Action:        "delete-pod",
 				Status:        store.StatusDispatched,
 				ExecutionMode: "async",
@@ -503,7 +503,7 @@ func TestPollAsyncJobs_WhenJobStillRunning_ItShouldNotTransition(t *testing.T) {
 	}
 	_, _ = kubeClient.BatchV1().Jobs(cfg.JobsNamespace).Create(ctx, job, metav1.CreateOptions{})
 
-	r := NewReconciler(execStore, kubeClient, nil, nil, cfg, noopLogger())
+	r := NewReconciler(execStore, &mockBreakglassStore{}, kubeClient, nil, nil, cfg, noopLogger())
 
 	err := r.pollAsyncJobs(ctx)
 	if err != nil {
@@ -522,7 +522,7 @@ func TestTimeoutDispatched_WhenAsyncWithinOverhead_ItShouldNotTimeout(t *testing
 	execStore := &mockExecutionStore{
 		executions: []*store.Execution{
 			{
-				ID: "async-ok",
+				ID:             "async-ok",
 				Action:         "get-resource",
 				Status:         store.StatusDispatched,
 				TimeoutSeconds: 30,
@@ -534,7 +534,7 @@ func TestTimeoutDispatched_WhenAsyncWithinOverhead_ItShouldNotTimeout(t *testing
 	}
 	cfg := testConfig()
 	kubeClient := fake.NewSimpleClientset() //nolint:staticcheck // NewClientset requires generated apply configs
-	r := NewReconciler(execStore, kubeClient, nil, nil, cfg, noopLogger())
+	r := NewReconciler(execStore, &mockBreakglassStore{}, kubeClient, nil, nil, cfg, noopLogger())
 
 	err := r.timeoutDispatched(context.Background())
 	if err != nil {
@@ -552,7 +552,7 @@ func TestTimeoutDispatched_WhenAsyncExceedsOverhead_ItShouldTimeout(t *testing.T
 	execStore := &mockExecutionStore{
 		executions: []*store.Execution{
 			{
-				ID: "async-expired",
+				ID:             "async-expired",
 				Action:         "get-resource",
 				Status:         store.StatusDispatched,
 				TimeoutSeconds: 30,
@@ -564,7 +564,7 @@ func TestTimeoutDispatched_WhenAsyncExceedsOverhead_ItShouldTimeout(t *testing.T
 	}
 	cfg := testConfig()
 	kubeClient := fake.NewSimpleClientset() //nolint:staticcheck // NewClientset requires generated apply configs
-	r := NewReconciler(execStore, kubeClient, nil, nil, cfg, noopLogger())
+	r := NewReconciler(execStore, &mockBreakglassStore{}, kubeClient, nil, nil, cfg, noopLogger())
 
 	err := r.timeoutDispatched(context.Background())
 	if err != nil {
@@ -585,7 +585,7 @@ func TestTimeoutDispatched_WhenSyncExceedsTimeout_ItShouldNotAddOverhead(t *test
 	execStore := &mockExecutionStore{
 		executions: []*store.Execution{
 			{
-				ID: "sync-expired",
+				ID:             "sync-expired",
 				Action:         "get-resource",
 				Status:         store.StatusDispatched,
 				TimeoutSeconds: 30,
@@ -597,7 +597,7 @@ func TestTimeoutDispatched_WhenSyncExceedsTimeout_ItShouldNotAddOverhead(t *test
 	}
 	cfg := testConfig()
 	kubeClient := fake.NewSimpleClientset() //nolint:staticcheck // NewClientset requires generated apply configs
-	r := NewReconciler(execStore, kubeClient, nil, nil, cfg, noopLogger())
+	r := NewReconciler(execStore, &mockBreakglassStore{}, kubeClient, nil, nil, cfg, noopLogger())
 
 	err := r.timeoutDispatched(context.Background())
 	if err != nil {
@@ -669,7 +669,7 @@ func TestPollAsyncJobs_WhenJobCompleted_ItShouldEnrichWithArtifactSizes(t *testi
 	execStore := &mockExecutionStore{
 		executions: []*store.Execution{
 			{
-				ID: "async-with-artifacts",
+				ID:            "async-with-artifacts",
 				Action:        "get-resource",
 				Status:        store.StatusDispatched,
 				ExecutionMode: "async",
@@ -712,7 +712,7 @@ func TestPollAsyncJobs_WhenJobCompleted_ItShouldEnrichWithArtifactSizes(t *testi
 		ArtifactBucket: "test-bucket",
 	}, noopLogger())
 
-	r := NewReconciler(execStore, kubeClient, nil, exec, cfg, noopLogger())
+	r := NewReconciler(execStore, &mockBreakglassStore{}, kubeClient, nil, exec, cfg, noopLogger())
 
 	err := r.pollAsyncJobs(ctx)
 	if err != nil {
@@ -744,7 +744,7 @@ func TestPollAsyncJobs_WhenJobCompletedWithTarGz_ItShouldDetectFormat(t *testing
 	execStore := &mockExecutionStore{
 		executions: []*store.Execution{
 			{
-				ID: "async-tar",
+				ID:            "async-tar",
 				Action:        "must-gather",
 				Status:        store.StatusDispatched,
 				ExecutionMode: "async",
@@ -785,7 +785,7 @@ func TestPollAsyncJobs_WhenJobCompletedWithTarGz_ItShouldDetectFormat(t *testing
 		ArtifactBucket: "test-bucket",
 	}, noopLogger())
 
-	r := NewReconciler(execStore, kubeClient, nil, exec, cfg, noopLogger())
+	r := NewReconciler(execStore, &mockBreakglassStore{}, kubeClient, nil, exec, cfg, noopLogger())
 
 	err := r.pollAsyncJobs(ctx)
 	if err != nil {
@@ -817,7 +817,7 @@ func TestRun_WhenDispatchPhaseFails_ItShouldReturnError(t *testing.T) {
 	_, _ = kubeClient.CoreV1().Namespaces().Create(ctx, ns, metav1.CreateOptions{})
 
 	exec := executor.New(kubeClient, nil, nil, nil, executor.ExecutorConfig{}, noopLogger())
-	r := NewReconciler(execStore, kubeClient, nil, exec, cfg, noopLogger())
+	r := NewReconciler(execStore, &mockBreakglassStore{}, kubeClient, nil, exec, cfg, noopLogger())
 
 	err := r.Run(ctx)
 	if err == nil {
@@ -841,7 +841,7 @@ func TestRun_WhenNoPhaseFails_ItShouldReturnNil(t *testing.T) {
 	_, _ = kubeClient.CoreV1().Namespaces().Create(ctx, ns, metav1.CreateOptions{})
 
 	exec := executor.New(kubeClient, nil, nil, nil, executor.ExecutorConfig{}, noopLogger())
-	r := NewReconciler(execStore, kubeClient, nil, exec, cfg, noopLogger())
+	r := NewReconciler(execStore, &mockBreakglassStore{}, kubeClient, nil, exec, cfg, noopLogger())
 
 	err := r.Run(ctx)
 	if err != nil {

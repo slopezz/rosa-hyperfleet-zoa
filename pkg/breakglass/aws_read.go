@@ -5,8 +5,8 @@ import "github.com/openshift-online/rosa-seaplane-zoa/pkg/actions"
 func init() {
 	register(&Definition{
 		Metadata: ProfileMetadata{
-			Name: "aws_read",
-			Scope: ScopeAWS,
+			Name:        "aws_read",
+			Scope:       ScopeAWS,
 			Type:        TypeRead,
 			Description: "AWS ReadOnlyAccess in the boundary target account (RC or MC).",
 			Authorization: Authorization{

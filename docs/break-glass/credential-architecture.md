@@ -176,7 +176,7 @@ For TA internals (sync/async diagrams), see [implementation.md](../architecture/
 
 ## Expiry and cleanup
 
-Worker hygiene runs on **`reconciler`** and **`gc`** ticks (`breakglassExpireGrants`, `breakglassGarbageCollect`, `breakglassOrphanGC` on `Reconciler` — see [Worker routes](../architecture/worker-routes.md); `SetBreakglassStore` in `cmd/zoa-lambda/main.go`). Not a separate EventBridge schedule:
+Worker hygiene runs on **`reconciler`** and **`gc`** ticks (`breakglassExpireGrants`, `breakglassGarbageCollect`, `breakglassOrphanGC` on `Reconciler` — see [Worker routes](../architecture/worker-routes.md); `BreakglassStore` wired in `NewReconciler` from `cmd/zoa-lambda/main.go`). Not a separate EventBridge schedule:
 
 1. Pending requests past deadline → `expired`
 2. Approved grants past `grant_expires_at` → `expired` (approval column unchanged)
@@ -188,10 +188,9 @@ STS sessions and kube tokens become invalid at their own TTL; GC is **RBAC hygie
 
 | Concern                                                              | Where                                                                                 |
 | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| Break-glass DynamoDB table                                           | Terraform **rosa-seaplane** (`zoa-lambda` module); `BREAKGLASS_TABLE` on API + Worker |
+| Break-glass DynamoDB table                                           | Terraform **rosa-seaplane** (`zoa` module); **`BREAKGLASS_TABLE` required** on Access, API, Worker (same as `EXECUTION_TABLE` / `SESSIONS_TABLE`) |
 | Standing AWS BG roles + trust                                        | `terraform/modules/zoa-lambda/breakglass_iam.tf`                                      |
 | API env: `BREAKGLASS_AWS_READ_ROLE_ARN`, `…_WRITE_…`, `…_ELEVATED_…` | Rendered per region/target                                                            |
-| Enable gate                                                          | `breakglass_enabled` / table presence — API returns 404 when disabled                 |
 
 Executor env mirrors TA EKS settings (`EKS_CLUSTER_*`, `ZOA_JOBS_NAMESPACE`) because the same API Lambda client mutates the cluster.
 

@@ -2,7 +2,7 @@
 
 The **Worker Lambda** in each target VPC runs a **boundary session reaper** on the same EventBridge schedule as the TA reconciler/GC (`route: reaper`). It stops orphaned **ECS Fargate** boundary tasks and marks DynamoDB session rows **`terminated`** when policy says the session is done.
 
-Implementation: `pkg/scheduler/reaper.go`, `pkg/boundaryexec/activity.go`, `pkg/store/session.go`, wired from `cmd/zoa-lambda/main.go` when `SESSIONS_TABLE` is set.
+Implementation: `pkg/scheduler/reaper.go`, `pkg/boundaryexec/activity.go`, `pkg/store/session.go`, wired from `cmd/zoa-lambda/main.go` on every worker (`SESSIONS_TABLE` required).
 
 ## Ways a session ends
 
@@ -79,6 +79,7 @@ Entrypoint copies `/usr/share/zoa/catalog/ZOA_ACTIONS.{rc|mc}.md` → `/home/sre
 
 ## Operational notes
 
+- **CloudWatch:** reaper logs use `pillar=sessions` and `phase` (`deadline`, `stale_creating`, `idle`). Phase-level failures use the same `worker phase failed` message as TA/BG reconciler ticks (filter `pillar = "sessions"`).
 - **Idle baseline `createdAt`** includes task provisioning time; slow `RunTask` reduces time before idle reap if the operator never joins.
 - **SSM history pagination** is capped (20 pages); revisit at very high join churn.
 

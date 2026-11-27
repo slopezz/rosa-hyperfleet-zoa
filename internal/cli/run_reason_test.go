@@ -16,7 +16,7 @@ func TestRunAction_WhenZOAReasonEnvSet_ItShouldDispatchEnvReason(t *testing.T) {
 		dispatchFn: func(_ context.Context, _ string, req *client.DispatchRequest) (*client.DispatchResponse, error) {
 			dispatchedReason = req.Reason
 			return &client.DispatchResponse{
-				ID: "exec-1",
+				ID:            "exec-1",
 				Status:        "succeeded",
 				TargetCluster: "mc-1",
 				ExecutionMode: "sync",
@@ -45,7 +45,7 @@ func TestRunAction_WhenZOAReasonAndFlagSet_ItShouldPreferFlagReason(t *testing.T
 		dispatchFn: func(_ context.Context, _ string, req *client.DispatchRequest) (*client.DispatchResponse, error) {
 			dispatchedReason = req.Reason
 			return &client.DispatchResponse{
-				ID: "exec-2",
+				ID:            "exec-2",
 				Status:        "succeeded",
 				TargetCluster: "mc-1",
 				ExecutionMode: "sync",

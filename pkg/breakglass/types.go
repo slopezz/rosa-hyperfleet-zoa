@@ -30,7 +30,7 @@ type ProfileMetadata struct {
 	Scope          string        `json:"scope"`
 	Type           string        `json:"type"`
 	Description    string        `json:"description"`
-	Authorization  Authorization   `json:"authorization"`
+	Authorization  Authorization `json:"authorization"`
 	Capabilities   []string      `json:"capabilities,omitempty"`
 	Restrictions   []string      `json:"restrictions,omitempty"`
 	TargetTypes    []string      `json:"target_types,omitempty"`

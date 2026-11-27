@@ -222,7 +222,7 @@ func testHandlerWithAudit(execStore store.ExecutionStore, auditStore store.Audit
 		Region:          "us-east-1",
 		JobImage:        "test:latest",
 	}, logger)
-	return New(cfg, execStore, auditStore, exec, nil, logger)
+	return New(cfg, execStore, &mockSessionStore{}, &mockBreakglassServiceStore{}, auditStore, exec, nil, logger)
 }
 
 // --- Filter tests ---

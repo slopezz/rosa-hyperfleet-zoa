@@ -202,7 +202,7 @@ func testHandlerWithCustomAudit(execStore store.ExecutionStore, auditStore store
 		Region:          "us-east-1",
 		JobImage:        "test:latest",
 	}, logger)
-	return New(cfg, execStore, auditStore, exec, nil, logger)
+	return New(cfg, execStore, &mockSessionStore{}, &mockBreakglassServiceStore{}, auditStore, exec, nil, logger)
 }
 
 func testHandlerWithS3(execStore store.ExecutionStore, s3Mock S3Getter) *Handler {
@@ -223,7 +223,7 @@ func testHandlerWithS3(execStore store.ExecutionStore, s3Mock S3Getter) *Handler
 		Region:          "us-east-1",
 		JobImage:        "test:latest",
 	}, logger)
-	return New(cfg, execStore, &mockAuditStore{}, exec, s3Mock, logger)
+	return New(cfg, execStore, &mockSessionStore{}, &mockBreakglassServiceStore{}, &mockAuditStore{}, exec, s3Mock, logger)
 }
 
 func doRequest(h *Handler, method, path string, body interface{}, headers map[string]string) *httptest.ResponseRecorder {
@@ -277,7 +277,7 @@ func TestHandleCreate_WhenWriteCooldown_ItShouldReturn429(t *testing.T) {
 	execStore := &mockExecStore{
 		recentByTarget: []*store.Execution{
 			{
-				ID: "recent-exec",
+				ID:     "recent-exec",
 				Action: "test-write",
 				Status: store.StatusSucceeded,
 				Params: map[string]string{"namespace": "default", "name": "pod-1"},
@@ -335,7 +335,7 @@ func TestHandleCreate_WhenDifferentParams_ItShouldNotTriggerCooldown(t *testing.
 	execStore := &mockExecStore{
 		recentByTarget: []*store.Execution{
 			{
-				ID: "recent-exec",
+				ID:     "recent-exec",
 				Action: "test-write",
 				Status: store.StatusSucceeded,
 				Params: map[string]string{"namespace": "default", "name": "pod-1"},
@@ -363,7 +363,7 @@ func TestHandleCreate_WhenDryRunRecent_ItShouldNotTriggerCooldown(t *testing.T) 
 	execStore := &mockExecStore{
 		recentByTarget: []*store.Execution{
 			{
-				ID: "recent-exec",
+				ID:     "recent-exec",
 				Action: "test-write",
 				Status: store.StatusSucceeded,
 				Params: map[string]string{"namespace": "default", "name": "pod-1"},
@@ -449,7 +449,7 @@ func TestHandleCreate_WhenCooldownRejected_ItShouldRecordAuditWith429(t *testing
 	execStore := &mockExecStore{
 		recentByTarget: []*store.Execution{
 			{
-				ID: "recent-exec",
+				ID:     "recent-exec",
 				Action: "test-write",
 				Status: store.StatusSucceeded,
 				Params: map[string]string{"namespace": "default", "name": "pod-1"},
@@ -691,7 +691,7 @@ func TestHandleCreate_WhenMustGatherGatherInvalidForDeployment_ItShouldRejectBef
 		TargetCluster:            "test-cluster",
 		ExecutionDeadlineSeconds: 295,
 	}
-	h := New(cfg, execStore, &mockAuditStore{}, exec, nil, logger)
+	h := New(cfg, execStore, &mockSessionStore{}, &mockBreakglassServiceStore{}, &mockAuditStore{}, exec, nil, logger)
 
 	body := createRequest{
 		Reason: "TEST-12345",
@@ -733,7 +733,7 @@ func TestHandleCreate_WhenMustGatherSyncOverride_ItShouldReturn400(t *testing.T)
 		TargetCluster:            "test-cluster",
 		ExecutionDeadlineSeconds: 295,
 	}
-	h := New(cfg, execStore, &mockAuditStore{}, exec, nil, logger)
+	h := New(cfg, execStore, &mockSessionStore{}, &mockBreakglassServiceStore{}, &mockAuditStore{}, exec, nil, logger)
 
 	body := createRequest{
 		Reason:        "TEST-12345",
@@ -841,7 +841,7 @@ func TestHandleGetExecution_WhenIncludeOutput_ItShouldEmbedS3Content(t *testing.
 	execStore := &mockExecStore{
 		executions: []*store.Execution{
 			{
-				ID: "exec-001",
+				ID:          "exec-001",
 				Action:      "get_resource",
 				Status:      store.StatusSucceeded,
 				DurationMs:  2000,
@@ -882,7 +882,7 @@ func TestHandleGetExecution_WhenIncludeLogs_ItShouldEmbedS3Logs(t *testing.T) {
 	execStore := &mockExecStore{
 		executions: []*store.Execution{
 			{
-				ID: "exec-002",
+				ID:       "exec-002",
 				Action:   "get_resource",
 				Status:   store.StatusFailed,
 				LogBytes: 100,
@@ -918,7 +918,7 @@ func TestHandleGetExecution_WhenIncludeAll_ItShouldEmbedBoth(t *testing.T) {
 	execStore := &mockExecStore{
 		executions: []*store.Execution{
 			{
-				ID: "exec-003",
+				ID:          "exec-003",
 				Action:      "get_resource",
 				Status:      store.StatusSucceeded,
 				OutputBytes: 10,
@@ -955,7 +955,7 @@ func TestHandleGetExecution_WhenPending_ItShouldNotFetchS3(t *testing.T) {
 	execStore := &mockExecStore{
 		executions: []*store.Execution{
 			{
-				ID: "exec-004",
+				ID:     "exec-004",
 				Action: "get_resource",
 				Status: store.StatusDispatched,
 			},
@@ -986,7 +986,7 @@ func TestHandleGetExecution_WhenTerminal_ItShouldIncludeDuration(t *testing.T) {
 	execStore := &mockExecStore{
 		executions: []*store.Execution{
 			{
-				ID: "exec-005",
+				ID:         "exec-005",
 				Action:     "get_resource",
 				Status:     store.StatusSucceeded,
 				DurationMs: 258, // sub-second execution
@@ -1104,7 +1104,7 @@ func testHandlerWithWorkingExecutor(execStore store.ExecutionStore) *Handler {
 		Region:          "us-east-1",
 		JobImage:        "test:latest",
 	}, logger)
-	return New(cfg, execStore, &mockAuditStore{}, exec, nil, logger)
+	return New(cfg, execStore, &mockSessionStore{}, &mockBreakglassServiceStore{}, &mockAuditStore{}, exec, nil, logger)
 }
 
 func TestHandleCreate_WhenSyncSucceeds_ItShouldReturnOutputInline(t *testing.T) {
@@ -1170,7 +1170,7 @@ func TestHandleCreate_WhenSyncFails_ItShouldReturnLogsInline(t *testing.T) {
 		Region:          "us-east-1",
 		JobImage:        "test:latest",
 	}, logger)
-	h := New(cfg, execStore, &mockAuditStore{}, exec, nil, logger)
+	h := New(cfg, execStore, &mockSessionStore{}, &mockBreakglassServiceStore{}, &mockAuditStore{}, exec, nil, logger)
 
 	body := createRequest{
 		Reason: "TEST-12345",
@@ -1223,7 +1223,7 @@ func TestHandleGetExecution_WhenTarGzWithoutManifest_ItShouldReturnDownloadHint(
 	execStore := &mockExecStore{
 		executions: []*store.Execution{
 			{
-				ID: "exec-mg-002",
+				ID:           "exec-mg-002",
 				Action:       "must_gather",
 				Status:       store.StatusSucceeded,
 				OutputFormat: "tar.gz",
@@ -1252,7 +1252,7 @@ func TestHandleGetExecution_WhenNoS3Client_ItShouldStillReturnMetadata(t *testin
 	execStore := &mockExecStore{
 		executions: []*store.Execution{
 			{
-				ID: "exec-006",
+				ID:     "exec-006",
 				Action: "get_resource",
 				Status: store.StatusSucceeded,
 			},

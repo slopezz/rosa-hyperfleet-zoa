@@ -159,7 +159,7 @@ See [observability.md](../observability.md) for the full EMF catalog and metrics
 
 Routes incoming HTTP requests to the appropriate handler. Uses Go 1.22+ `net/http` ServeMux with method-based routing.
 
-- **`router.go` / `dispatch.go`** — TA plane (`HANDLER_MODE=api`): when `SESSIONS_TABLE` is configured, `ResolveIdentity` maps boundary task role ARN → operator + `session_id` before audit/execution writes. Design: [identity bridge](../boundary/identity-bridge.md).
+- **`router.go` / `dispatch.go`** — TA plane (`HANDLER_MODE=api`): `sessionStore` is always wired; `ResolveIdentity` maps boundary task role ARN → operator + `session_id` before audit/execution writes. Design: [identity bridge](../boundary/identity-bridge.md).
 - **`access.go`** — Session plane (`HANDLER_MODE=access`): DynamoDB sessions, SSM targets, `ecs:RunTask`; no TA dispatch.
 
 ### `pkg/handler` — Lambda Event Router
@@ -224,6 +224,7 @@ All configuration via environment variables (Terraform-managed):
 | `EXECUTION_TABLE`                | —          | api, worker         | DynamoDB executions table                                                                                                                                                                  |
 | `AUDIT_TABLE`                    | —          | api, access         | DynamoDB audit table                                                                                                                                                                       |
 | `SESSIONS_TABLE`                 | —          | api, worker, access | Boundary sessions table (bridge + reaper; access writes)                                                                                                                                   |
+| `BREAKGLASS_TABLE`                 | —          | api, worker, access | Break-glass grant requests (same wiring pattern as `EXECUTION_TABLE`)                                                                                                                      |
 | `TARGETS_SSM_PREFIX`             | —          | access              | SSM prefix for `/zoa/targets/...`                                                                                                                                                          |
 | `SESSION_IDLE_TIMEOUT_SECONDS`   | 3600       | worker              | Boundary idle reaper window (`active` sessions only)                                                                                                                                       |
 | `SESSION_STALE_CREATING_SECONDS` | 900        | worker              | Stale **`creating`** reaper window                                                                                                                                                         |

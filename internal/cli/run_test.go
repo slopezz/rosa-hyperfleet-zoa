@@ -157,7 +157,7 @@ func TestRunAction_WhenSyncSucceeds_ItShouldReturnNilError(t *testing.T) {
 				t.Errorf("expected namespace=grafana, got %q", req.Params["namespace"])
 			}
 			return &client.DispatchResponse{
-				ID: "exec-sync-1",
+				ID:            "exec-sync-1",
 				Status:        "succeeded",
 				TargetCluster: "mc-useast1-1",
 				ExecutionMode: "sync",
@@ -189,7 +189,7 @@ func TestRunAction_WhenNoWait_ItShouldReturnImmediately(t *testing.T) {
 	mock := &mockClient{
 		dispatchFn: func(_ context.Context, _ string, _ *client.DispatchRequest) (*client.DispatchResponse, error) {
 			return &client.DispatchResponse{
-				ID: "exec-nowait",
+				ID:            "exec-nowait",
 				Status:        "dispatched",
 				TargetCluster: "mc-useast1-1",
 				ExecutionMode: "async",
@@ -212,7 +212,7 @@ func TestRunAction_WhenNoWaitJSON_ItShouldReturnDispatchResponse(t *testing.T) {
 	mock := &mockClient{
 		dispatchFn: func(_ context.Context, _ string, _ *client.DispatchRequest) (*client.DispatchResponse, error) {
 			return &client.DispatchResponse{
-				ID: "exec-nowait-json",
+				ID:            "exec-nowait-json",
 				Status:        "dispatched",
 				TargetCluster: "mc-useast1-1",
 				ExecutionMode: "async",
@@ -252,7 +252,7 @@ func TestRunAction_WhenSyncFails_ItShouldReturnError(t *testing.T) {
 	mock := &mockClient{
 		dispatchFn: func(_ context.Context, _ string, _ *client.DispatchRequest) (*client.DispatchResponse, error) {
 			return &client.DispatchResponse{
-				ID: "exec-fail",
+				ID:            "exec-fail",
 				Status:        "failed",
 				TargetCluster: "mc-useast1-1",
 				ExecutionMode: "sync",
@@ -260,7 +260,7 @@ func TestRunAction_WhenSyncFails_ItShouldReturnError(t *testing.T) {
 		},
 		getExecutionFn: func(_ context.Context, _ string, _ string) (*client.Execution, error) {
 			return &client.Execution{
-				ID: "exec-fail",
+				ID:            "exec-fail",
 				Status:        "failed",
 				ExecutionMode: "sync",
 				Logs:          "ERROR: pod not found\n",
@@ -555,7 +555,7 @@ func TestRunAction_WhenWaitCompletesWithDownloadHint_ItShouldAutoDownload(t *tes
 	mock := &mockClient{
 		dispatchFn: func(_ context.Context, _ string, _ *client.DispatchRequest) (*client.DispatchResponse, error) {
 			return &client.DispatchResponse{
-				ID: "exec-wait-mg",
+				ID:            "exec-wait-mg",
 				Status:        "dispatched",
 				TargetCluster: "mc-useast1-1",
 				ExecutionMode: "async",

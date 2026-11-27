@@ -48,7 +48,7 @@ func TestListRuns_WhenExecutionsExist_ItShouldReturnNilError(t *testing.T) {
 			return &client.ExecutionList{
 				Items: []client.Execution{
 					{
-				ID: "exec-run-1",
+						ID:            "exec-run-1",
 						Action:        "get_pods",
 						TargetCluster: "mc-useast1-1",
 						Status:        "succeeded",

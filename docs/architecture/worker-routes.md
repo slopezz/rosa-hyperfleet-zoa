@@ -46,11 +46,11 @@ flowchart TB
 | 4    | `garbageCollect`             | TA     | Terminal executions past GC delay → `CleanupExecution`; `MarkCleaned` on execution row.                                                                      |
 | 5    | `orphanGC`                   | TA     | List Jobs `app.kubernetes.io/managed-by=zoa`; if **no** execution row and age > 30m → cleanup.                                                               |
 | 6    | `cleanupStaleMustGatherPods` | TA     | Terminal must-gather child pods (label `zoa.openshift.io/component=must-gather`), age > 30m.                                                                 |
-| 7    | `breakglassExpireGrants`     | BG     | Optional (`breakglassStore` set). Query `pending`/`active` on break-glass table; past `requestExpiresAt` / `grantExpiresAt` → `status=expired`, `expiredAt`. |
+| 7    | `breakglassExpireGrants`     | BG     | Query `pending`/`active` on break-glass table; past `requestExpiresAt` / `grantExpiresAt` → `status=expired`, `expiredAt`. |
 | 8    | `breakglassGarbageCollect`   | BG     | Query `expired`, `cleaned=false`; kube profiles → `CleanupBreakglass(requestId)`; `MarkCleaned`.                                                             |
 | 9    | `breakglassOrphanGC`         | BG     | List SAs with `managed-by=zoa` + `request-id` label; if Dynamo missing or not pending/active → cleanup.                                                      |
 
-Phase errors increment `phaseErrors` and are logged; later phases still run (unless panic or context cancelled). `MAX_BATCH_PER_TICK` limits several TA loops.
+Phase errors increment `phaseErrors` and are logged as `worker phase failed` with `pillar` (`ta`, `breakglass`) and `phase`; later phases still run (unless panic or context cancelled). `MAX_BATCH_PER_TICK` limits several TA loops.
 
 **Break-glass note:** approve, activate, and credentials are **API** paths (synchronous). Worker BG steps are **lifecycle + kube hygiene** only.
 
@@ -73,15 +73,15 @@ Same functions and semantics as steps 4–9 on the reconciler route.
 
 `Reaper.Run` — **boundary sessions** only (ECS boundary tasks + DynamoDB `SESSIONS_TABLE`). Not TA or break-glass.
 
-Requires `SESSIONS_TABLE` on the worker. Scoped to `TARGET_CLUSTER` for this deployment.
+Uses `SESSIONS_TABLE` (required on worker, same as `EXECUTION_TABLE` / `BREAKGLASS_TABLE`). Scoped to `TARGET_CLUSTER` for this deployment.
 
-| Step | Method             | What it does                                                                                                                              |
-| ---- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| 1    | `runDeadline`      | GSI `target-status-index`: sessions past `deadline` (`creating` or `active`) → `ecs:StopTask`, `status=terminated`, `deadlineReaperStop`. |
-| 2    | `runStaleCreating` | `creating` rows older than `SESSION_STALE_CREATING_SECONDS` → stop + terminate.                                                           |
-| 3    | `runIdle`          | `active` with `taskId`: SSM + CloudWatch activity; idle longer than `SESSION_IDLE_TIMEOUT_SECONDS` → stop + `idleReaperStop`.             |
+| Step | Method             | `phase` (logs)   | What it does                                                                                                                              |
+| ---- | ------------------ | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| 1    | `runDeadline`      | `deadline`       | GSI `target-status-index`: sessions past `deadline` (`creating` or `active`) → `ecs:StopTask`, `status=terminated`, `deadlineReaperStop`. |
+| 2    | `runStaleCreating` | `stale_creating` | `creating` rows older than `SESSION_STALE_CREATING_SECONDS` → stop + terminate.                                                           |
+| 3    | `runIdle`          | `idle`           | `active` with `taskId`: SSM + CloudWatch activity; idle longer than `SESSION_IDLE_TIMEOUT_SECONDS` → stop + `idleReaperStop`.             |
 
-Unlike `Reconciler.Run`, an error in `runDeadline` **returns early** and skips stale/idle in that invocation (see [session reaper](../boundary/session-reaper.md)).
+Same phase-error pattern as the reconciler: failures log `worker phase failed` with `pillar=sessions` and the `phase` above; later steps still run in that tick (see [session reaper](../boundary/session-reaper.md)).
 
 ## Route: `execute` (on demand)
 
@@ -116,6 +116,6 @@ No break-glass or session logic on this route.
 | -------------------------------- | ------------------------------------------------------------------------------------------------ |
 | `pkg/scheduler/reconciler.go`    | `Run`, `dispatchApproved`, `pollAsyncJobs`, `timeoutDispatched`                                  |
 | `pkg/scheduler/gc.go`            | `RunGC`, TA `garbageCollect`, `orphanGC`, `cleanupStaleMustGatherPods`                           |
-| `pkg/scheduler/breakglass_gc.go` | `SetBreakglassStore`, `breakglassExpireGrants`, `breakglassGarbageCollect`, `breakglassOrphanGC` |
+| `pkg/scheduler/breakglass_gc.go` | `breakglassExpireGrants`, `breakglassGarbageCollect`, `breakglassOrphanGC`                       |
 | `pkg/scheduler/reaper.go`        | `Reaper.Run`, deadline / stale / idle                                                            |
-| `cmd/zoa-lambda/main.go`         | Wire store, executor, `SetBreakglassStore`, `NewReaper` when tables set                          |
+| `cmd/zoa-lambda/main.go`         | Wire `ExecutionStore`, `SessionStore`, `BreakglassStore`, executor, `NewReaper` (always on worker) |

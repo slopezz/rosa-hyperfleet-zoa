@@ -120,9 +120,9 @@ type mustGather struct{}
 func (m *mustGather) Metadata() ActionMetadata {
 	return ActionMetadata{
 		Name:                          "must_gather",
-		Scope:         ScopeKube,
-		Type:          TypeRead,
-		ExecutionMode: ExecutionModeAsync,
+		Scope:                         ScopeKube,
+		Type:                          TypeRead,
+		ExecutionMode:                 ExecutionModeAsync,
 		DisallowExecutionModeOverride: true,
 		Description:                   "Collect must-gather bundle (logs, events, resources) for hosted cluster, MC platform, or RC platform. MC ZOA: gather mc|hcp (hcp needs cluster-id). RC ZOA: gather rc.",
 		Authorization:                 AuthorizationConfig{Approval: "none"},

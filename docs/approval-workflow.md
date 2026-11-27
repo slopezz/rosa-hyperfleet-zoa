@@ -18,7 +18,7 @@ Break-glass **request IDs** and TA **execution IDs** are both random UUIDs. They
 
 **Today:** there is no `kind` query param or path prefix. On approve/reject the handler resolves `{id}` (or Access compound `{deployment}/{id}`) and:
 
-1. If `BREAKGLASS_TABLE` is configured and `Get(id)` returns a row → **break-glass** approve/reject.
+1. If `Get(id)` on the break-glass table returns a row → **break-glass** approve/reject.
 2. Else if `EXECUTIONS_TABLE` has a row → **TA** path (501 for approve/reject until the workflow epic).
 3. Else **404**.
 

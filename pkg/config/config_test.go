@@ -17,6 +17,8 @@ func setRequiredEnv(t *testing.T) {
 	t.Setenv("AUDIT_TABLE", "zoa-audit")
 	t.Setenv("UPLOADER_ROLE_ARN", "arn:aws:iam::123456:role/zoa-uploader")
 	t.Setenv("JOB_IMAGE", "123456.dkr.ecr.us-east-1.amazonaws.com/zoa-runner:latest")
+	t.Setenv("BREAKGLASS_TABLE", "zoa-breakglass")
+	t.Setenv("SESSIONS_TABLE", "zoa-boundary-sessions")
 }
 
 func TestLoad_WhenAPIMode_ItShouldSucceedWithRequiredVars(t *testing.T) {
@@ -64,6 +66,7 @@ func setAccessEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("HANDLER_MODE", "access")
 	t.Setenv("SESSIONS_TABLE", "zoa-boundary-sessions")
+	t.Setenv("BREAKGLASS_TABLE", "zoa-breakglass")
 	t.Setenv("TARGETS_SSM_PREFIX", "/zoa/targets/us-east-1")
 	t.Setenv("AUDIT_TABLE", "zoa-audit")
 	t.Setenv("AWS_REGION", "us-east-1")
@@ -164,6 +167,37 @@ func TestLoad_WhenMissingExecutionTable_ItShouldReturnError(t *testing.T) {
 	_, err := Load()
 	if err == nil {
 		t.Fatal("expected error when EXECUTION_TABLE is empty")
+	}
+}
+
+func TestLoad_WhenMissingBreakglassTable_ItShouldReturnError(t *testing.T) {
+	setRequiredEnv(t)
+	t.Setenv("BREAKGLASS_TABLE", "")
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("expected error when BREAKGLASS_TABLE is empty in api/worker modes")
+	}
+}
+
+func TestLoad_WhenAccessModeMissingBreakglassTable_ItShouldReturnError(t *testing.T) {
+	setAccessEnv(t)
+	t.Setenv("BREAKGLASS_TABLE", "")
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("expected error when BREAKGLASS_TABLE is empty in access mode")
+	}
+}
+
+func TestLoad_WhenAPIModeMissingSessionsTable_ItShouldReturnError(t *testing.T) {
+	setRequiredEnv(t)
+	t.Setenv("HANDLER_MODE", "api")
+	t.Setenv("SESSIONS_TABLE", "")
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("expected error when SESSIONS_TABLE is empty in api mode")
 	}
 }
 

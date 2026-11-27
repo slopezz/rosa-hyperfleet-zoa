@@ -97,7 +97,7 @@ func TestClientDispatch(t *testing.T) {
 
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(DispatchResponse{
-				ID: "exec-123",
+				ID:        "exec-123",
 				Status:    "dispatched",
 				SessionID: "sess-bridge-1",
 			})

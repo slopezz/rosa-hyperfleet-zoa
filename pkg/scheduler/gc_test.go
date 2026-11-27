@@ -20,7 +20,7 @@ func TestGarbageCollect_WhenTerminalExecutionExists_ItShouldCleanAndMark(t *test
 	execStore := &mockExecutionStore{
 		executions: []*store.Execution{
 			{
-				ID: "exec-gc-1",
+				ID:            "exec-gc-1",
 				Action:        "get_pods",
 				Status:        store.StatusSucceeded,
 				TargetCluster: "test-cluster",
@@ -36,7 +36,7 @@ func TestGarbageCollect_WhenTerminalExecutionExists_ItShouldCleanAndMark(t *test
 	_, _ = kubeClient.CoreV1().Namespaces().Create(ctx, ns, metav1.CreateOptions{})
 
 	exec := executor.New(kubeClient, nil, nil, nil, executor.ExecutorConfig{}, noopLogger())
-	r := NewReconciler(execStore, kubeClient, nil, exec, cfg, noopLogger())
+	r := NewReconciler(execStore, &mockBreakglassStore{}, kubeClient, nil, exec, cfg, noopLogger())
 
 	err := r.garbageCollect(ctx)
 	if err != nil {
@@ -55,7 +55,7 @@ func TestGarbageCollect_WhenNoTerminalExecutions_ItShouldDoNothing(t *testing.T)
 	execStore := &mockExecutionStore{
 		executions: []*store.Execution{
 			{
-				ID: "exec-running",
+				ID:            "exec-running",
 				Action:        "get_pods",
 				Status:        store.StatusDispatched,
 				TargetCluster: "test-cluster",
@@ -67,7 +67,7 @@ func TestGarbageCollect_WhenNoTerminalExecutions_ItShouldDoNothing(t *testing.T)
 	kubeForExec := fake.NewSimpleClientset() //nolint:staticcheck // NewClientset requires generated apply configs
 	exec := executor.New(kubeForExec, nil, nil, nil, executor.ExecutorConfig{}, noopLogger())
 	kubeForReconciler := fake.NewSimpleClientset() //nolint:staticcheck // NewClientset requires generated apply configs
-	r := NewReconciler(execStore, kubeForReconciler, nil, exec, cfg, noopLogger())
+	r := NewReconciler(execStore, &mockBreakglassStore{}, kubeForReconciler, nil, exec, cfg, noopLogger())
 
 	err := r.garbageCollect(context.Background())
 	if err != nil {
@@ -106,7 +106,7 @@ func TestOrphanGC_WhenJobHasNoMatchingExecution_ItShouldCleanup(t *testing.T) {
 	_, _ = kubeClient.BatchV1().Jobs(cfg.JobsNamespace).Create(ctx, job, metav1.CreateOptions{})
 
 	exec := executor.New(kubeClient, nil, nil, nil, executor.ExecutorConfig{}, noopLogger())
-	r := NewReconciler(execStore, kubeClient, nil, exec, cfg, noopLogger())
+	r := NewReconciler(execStore, &mockBreakglassStore{}, kubeClient, nil, exec, cfg, noopLogger())
 
 	err := r.orphanGC(ctx)
 	if err != nil {
@@ -148,7 +148,7 @@ func TestOrphanGC_WhenJobHasMatchingExecution_ItShouldSkip(t *testing.T) {
 	_, _ = kubeClient.BatchV1().Jobs(cfg.JobsNamespace).Create(ctx, job, metav1.CreateOptions{})
 
 	exec := executor.New(kubeClient, nil, nil, nil, executor.ExecutorConfig{}, noopLogger())
-	r := NewReconciler(execStore, kubeClient, nil, exec, cfg, noopLogger())
+	r := NewReconciler(execStore, &mockBreakglassStore{}, kubeClient, nil, exec, cfg, noopLogger())
 
 	err := r.orphanGC(ctx)
 	if err != nil {
@@ -189,7 +189,7 @@ func TestOrphanGC_WhenJobIsRecent_ItShouldSkip(t *testing.T) {
 	_, _ = kubeClient.BatchV1().Jobs(cfg.JobsNamespace).Create(ctx, job, metav1.CreateOptions{})
 
 	exec := executor.New(kubeClient, nil, nil, nil, executor.ExecutorConfig{}, noopLogger())
-	r := NewReconciler(execStore, kubeClient, nil, exec, cfg, noopLogger())
+	r := NewReconciler(execStore, &mockBreakglassStore{}, kubeClient, nil, exec, cfg, noopLogger())
 
 	err := r.orphanGC(ctx)
 	if err != nil {
@@ -202,7 +202,7 @@ func TestOrphanGC_WhenJobIsRecent_ItShouldSkip(t *testing.T) {
 	}
 }
 
-func TestRunGC_WhenBreakglassEnabled_ItShouldExpireGrants(t *testing.T) {
+func TestRunGC_WhenBreakglassStore_ItShouldExpireGrants(t *testing.T) {
 	past := time.Now().Add(-time.Hour).Format(time.RFC3339Nano)
 	mock := &mockBreakglassStore{
 		items: []*store.BreakglassRequest{
@@ -220,8 +220,7 @@ func TestRunGC_WhenBreakglassEnabled_ItShouldExpireGrants(t *testing.T) {
 	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: cfg.JobsNamespace}}
 	_, _ = kubeClient.CoreV1().Namespaces().Create(ctx, ns, metav1.CreateOptions{})
 	exec := executor.New(kubeClient, nil, nil, nil, executor.ExecutorConfig{}, noopLogger())
-	r := NewReconciler(&mockExecutionStore{}, kubeClient, nil, exec, cfg, noopLogger())
-	r.SetBreakglassStore(mock)
+	r := NewReconciler(&mockExecutionStore{}, mock, kubeClient, nil, exec, cfg, noopLogger())
 
 	if err := r.RunGC(ctx); err != nil {
 		t.Fatalf("RunGC: %v", err)
@@ -244,7 +243,7 @@ func TestRunGC_WhenCalled_ItShouldExecuteGCPhases(t *testing.T) {
 	_, _ = kubeClient.CoreV1().Namespaces().Create(ctx, ns, metav1.CreateOptions{})
 
 	exec := executor.New(kubeClient, nil, nil, nil, executor.ExecutorConfig{}, noopLogger())
-	r := NewReconciler(execStore, kubeClient, nil, exec, cfg, noopLogger())
+	r := NewReconciler(execStore, &mockBreakglassStore{}, kubeClient, nil, exec, cfg, noopLogger())
 
 	err := r.RunGC(ctx)
 	if err != nil {
@@ -265,7 +264,7 @@ func TestRunGC_WhenTerminalQueryFails_ItShouldReturnError(t *testing.T) {
 	_, _ = kubeClient.CoreV1().Namespaces().Create(ctx, ns, metav1.CreateOptions{})
 
 	exec := executor.New(kubeClient, nil, nil, nil, executor.ExecutorConfig{}, noopLogger())
-	r := NewReconciler(execStore, kubeClient, nil, exec, cfg, noopLogger())
+	r := NewReconciler(execStore, &mockBreakglassStore{}, kubeClient, nil, exec, cfg, noopLogger())
 
 	err := r.RunGC(ctx)
 	if err == nil {
@@ -297,7 +296,7 @@ func TestCleanupStaleMustGatherPods_WhenPodIsOld_ItShouldDelete(t *testing.T) {
 	_, _ = kubeClient.CoreV1().Pods(cfg.JobsNamespace).Create(ctx, pod, metav1.CreateOptions{})
 
 	exec := executor.New(kubeClient, nil, nil, nil, executor.ExecutorConfig{}, noopLogger())
-	r := NewReconciler(&mockExecutionStore{}, kubeClient, nil, exec, cfg, noopLogger())
+	r := NewReconciler(&mockExecutionStore{}, &mockBreakglassStore{}, kubeClient, nil, exec, cfg, noopLogger())
 
 	if err := r.cleanupStaleMustGatherPods(ctx); err != nil {
 		t.Fatalf("unexpected error: %v", err)

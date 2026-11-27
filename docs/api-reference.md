@@ -75,7 +75,7 @@ Served by the Access Lambda (`HANDLER_MODE=access`) in the RC account (no VPC at
 
 ### Break-glass (API Lambda — boundary)
 
-Requires `BREAKGLASS_TABLE` on the target API Lambda. Identity and task-binding match TA dispatch. Profiles declare **`authorization.approval`**; v1 is **`none`** for all profiles → create runs `ApproveBreakglassRequest` with approver `auto` (see [approval-workflow.md](approval-workflow.md)). Profile catalog `GET` routes are not audited; cross-operator request list is (`breakglass_history`).
+`BREAKGLASS_TABLE` is required on every API Lambda (wired with `ExecutionStore` in `api.New`). Identity and task-binding match TA dispatch. Profiles declare **`authorization.approval`**; v1 is **`none`** for all profiles → create runs `ApproveBreakglassRequest` with approver `auto` (see [approval-workflow.md](approval-workflow.md)). Profile catalog `GET` routes are not audited; cross-operator request list is (`breakglass_history`).
 
 | Method | Path                                       | Description                                      |
 | ------ | ------------------------------------------ | ------------------------------------------------ |

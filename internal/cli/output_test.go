@@ -18,7 +18,7 @@ func TestShowOutput_WhenOutputAvailable_ItShouldReturnNilError(t *testing.T) {
 				t.Errorf("expected include 'output', got %q", include)
 			}
 			return &client.Execution{
-				ID: "exec-789",
+				ID:     "exec-789",
 				Status: "succeeded",
 				Output: client.FlexString(`[{"Name":"pod-1","Status":"Running"}]`),
 			}, nil
@@ -36,7 +36,7 @@ func TestShowOutput_WhenNoOutputAvailable_ItShouldReturnNilError(t *testing.T) {
 	mock := &mockClient{
 		getExecutionFn: func(_ context.Context, _ string, _ string) (*client.Execution, error) {
 			return &client.Execution{
-				ID: "exec-000",
+				ID:     "exec-000",
 				Status: "succeeded",
 				Output: "",
 			}, nil
@@ -54,7 +54,7 @@ func TestShowOutput_WhenJSONFormat_ItShouldReturnNilError(t *testing.T) {
 	mock := &mockClient{
 		getExecutionFn: func(_ context.Context, _ string, _ string) (*client.Execution, error) {
 			return &client.Execution{
-				ID: "exec-json",
+				ID:     "exec-json",
 				Status: "succeeded",
 				Output: client.FlexString(`{"key":"value"}`),
 			}, nil

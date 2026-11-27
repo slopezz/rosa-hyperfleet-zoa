@@ -17,34 +17,34 @@ import (
 // RunGC performs only the garbage collection phases. Called by the dedicated
 // "gc" EventBridge schedule (every 5m) as a catch-up for resources the
 // reconciler's 1-minute tick didn't fully process due to batch limits.
-// When break-glass is enabled, also runs breakglassExpireGrants, breakglassGarbageCollect, breakglassOrphanGC.
+// Runs TA cleanup (steps 1–3) then break-glass hygiene (steps 4–6).
 func (r *Reconciler) RunGC(ctx context.Context) error {
 	start := time.Now()
 	r.logger.Info("garbage collector starting (dedicated GC tick)")
 
 	var phaseErrors int
 	if err := r.garbageCollect(ctx); err != nil {
-		r.logger.Error("garbage collection failed", "error", err)
+		logWorkerPhaseError(r.logger, err, PillarTA, "garbage_collect")
 		phaseErrors++
 	}
 	if err := r.orphanGC(ctx); err != nil {
-		r.logger.Error("orphan garbage collection failed", "error", err)
+		logWorkerPhaseError(r.logger, err, PillarTA, "orphan_gc")
 		phaseErrors++
 	}
 	if err := r.cleanupStaleMustGatherPods(ctx); err != nil {
-		r.logger.Error("stale must-gather pod cleanup failed", "error", err)
+		logWorkerPhaseError(r.logger, err, PillarTA, "cleanup_stale_must_gather_pods")
 		phaseErrors++
 	}
 	if err := r.breakglassExpireGrants(ctx); err != nil {
-		r.logger.Error("break-glass expire grants failed", "error", err, "pillar", "breakglass", "phase", "expire_grants")
+		logWorkerPhaseError(r.logger, err, PillarBreakglass, "expire_grants")
 		phaseErrors++
 	}
 	if err := r.breakglassGarbageCollect(ctx); err != nil {
-		r.logger.Error("break-glass garbage collection failed", "error", err, "pillar", "breakglass", "phase", "garbage_collect")
+		logWorkerPhaseError(r.logger, err, PillarBreakglass, "garbage_collect")
 		phaseErrors++
 	}
 	if err := r.breakglassOrphanGC(ctx); err != nil {
-		r.logger.Error("break-glass orphan garbage collection failed", "error", err, "pillar", "breakglass", "phase", "orphan_gc")
+		logWorkerPhaseError(r.logger, err, PillarBreakglass, "orphan_gc")
 		phaseErrors++
 	}
 

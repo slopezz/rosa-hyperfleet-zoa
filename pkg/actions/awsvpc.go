@@ -23,9 +23,9 @@ type listVPCEndpoints struct{}
 func (l *listVPCEndpoints) Metadata() ActionMetadata {
 	return ActionMetadata{
 		Name:           "list_vpc_endpoints",
-		Scope:         ScopeAWS,
-		Type:          TypeRead,
-		ExecutionMode: ExecutionModeSync,
+		Scope:          ScopeAWS,
+		Type:           TypeRead,
+		ExecutionMode:  ExecutionModeSync,
 		Description:    "List all VPC endpoints in the configured AWS region.",
 		Authorization:  AuthorizationConfig{Approval: "none"},
 		TargetTypes:    []string{TargetTypeRC, TargetTypeMC},
@@ -86,9 +86,9 @@ type describeVPCEndpoint struct{}
 func (d *describeVPCEndpoint) Metadata() ActionMetadata {
 	return ActionMetadata{
 		Name:           "describe_vpc_endpoint",
-		Scope:         ScopeAWS,
-		Type:          TypeRead,
-		ExecutionMode: ExecutionModeSync,
+		Scope:          ScopeAWS,
+		Type:           TypeRead,
+		ExecutionMode:  ExecutionModeSync,
 		Description:    "Describe a specific VPC endpoint by ID.",
 		Authorization:  AuthorizationConfig{Approval: "none"},
 		TargetTypes:    []string{TargetTypeRC, TargetTypeMC},

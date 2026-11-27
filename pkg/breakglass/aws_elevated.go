@@ -5,8 +5,8 @@ import "github.com/openshift-online/rosa-seaplane-zoa/pkg/actions"
 func init() {
 	register(&Definition{
 		Metadata: ProfileMetadata{
-			Name: "aws_elevated",
-			Scope: ScopeAWS,
+			Name:        "aws_elevated",
+			Scope:       ScopeAWS,
 			Type:        TypeElevated,
 			Description: "PowerUserAccess with Deny guards on ZOA control-plane immutability.",
 			Authorization: Authorization{

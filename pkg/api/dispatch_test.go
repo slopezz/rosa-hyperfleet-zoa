@@ -16,7 +16,7 @@ import (
 func TestCreateResponse_WhenSerialized_ItShouldIncludeAllCLIExpectedFields(t *testing.T) {
 	durationMs := int64(123)
 	resp := createResponse{
-		ID: "test-id",
+		ID:              "test-id",
 		Action:          "get_resource",
 		RequestedAction: "rollout_restart",
 		TargetCluster:   "test-cluster",
@@ -81,7 +81,7 @@ func TestCreateResponse_WhenSerialized_ItShouldIncludeAllCLIExpectedFields(t *te
 
 func TestCreateResponse_WhenSessionIDSet_ItShouldSerializeSessionID(t *testing.T) {
 	data, err := json.Marshal(createResponse{
-		ID: "exec-1",
+		ID:        "exec-1",
 		Action:    "get_resource",
 		Operator:  "slopezma",
 		SessionID: "sess-boundary-1",
@@ -101,7 +101,7 @@ func TestCreateResponse_WhenSessionIDSet_ItShouldSerializeSessionID(t *testing.T
 
 func TestCreateResponse_WhenSessionIDEmpty_ItShouldOmitFromJSON(t *testing.T) {
 	data, err := json.Marshal(createResponse{
-		ID: "exec-1",
+		ID:       "exec-1",
 		Action:   "get_resource",
 		Operator: "slopezma",
 		Status:   "succeeded",

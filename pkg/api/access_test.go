@@ -175,12 +175,13 @@ func testAccessHandler(sessionStore store.SessionStore, targetStore store.Target
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	return NewAccessHandler(AccessDeps{
-		Cfg:          cfg,
-		SessionStore: sessionStore,
-		TargetStore:  targetStore,
-		AuditStore:   &mockAuditStore{},
-		ExecVendor:   &mockExecVendorAccess{},
-		Logger:       logger,
+		Cfg:             cfg,
+		SessionStore:    sessionStore,
+		TargetStore:     targetStore,
+		BreakglassStore: &mockBreakglassAccessStore{},
+		AuditStore:      &mockAuditStore{},
+		ExecVendor:      &mockExecVendorAccess{},
+		Logger:          logger,
 	})
 }
 
@@ -708,23 +709,23 @@ func TestAccessHandler_WhenSessionListMineWithOperatorParam_ItShouldReturn400(t 
 	}
 }
 
-func TestAccessHandler_WhenApproveWithoutBreakglass_ItShouldReturn503(t *testing.T) {
+func TestAccessHandler_WhenApproveUnknownID_ItShouldReturn404(t *testing.T) {
 	h := testAccessHandler(&mockSessionStoreAccess{}, &mockTargetStoreAccess{})
 
 	rr := doAccessRequest(h, "POST", "/api/v0/approve/req-123", nil, accessHeaders())
 
-	if rr.Code != http.StatusServiceUnavailable {
-		t.Errorf("expected 503, got %d: %s", rr.Code, rr.Body.String())
+	if rr.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d: %s", rr.Code, rr.Body.String())
 	}
 }
 
-func TestAccessHandler_WhenRejectWithoutBreakglass_ItShouldReturn503(t *testing.T) {
+func TestAccessHandler_WhenRejectUnknownID_ItShouldReturn404(t *testing.T) {
 	h := testAccessHandler(&mockSessionStoreAccess{}, &mockTargetStoreAccess{})
 
 	rr := doAccessRequest(h, "POST", "/api/v0/reject/req-123", nil, accessHeaders())
 
-	if rr.Code != http.StatusServiceUnavailable {
-		t.Errorf("expected 503, got %d: %s", rr.Code, rr.Body.String())
+	if rr.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d: %s", rr.Code, rr.Body.String())
 	}
 }
 

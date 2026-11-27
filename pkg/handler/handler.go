@@ -176,11 +176,7 @@ func (l *Lambda) handleScheduledEvent(ctx context.Context, rawEvent json.RawMess
 	case "gc", "garbage-collection":
 		runErr = l.reconciler.RunGC(ctx)
 	case "reaper":
-		if l.reaper != nil {
-			runErr = l.reaper.Run(ctx)
-		} else {
-			l.logger.Warn("reaper route received but reaper not initialized")
-		}
+		runErr = l.reaper.Run(ctx)
 	default:
 		return nil, fmt.Errorf("unknown worker route: %q", route)
 	}

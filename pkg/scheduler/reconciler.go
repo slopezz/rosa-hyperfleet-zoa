@@ -34,23 +34,24 @@ type WorkerExecutionEvent struct {
 }
 
 type Reconciler struct {
-	executionStore store.ExecutionStore
-	kubeClient     kubernetes.Interface
-	lambdaClient   LambdaInvoker
-	executor       *executor.Executor
+	executionStore  store.ExecutionStore
 	breakglassStore store.BreakglassStore
-	cfg            *config.Config
-	logger         *slog.Logger
+	kubeClient      kubernetes.Interface
+	lambdaClient    LambdaInvoker
+	executor        *executor.Executor
+	cfg             *config.Config
+	logger          *slog.Logger
 }
 
-func NewReconciler(executionStore store.ExecutionStore, kubeClient kubernetes.Interface, lambdaClient LambdaInvoker, exec *executor.Executor, cfg *config.Config, logger *slog.Logger) *Reconciler {
+func NewReconciler(executionStore store.ExecutionStore, breakglassStore store.BreakglassStore, kubeClient kubernetes.Interface, lambdaClient LambdaInvoker, exec *executor.Executor, cfg *config.Config, logger *slog.Logger) *Reconciler {
 	return &Reconciler{
-		executionStore: executionStore,
-		kubeClient:     kubeClient,
-		lambdaClient:   lambdaClient,
-		executor:       exec,
-		cfg:            cfg,
-		logger:         logger,
+		executionStore:  executionStore,
+		breakglassStore: breakglassStore,
+		kubeClient:      kubeClient,
+		lambdaClient:    lambdaClient,
+		executor:        exec,
+		cfg:             cfg,
+		logger:          logger,
 	}
 }
 
@@ -61,7 +62,7 @@ func NewReconciler(executionStore store.ExecutionStore, kubeClient kubernetes.In
 // 4. GC: clean up K8s resources for terminal executions, mark cleaned
 // 5. Orphan GC: delete K8s resources that have no matching DynamoDB record
 // 6. Stale must-gather pods: delete terminal child pods missed by runner defer cleanup
-// 7. Break-glass expireGrants (if enabled)
+// 7. Break-glass expireGrants
 // 8. Break-glass garbageCollect
 // 9. Break-glass orphanGC
 func (r *Reconciler) Run(ctx context.Context) error {
@@ -71,45 +72,45 @@ func (r *Reconciler) Run(ctx context.Context) error {
 	var phaseErrors int
 
 	if err := r.dispatchApproved(ctx); err != nil {
-		r.logger.Error("approved dispatch failed", "error", err)
+		logWorkerPhaseError(r.logger, err, PillarTA, "dispatch_approved")
 		phaseErrors++
 	}
 
 	if err := r.pollAsyncJobs(ctx); err != nil {
-		r.logger.Error("async job polling failed", "error", err)
+		logWorkerPhaseError(r.logger, err, PillarTA, "poll_async_jobs")
 		phaseErrors++
 	}
 
 	if err := r.timeoutDispatched(ctx); err != nil {
-		r.logger.Error("timeout check failed", "error", err)
+		logWorkerPhaseError(r.logger, err, PillarTA, "timeout_dispatched")
 		phaseErrors++
 	}
 
 	if err := r.garbageCollect(ctx); err != nil {
-		r.logger.Error("garbage collection failed", "error", err)
+		logWorkerPhaseError(r.logger, err, PillarTA, "garbage_collect")
 		phaseErrors++
 	}
 
 	if err := r.orphanGC(ctx); err != nil {
-		r.logger.Error("orphan garbage collection failed", "error", err)
+		logWorkerPhaseError(r.logger, err, PillarTA, "orphan_gc")
 		phaseErrors++
 	}
 
 	if err := r.cleanupStaleMustGatherPods(ctx); err != nil {
-		r.logger.Error("stale must-gather pod cleanup failed", "error", err)
+		logWorkerPhaseError(r.logger, err, PillarTA, "cleanup_stale_must_gather_pods")
 		phaseErrors++
 	}
 
 	if err := r.breakglassExpireGrants(ctx); err != nil {
-		r.logger.Error("break-glass expire grants failed", "error", err, "pillar", "breakglass", "phase", "expire_grants")
+		logWorkerPhaseError(r.logger, err, PillarBreakglass, "expire_grants")
 		phaseErrors++
 	}
 	if err := r.breakglassGarbageCollect(ctx); err != nil {
-		r.logger.Error("break-glass garbage collection failed", "error", err, "pillar", "breakglass", "phase", "garbage_collect")
+		logWorkerPhaseError(r.logger, err, PillarBreakglass, "garbage_collect")
 		phaseErrors++
 	}
 	if err := r.breakglassOrphanGC(ctx); err != nil {
-		r.logger.Error("break-glass orphan garbage collection failed", "error", err, "pillar", "breakglass", "phase", "orphan_gc")
+		logWorkerPhaseError(r.logger, err, PillarBreakglass, "orphan_gc")
 		phaseErrors++
 	}
 
@@ -174,9 +175,9 @@ func (r *Reconciler) dispatchApproved(ctx context.Context) error {
 			Action:      exec.Action,
 		})
 		if err != nil {
-			r.logger.Error("failed to marshal execution event", "execution_id", exec.ID, "error", err)
+			r.logger.Error("failed to marshal execution event", "pillar", PillarTA, "phase", "dispatch_approved", "execution_id", exec.ID, "error", err)
 			if rbErr := r.executionStore.TransitionStatus(ctx, exec.ID, store.StatusDispatched, store.StatusApproved); rbErr != nil {
-				r.logger.Error("failed to rollback after marshal failure", "execution_id", exec.ID, "error", rbErr)
+				r.logger.Error("failed to rollback after marshal failure", "pillar", PillarTA, "phase", "dispatch_approved", "execution_id", exec.ID, "error", rbErr)
 			}
 			failures++
 			continue
@@ -191,10 +192,10 @@ func (r *Reconciler) dispatchApproved(ctx context.Context) error {
 		})
 		if err != nil {
 			r.logger.Error("failed to self-invoke for TA execution",
-				"execution_id", exec.ID, "error", err)
+				"pillar", PillarTA, "phase", "dispatch_approved", "execution_id", exec.ID, "error", err)
 			if rbErr := r.executionStore.TransitionStatus(ctx, exec.ID, store.StatusDispatched, store.StatusApproved); rbErr != nil {
 				r.logger.Error("failed to rollback dispatch status after invoke failure",
-					"execution_id", exec.ID, "error", rbErr)
+					"pillar", PillarTA, "phase", "dispatch_approved", "execution_id", exec.ID, "error", rbErr)
 			} else {
 				r.logger.Info("rolled back dispatch status after invoke failure",
 					"execution_id", exec.ID)
@@ -257,7 +258,7 @@ func (r *Reconciler) timeoutDispatched(ctx context.Context) error {
 				"timeout", timeout.String())
 
 			if err := r.executionStore.TransitionStatus(ctx, exec.ID, store.StatusDispatched, store.StatusTimedOut); err != nil {
-				r.logger.Error("failed to transition to timed_out", "execution_id", exec.ID, "error", err)
+				r.logger.Error("failed to transition to timed_out", "pillar", PillarTA, "phase", "timeout_dispatched", "execution_id", exec.ID, "error", err)
 				continue
 			}
 			metrics.EmitExecution(r.cfg.TargetCluster, exec.Action, string(store.StatusTimedOut), exec.ExecutionMode, exec.Scope, exec.Type, time.Since(t).Milliseconds())

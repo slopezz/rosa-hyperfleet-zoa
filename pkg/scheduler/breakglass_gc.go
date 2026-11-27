@@ -14,16 +14,8 @@ import (
 	"github.com/openshift-online/rosa-seaplane-zoa/pkg/store"
 )
 
-// SetBreakglassStore enables break-glass worker hygiene when BREAKGLASS_TABLE is configured.
-func (r *Reconciler) SetBreakglassStore(s store.BreakglassStore) {
-	r.breakglassStore = s
-}
-
 // breakglassExpireGrants transitions pending/active requests past deadline to status=expired.
 func (r *Reconciler) breakglassExpireGrants(ctx context.Context) error {
-	if r.breakglassStore == nil {
-		return nil
-	}
 	now := time.Now()
 	for _, status := range []store.Status{store.StatusPending, store.StatusActive} {
 		items, err := r.breakglassStore.QueryByTargetAndStatus(ctx, r.cfg.TargetCluster, status)
@@ -32,7 +24,7 @@ func (r *Reconciler) breakglassExpireGrants(ctx context.Context) error {
 		}
 		for _, item := range items {
 			if err := r.breakglassExpireIfNeeded(ctx, item, now); err != nil {
-				r.logger.Error("breakglass expire", "requestId", item.RequestID, "error", err)
+				r.logger.Error("breakglass expire", "pillar", PillarBreakglass, "phase", "expire_grants", "requestId", item.RequestID, "error", err)
 			}
 		}
 	}
@@ -41,7 +33,7 @@ func (r *Reconciler) breakglassExpireGrants(ctx context.Context) error {
 
 // breakglassGarbageCollect removes kube RBAC for expired grants and marks rows cleaned.
 func (r *Reconciler) breakglassGarbageCollect(ctx context.Context) error {
-	if r.breakglassStore == nil || r.executor == nil {
+	if r.executor == nil {
 		return nil
 	}
 	items, err := r.breakglassStore.QueryByTargetAndStatus(ctx, r.cfg.TargetCluster, store.StatusExpired)
@@ -56,7 +48,7 @@ func (r *Reconciler) breakglassGarbageCollect(ctx context.Context) error {
 			r.executor.CleanupBreakglass(ctx, item.RequestID)
 		}
 		if err := r.breakglassStore.MarkCleaned(ctx, item.RequestID); err != nil {
-			r.logger.Error("breakglass mark cleaned", "requestId", item.RequestID, "error", err)
+			r.logger.Error("breakglass mark cleaned", "pillar", PillarBreakglass, "phase", "garbage_collect", "requestId", item.RequestID, "error", err)
 		}
 	}
 	return nil
@@ -66,7 +58,7 @@ const breakglassOrphanAge = 30 * time.Minute
 
 // breakglassOrphanGC deletes zoa-bg kube objects when Dynamo has no row or the grant is no longer pending/active.
 func (r *Reconciler) breakglassOrphanGC(ctx context.Context) error {
-	if r.breakglassStore == nil || r.executor == nil {
+	if r.executor == nil {
 		return nil
 	}
 	kube := r.executor.Kubernetes()
@@ -109,7 +101,7 @@ func (r *Reconciler) breakglassOrphanGC(ctx context.Context) error {
 		r.executor.CleanupBreakglass(ctx, requestID)
 		if req != nil && req.Status == store.StatusExpired && !req.Cleaned {
 			if err := r.breakglassStore.MarkCleaned(ctx, requestID); err != nil {
-				r.logger.Error("breakglass mark cleaned after orphan gc", "requestId", requestID, "error", err)
+				r.logger.Error("breakglass mark cleaned after orphan gc", "pillar", PillarBreakglass, "phase", "orphan_gc", "requestId", requestID, "error", err)
 			}
 		}
 		metrics.EmitGCCleaned(r.cfg.TargetCluster, "breakglass")

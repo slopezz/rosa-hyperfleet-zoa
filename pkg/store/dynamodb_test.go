@@ -59,7 +59,7 @@ func TestDynamoDBExecutionStore_Create_WhenSuccess_ItShouldSetTTLAndTargetStatus
 
 	s := NewExecutionStore(mock, "test-table", 30)
 	exec := &Execution{
-		ID: "exec-1",
+		ID:        "exec-1",
 		Action:    "get_pods",
 		AccountID: "123456",
 		Status:    StatusDispatched,
@@ -107,7 +107,7 @@ func TestDynamoDBExecutionStore_Create_WhenConflict_ItShouldReturnError(t *testi
 
 func TestDynamoDBExecutionStore_Get_WhenItemExists_ItShouldReturnExecution(t *testing.T) {
 	item, _ := attributevalue.MarshalMap(&Execution{
-		ID: "exec-get-1",
+		ID:        "exec-get-1",
 		Action:    "get_pods",
 		Status:    StatusSucceeded,
 		CreatedAt: "2024-06-15T10:00:00Z",
@@ -836,7 +836,7 @@ func TestDynamoDBExecutionStore_ListAll_WhenBucketEmpty_ItShouldContinueToPrevio
 			for _, v := range params.ExpressionAttributeValues {
 				if s, ok := v.(*types.AttributeValueMemberS); ok && s.Value == yesterday {
 					item, _ := attributevalue.MarshalMap(&Execution{
-						ID: "exec-yesterday",
+						ID:        "exec-yesterday",
 						AccountID: "111",
 						Status:    StatusSucceeded,
 						CreatedAt: now.AddDate(0, 0, -1).Format(time.RFC3339Nano),

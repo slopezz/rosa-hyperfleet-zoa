@@ -77,10 +77,7 @@ func main() {
 		sessionStore := store.NewSessionStore(dynamoClient, cfg.SessionsTable, cfg.DynamoDBTTLDays)
 		targetStore := store.NewTargetStore(ssmClient, cfg.TargetsSSMPrefix)
 		auditStore := store.NewAuditStore(dynamoClient, cfg.AuditTable, cfg.DynamoDBTTLDays)
-		var bgStore store.BreakglassStore
-		if cfg.BreakglassEnabled() {
-			bgStore = store.NewBreakglassStore(dynamoClient, cfg.BreakglassTable, cfg.DynamoDBTTLDays)
-		}
+		breakglassStore := store.NewBreakglassStore(dynamoClient, cfg.BreakglassTable, cfg.DynamoDBTTLDays)
 
 		caller, err := sts.NewFromConfig(awsCfg).GetCallerIdentity(initCtx, &sts.GetCallerIdentityInput{})
 		if err != nil {
@@ -97,7 +94,7 @@ func main() {
 			Cfg:             cfg,
 			SessionStore:    sessionStore,
 			TargetStore:     targetStore,
-			BreakglassStore: bgStore,
+			BreakglassStore: breakglassStore,
 			AuditStore:      auditStore,
 			ECSClient:       ecsClient,
 			ECSFactory:      ecsFactory,
@@ -135,6 +132,8 @@ func main() {
 	dynamoClient := dynamodb.NewFromConfig(dataStoreCfg)
 	s3Client := s3.NewFromConfig(dataStoreCfg)
 	execStore := store.NewExecutionStore(dynamoClient, cfg.ExecutionsTable, cfg.DynamoDBTTLDays)
+	sessionStore := store.NewSessionStore(dynamoClient, cfg.SessionsTable, cfg.DynamoDBTTLDays)
+	breakglassStore := store.NewBreakglassStore(dynamoClient, cfg.BreakglassTable, cfg.DynamoDBTTLDays)
 
 	var restCfg *rest.Config
 	var kubeClient kubernetes.Interface
@@ -186,18 +185,7 @@ func main() {
 		// and returns a streaming response (up to 200MB).
 		auditStore := store.NewAuditStore(dynamoClient, cfg.AuditTable, cfg.DynamoDBTTLDays)
 
-		var apiOpts []api.HandlerOption
-		if cfg.SessionsTable != "" {
-			sessionStore := store.NewSessionStore(dynamoClient, cfg.SessionsTable, cfg.DynamoDBTTLDays)
-			apiOpts = append(apiOpts, api.WithSessionStore(sessionStore))
-			logger.Info("identity bridge enabled", "sessionsTable", cfg.SessionsTable)
-		}
-		if cfg.BreakglassEnabled() {
-			bgStore := store.NewBreakglassStore(dynamoClient, cfg.BreakglassTable, cfg.DynamoDBTTLDays)
-			apiOpts = append(apiOpts, api.WithBreakglassStore(bgStore))
-			logger.Info("break-glass enabled", "breakglassTable", cfg.BreakglassTable)
-		}
-		apiHandler := api.New(cfg, execStore, auditStore, exec, s3Client, logger, apiOpts...)
+		apiHandler := api.New(cfg, execStore, sessionStore, breakglassStore, auditStore, exec, s3Client, logger)
 		streamingHandler := lambdahttp.NewStreamingHandler(apiHandler)
 
 		logger.Info("API mode: native Lambda Function URL streaming handler")
@@ -207,33 +195,20 @@ func main() {
 		// Worker mode: native Lambda handler. Receives EventBridge schedules
 		// and self-invocation events (no HTTP involved).
 		lambdaClient := awslambda.NewFromConfig(awsCfg)
-		reconciler := scheduler.NewReconciler(execStore, kubeClient, lambdaClient, exec, cfg, logger)
-		if cfg.BreakglassEnabled() {
-			bgStore := store.NewBreakglassStore(dynamoClient, cfg.BreakglassTable, cfg.DynamoDBTTLDays)
-			reconciler.SetBreakglassStore(bgStore)
-			logger.Info("break-glass worker expiry enabled", "breakglassTable", cfg.BreakglassTable)
-		}
+		reconciler := scheduler.NewReconciler(execStore, breakglassStore, kubeClient, lambdaClient, exec, cfg, logger)
 
-		// Reaper: terminates expired boundary sessions. Only initialized when
-		// SESSIONS_TABLE is set (boundary is enabled for this deployment).
-		var reaper *scheduler.Reaper
-		if cfg.SessionsTable != "" {
-			sessionStore := store.NewSessionStore(dynamoClient, cfg.SessionsTable, cfg.DynamoDBTTLDays)
-			ecsClient := awsecs.New(awsCfg)
-			idleTimeout := time.Duration(cfg.SessionIdleTimeoutSeconds) * time.Second
-			staleCreating := time.Duration(cfg.SessionStaleCreatingSeconds) * time.Second
-			activity := boundaryexec.NewActivityChecker(awsCfg)
-			reaper = scheduler.NewReaper(
-				sessionStore,
-				awsecs.NewReaperAdapter(ecsClient),
-				logger,
-				cfg.TargetCluster,
-				scheduler.WithExecActivity(activity, idleTimeout),
-				scheduler.WithStaleCreatingTimeout(staleCreating),
-			)
-			logger.Info("reaper enabled", "sessionsTable", cfg.SessionsTable,
-				"sessionIdleTimeout", idleTimeout, "sessionStaleCreating", staleCreating)
-		}
+		ecsClient := awsecs.New(awsCfg)
+		idleTimeout := time.Duration(cfg.SessionIdleTimeoutSeconds) * time.Second
+		staleCreating := time.Duration(cfg.SessionStaleCreatingSeconds) * time.Second
+		activity := boundaryexec.NewActivityChecker(awsCfg)
+		reaper := scheduler.NewReaper(
+			sessionStore,
+			awsecs.NewReaperAdapter(ecsClient),
+			logger,
+			cfg.TargetCluster,
+			scheduler.WithExecActivity(activity, idleTimeout),
+			scheduler.WithStaleCreatingTimeout(staleCreating),
+		)
 
 		h := handler.New(handler.Deps{
 			Cfg:        cfg,

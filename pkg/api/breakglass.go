@@ -17,18 +17,7 @@ import (
 	"github.com/openshift-online/rosa-seaplane-zoa/pkg/store"
 )
 
-func (h *Handler) breakglassEnabled(w http.ResponseWriter) bool {
-	if h.cfg.BreakglassEnabled() && h.breakglassStore != nil {
-		return true
-	}
-	writeError(w, http.StatusServiceUnavailable, "breakglass_disabled", "break-glass is not enabled for this target")
-	return false
-}
-
 func (h *Handler) handleListBreakglassProfiles(w http.ResponseWriter, r *http.Request) {
-	if !h.breakglassEnabled(w) {
-		return
-	}
 	q := r.URL.Query()
 	scopeFilter := strings.TrimSpace(q.Get("scope"))
 	typeFilter := strings.TrimSpace(q.Get("type"))
@@ -50,9 +39,6 @@ func (h *Handler) handleListBreakglassProfiles(w http.ResponseWriter, r *http.Re
 }
 
 func (h *Handler) handleDescribeBreakglassProfile(w http.ResponseWriter, r *http.Request) {
-	if !h.breakglassEnabled(w) {
-		return
-	}
 	profileName := r.PathValue("name")
 	def, ok := breakglass.Get(profileName)
 	if !ok {
@@ -72,9 +58,6 @@ type breakglassCreateRequest struct {
 }
 
 func (h *Handler) handleCreateBreakglassRequest(w http.ResponseWriter, r *http.Request) {
-	if !h.breakglassEnabled(w) {
-		return
-	}
 	var body breakglassCreateRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body")
@@ -148,9 +131,6 @@ func (h *Handler) handleCreateBreakglassRequest(w http.ResponseWriter, r *http.R
 }
 
 func (h *Handler) handleGetBreakglassRequest(w http.ResponseWriter, r *http.Request) {
-	if !h.breakglassEnabled(w) {
-		return
-	}
 	id := r.PathValue("id")
 	req, err := h.breakglassStore.Get(r.Context(), id)
 	if err != nil {
@@ -166,9 +146,6 @@ func (h *Handler) handleGetBreakglassRequest(w http.ResponseWriter, r *http.Requ
 }
 
 func (h *Handler) handleListBreakglassRequests(w http.ResponseWriter, r *http.Request) {
-	if !h.breakglassEnabled(w) {
-		return
-	}
 	q := r.URL.Query()
 	filter := &store.BreakglassFilter{
 		Limit: 50,
@@ -244,9 +221,6 @@ func (h *Handler) handleListBreakglassRequests(w http.ResponseWriter, r *http.Re
 }
 
 func (h *Handler) handleActivateBreakglassRequest(w http.ResponseWriter, r *http.Request) {
-	if !h.breakglassEnabled(w) {
-		return
-	}
 	id := r.PathValue("id")
 	req, err := h.breakglassStore.Get(r.Context(), id)
 	if err != nil || req == nil {

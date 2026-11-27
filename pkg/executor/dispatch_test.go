@@ -62,7 +62,7 @@ func TestDispatchAsync_WhenCalled_ItShouldCreateSTSScopedSecret(t *testing.T) {
 	e := newTestExecutor(client, mockSTS)
 
 	exec := &store.Execution{
-		ID: "abcd1234-5678-9012-3456-789012345678",
+		ID:            "abcd1234-5678-9012-3456-789012345678",
 		Action:        "delete-pod",
 		TargetCluster: "test-cluster",
 		Operator:      "sre@redhat.com",
@@ -146,7 +146,7 @@ func TestDispatchAsync_WhenCalled_ItShouldCreateJobWithSecretEnvFrom(t *testing.
 	e := newTestExecutor(client, mockSTS)
 
 	exec := &store.Execution{
-		ID: "job-test-1234-5678-9012-345678901234",
+		ID:            "job-test-1234-5678-9012-345678901234",
 		Action:        "get-resource",
 		TargetCluster: "mc-01",
 		Operator:      "sre@redhat.com",
@@ -251,7 +251,7 @@ func TestDispatchAsync_WhenSTSFails_ItShouldCleanupAndReturnError(t *testing.T) 
 	e := newTestExecutor(client, mockSTS)
 
 	exec := &store.Execution{
-		ID: "fail-sts-1234-5678-9012-345678901234",
+		ID:            "fail-sts-1234-5678-9012-345678901234",
 		Action:        "delete-pod",
 		TargetCluster: "mc-01",
 		Params:        map[string]string{},
@@ -301,7 +301,7 @@ func TestDispatchAsync_WhenSessionPolicy_ItShouldScopeToExecutionPrefix(t *testi
 	e := newTestExecutor(client, mockSTS)
 
 	exec := &store.Execution{
-		ID: "scope-1234-5678-9012-345678901234",
+		ID:     "scope-1234-5678-9012-345678901234",
 		Action: "get-resource",
 		Params: map[string]string{},
 	}
@@ -337,7 +337,7 @@ func TestDispatchAsync_WhenKubeAPIScope_ItShouldIncludeKMSInSessionPolicy(t *tes
 	e.kmsKeyARN = "arn:aws:kms:us-east-1:123456789012:key/test-key-id"
 
 	exec := &store.Execution{
-		ID: "kms-test-1234-5678-9012-345678901234",
+		ID:     "kms-test-1234-5678-9012-345678901234",
 		Action: "get-resource",
 		Params: map[string]string{},
 	}
@@ -390,7 +390,7 @@ func TestDispatchAsync_WhenAWSAPIScope_ItShouldNotIncludeSessionPolicy(t *testin
 	e.awsReadRoleARN = "arn:aws:iam::123456789012:role/zoa-aws-read"
 
 	exec := &store.Execution{
-		ID: "aws-api-1234-5678-9012-345678901234",
+		ID:            "aws-api-1234-5678-9012-345678901234",
 		Action:        "describe_vpc_endpoint",
 		TargetCluster: "test-cluster",
 		Params:        map[string]string{"name": "vpce-123"},
@@ -444,7 +444,7 @@ func TestDispatchAsync_WhenAWSAPIWriteScope_ItShouldUseWriteRole(t *testing.T) {
 	e.awsWriteRoleARN = "arn:aws:iam::123456789012:role/zoa-aws-write"
 
 	exec := &store.Execution{
-		ID: "aws-wr-1234-5678-9012-345678901234",
+		ID:            "aws-wr-1234-5678-9012-345678901234",
 		Action:        "modify_vpc_endpoint",
 		TargetCluster: "test-cluster",
 		Params:        map[string]string{"name": "vpce-123"},
@@ -490,7 +490,7 @@ func TestDispatchAsync_WhenAWSAPIScope_ItShouldSkipKubeRBAC(t *testing.T) {
 	e.awsReadRoleARN = "arn:aws:iam::123456789012:role/zoa-aws-read"
 
 	exec := &store.Execution{
-		ID: "no-rbac-1234-5678-9012-345678901234",
+		ID:            "no-rbac-1234-5678-9012-345678901234",
 		Action:        "describe_vpc",
 		TargetCluster: "test-cluster",
 		Params:        map[string]string{},

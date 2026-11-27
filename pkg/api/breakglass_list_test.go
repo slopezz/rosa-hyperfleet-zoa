@@ -57,7 +57,7 @@ func testBreakglassHandler(bgStore store.BreakglassStore) *Handler {
 		Region:          "us-east-1",
 		JobImage:        "test:latest",
 	}, logger)
-	return New(cfg, &mockExecStore{}, &mockAuditStore{}, exec, nil, logger, WithBreakglassStore(bgStore))
+	return New(cfg, &mockExecStore{}, &mockSessionStore{}, bgStore, &mockAuditStore{}, exec, nil, logger)
 }
 
 func TestHandleListBreakglassRequests_WhenNoTargetQuery_ItShouldNotDefaultToLambdaTargetCluster(t *testing.T) {

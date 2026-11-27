@@ -36,7 +36,7 @@ func TestGet_WhenScopeMissing_ItShouldError(t *testing.T) {
 
 func TestClientProfileFromMetadata_WhenApprovalSet_ItShouldMapAuthorization(t *testing.T) {
 	meta := breakglass.ProfileMetadata{
-		Name: "kube_read",
+		Name:  "kube_read",
 		Scope: breakglass.ScopeKube,
 		Type:  breakglass.TypeRead,
 		Authorization: breakglass.Authorization{

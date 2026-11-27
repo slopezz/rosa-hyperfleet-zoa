@@ -19,11 +19,9 @@ func (h *Handler) handleApproveBreakglassOrExecution(w http.ResponseWriter, r *h
 		writeError(w, http.StatusBadRequest, "invalid_request", "id is required")
 		return
 	}
-	if h.breakglassStore != nil {
-		if bg, err := h.breakglassStore.Get(r.Context(), id); err == nil && bg != nil {
-			h.handleApproveBreakglass(w, r, bg)
-			return
-		}
+	if bg, err := h.breakglassStore.Get(r.Context(), id); err == nil && bg != nil {
+		h.handleApproveBreakglass(w, r, bg)
+		return
 	}
 	if h.executionStore != nil {
 		if exec, err := h.executionStore.Get(r.Context(), id); err == nil && exec != nil {
@@ -40,11 +38,9 @@ func (h *Handler) handleRejectBreakglassOrExecution(w http.ResponseWriter, r *ht
 		writeError(w, http.StatusBadRequest, "invalid_request", "id is required")
 		return
 	}
-	if h.breakglassStore != nil {
-		if bg, err := h.breakglassStore.Get(r.Context(), id); err == nil && bg != nil {
-			h.handleRejectBreakglass(w, r, bg)
-			return
-		}
+	if bg, err := h.breakglassStore.Get(r.Context(), id); err == nil && bg != nil {
+		h.handleRejectBreakglass(w, r, bg)
+		return
 	}
 	if h.executionStore != nil {
 		if exec, err := h.executionStore.Get(r.Context(), id); err == nil && exec != nil {
@@ -56,9 +52,6 @@ func (h *Handler) handleRejectBreakglassOrExecution(w http.ResponseWriter, r *ht
 }
 
 func (h *Handler) handleApproveBreakglass(w http.ResponseWriter, r *http.Request, req *store.BreakglassRequest) {
-	if !h.breakglassEnabled(w) {
-		return
-	}
 	approver, _, _ := h.resolveIdentity(r)
 	note := decodeApprovalNote(r)
 	if err := ApproveBreakglassRequest(r.Context(), h.breakglassStore, req, approver, note); err != nil {
@@ -76,9 +69,6 @@ func (h *Handler) handleApproveBreakglass(w http.ResponseWriter, r *http.Request
 }
 
 func (h *Handler) handleRejectBreakglass(w http.ResponseWriter, r *http.Request, req *store.BreakglassRequest) {
-	if !h.breakglassEnabled(w) {
-		return
-	}
 	approver, _, _ := h.resolveIdentity(r)
 	note := decodeApprovalNote(r)
 	if err := RejectBreakglassRequest(r.Context(), h.breakglassStore, req, approver, note); err != nil {

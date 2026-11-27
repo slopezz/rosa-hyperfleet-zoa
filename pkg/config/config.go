@@ -127,18 +127,13 @@ type Config struct {
 	// DeploymentName labels deployment-scoped Access EMF (health, targets, session list/history).
 	DeploymentName string
 
-	// BreakglassTable stores grant requests when break-glass is enabled for this target.
+	// BreakglassTable is the DynamoDB table for break-glass grant requests (all modes).
 	BreakglassTable string
 
 	// Breakglass AWS role ARNs (API Lambda AssumeRole only).
 	BreakglassAWSReadRoleARN     string
 	BreakglassAWSWriteRoleARN    string
 	BreakglassAWSElevatedRoleARN string
-}
-
-// BreakglassEnabled is true when the DynamoDB table is configured.
-func (c *Config) BreakglassEnabled() bool {
-	return c != nil && c.BreakglassTable != ""
 }
 
 func Load() (*Config, error) {
@@ -212,12 +207,21 @@ func Load() (*Config, error) {
 		if cfg.BoundaryECSExecCommand == "" {
 			return nil, fmt.Errorf("ZOA_ECS_EXEC_COMMAND is required in access mode")
 		}
+		if cfg.BreakglassTable == "" {
+			return nil, fmt.Errorf("BREAKGLASS_TABLE is required in access mode")
+		}
 		return cfg, nil
 	}
 
 	// Common validation for api and worker modes.
 	if cfg.ExecutionsTable == "" {
 		return nil, fmt.Errorf("EXECUTION_TABLE is required")
+	}
+	if cfg.BreakglassTable == "" {
+		return nil, fmt.Errorf("BREAKGLASS_TABLE is required")
+	}
+	if cfg.SessionsTable == "" {
+		return nil, fmt.Errorf("SESSIONS_TABLE is required")
 	}
 	if cfg.ArtifactBucket == "" {
 		return nil, fmt.Errorf("ARTIFACT_BUCKET is required")
