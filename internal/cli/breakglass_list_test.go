@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/openshift-online/rosa-seaplane-zoa/internal/client"
+	"github.com/openshift-online/rosa-seaplane-zoa/internal/output"
 )
 
 func TestListBreakglass_WhenCalled_ItShouldSetMineTrue(t *testing.T) {
@@ -50,6 +51,43 @@ func TestListBreakglassHistory_WhenCalled_ItShouldNotSetMine(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestPrintBreakglassRequestTable_WhenWide_ItShouldUseUppercaseExtraHeaders(t *testing.T) {
+	list := &client.BreakglassRequestList{
+		Count: 1,
+		Items: []client.BreakglassRequest{{
+			RequestID:     "req-wide",
+			Profile:       "kube_read",
+			TargetCluster: "eph-regional",
+			Status:        "active",
+			Reason:        "ROSAENG-1",
+			CreatedAt:     "2026-01-15T10:00:00Z",
+			ReqSessionID:  "sess-1",
+		}},
+	}
+	old := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = w
+	global := &GlobalOptions{OutputFormat: output.FormatWide}
+	err = printBreakglassRequestTable(global, list, false)
+	_ = w.Close()
+	os.Stdout = old
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	if err != nil {
+		t.Fatalf("printBreakglassRequestTable: %v", err)
+	}
+	out := buf.String()
+	if strings.Contains(out, "\treq_session_id\t") {
+		t.Fatalf("wide header should be REQ_SESSION_ID, got:\n%s", out)
+	}
+	if !strings.Contains(out, "REQ_SESSION_ID") {
+		t.Fatalf("expected REQ_SESSION_ID header, got:\n%s", out)
 	}
 }
 

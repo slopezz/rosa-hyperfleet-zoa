@@ -5,6 +5,7 @@ Emergency scoped `kubectl` / `aws` from the **boundary** only. Same patterns as 
 | Document                                                       | Purpose                                                                                                        |
 | -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
 | **[Credential architecture](credential-architecture.md)**      | How activate provisions kube/AWS creds (diagrams; like TA [implementation](../architecture/implementation.md)) |
+| [Forensic evidence (by request id)](forensics-evidence.md)     | CloudTrail + EKS audit queries keyed on `zoa-bg-<request-id>` (interim until a TA wraps this)                  |
 | [Profile authoring guide](../break-glass-profiles.md)          | `pkg/breakglass/` catalog — **capabilities/restrictions** + RBAC/IAM (like [trusted-actions.md](../trusted-actions.md)) |
 | [Approval workflow (TA + BG)](../approval-workflow.md)         | Approval policy (`none` today; gist/OPA planned)                                                               |
 | [API reference — break-glass](../api-reference.md#break-glass) | HTTP routes                                                                                                    |
