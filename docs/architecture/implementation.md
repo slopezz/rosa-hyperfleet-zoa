@@ -214,6 +214,8 @@ See [storage](storage.md) for full GSI layout.
 
 **Boundary sessions:** PK `sessionId`; GSIs `task-id-index`, `target-status-index`, `date-bucket-index` (`pkg/store/session.go`).
 
+**Break-glass:** PK `requestId`; GSIs `target-status-index`, `date-bucket-index` (`pkg/store/breakglass.go`). Worker queries per target; list/history uses date buckets — see [storage](storage.md#break-glass).
+
 ### `pkg/config` — Environment Configuration
 
 All configuration via environment variables (Terraform-managed):
@@ -224,7 +226,7 @@ All configuration via environment variables (Terraform-managed):
 | `EXECUTION_TABLE`                | —          | api, worker         | DynamoDB executions table                                                                                                                                                                  |
 | `AUDIT_TABLE`                    | —          | api, access         | DynamoDB audit table                                                                                                                                                                       |
 | `SESSIONS_TABLE`                 | —          | api, worker, access | Boundary sessions table (bridge + reaper; access writes)                                                                                                                                   |
-| `BREAKGLASS_TABLE`                 | —          | api, worker, access | Break-glass grant requests (same wiring pattern as `EXECUTION_TABLE`)                                                                                                                      |
+| `BREAKGLASS_TABLE`               | —          | api, worker, access | Break-glass grant requests (same wiring pattern as `EXECUTION_TABLE`)                                                                                                                      |
 | `TARGETS_SSM_PREFIX`             | —          | access              | SSM prefix for `/zoa/targets/...`                                                                                                                                                          |
 | `SESSION_IDLE_TIMEOUT_SECONDS`   | 3600       | worker              | Boundary idle reaper window (`active` sessions only)                                                                                                                                       |
 | `SESSION_STALE_CREATING_SECONDS` | 900        | worker              | Stale **`creating`** reaper window                                                                                                                                                         |
